@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/ct-cloud"]
+members = ["crates/*"]
 
 [workspace.dependencies]
 async-trait = "0.1.83"
