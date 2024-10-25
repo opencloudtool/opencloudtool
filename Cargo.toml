@@ -1,9 +1,8 @@
-[package]
-name = "cloudtool"
-version = "0.1.0"
-edition = "2021"
-
 [workspace]
-members = []
+members = ["crates/ct-cloud"]
 
-[dependencies]
+[workspace.dependencies]
+async-trait = "0.1.83"
+aws-config = "1.5.8"
+aws-sdk-ec2 = "1.82.0"
+tokio = { version = "1.41.0", features = ["full"] }
