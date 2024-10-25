@@ -1,0 +1,8 @@
+[package]
+name = "ct-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+assert_cmd = { workspace = true }
+clap = { workspace = true }

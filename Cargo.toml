@@ -3,7 +3,9 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
+assert_cmd = "2.0.16"
 async-trait = "0.1.83"
 aws-config = "1.5.8"
 aws-sdk-ec2 = "1.82.0"
+clap = { version = "4.5.20", features = ["derive"] }
 tokio = { version = "1.41.0", features = ["full"] }
