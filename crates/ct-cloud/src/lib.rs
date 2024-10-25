@@ -45,7 +45,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_ec2_instance() {
-        env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
+        if env::var("AWS_ENDPOINT_URL").is_err() {
+            env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
+        }
 
         let instance_id = create_ec2_instance().await.unwrap();
         assert!(!instance_id.is_empty());
