@@ -2,7 +2,7 @@ use aws_sdk_ec2::config;
 use aws_sdk_ec2::types;
 use aws_sdk_ec2::Client;
 
-async fn create_ec2_instance() -> Result<String, Box<dyn std::error::Error>> {
+pub async fn create_ec2_instance() -> Result<String, Box<dyn std::error::Error>> {
     // Load AWS configuration
     let region_provider = config::Region::new("us-west-2");
     let config = aws_config::defaults(aws_config::BehaviorVersion::latest())

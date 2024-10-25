@@ -4,5 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ct-cloud = { workspace = true }
+
 assert_cmd = { workspace = true }
 clap = { workspace = true }
+tokio = { workspace = true }
+predicates = { workspace = true }
