@@ -30,9 +30,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
     - name: Build
       run: cargo build --verbose
+
     - name: Run tests
       env:
-        RUST_BACKTRACE: 1
+        RUST_BACKTRACE: full
+        AWS_ENDPOINT_URL: http://localstack:4566
       run: cargo test --verbose
