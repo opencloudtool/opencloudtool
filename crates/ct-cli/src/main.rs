@@ -77,6 +77,15 @@ mod tests {
             if env::var("AWS_ENDPOINT_URL").is_err() {
                 env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
             }
+            if env::var("AWS_REGION").is_err() {
+                env::set_var("AWS_REGION", "eu-central-1");
+            }
+            if env::var("AWS_ACCESS_KEY_ID").is_err() {
+                env::set_var("AWS_ACCESS_KEY_ID", "test");
+            }
+            if env::var("AWS_SECRET_ACCESS_KEY").is_err() {
+                env::set_var("AWS_SECRET_ACCESS_KEY", "test");
+            }
         });
     }
 
