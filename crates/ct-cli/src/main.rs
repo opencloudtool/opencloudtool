@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use ct_cloud::create_ec2_instance;
+use ct_cloud::{create_ec2_instance, destroy_ec2_instance};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -49,6 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let state: State = serde_json::from_str(&state)?;
 
             println!("Destroying instance: {}", state.instance_id);
+
+            destroy_ec2_instance(&state.instance_id).await?;
         }
     }
 
@@ -57,17 +59,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::State;
+    use super::{create_ec2_instance, State};
 
     use assert_cmd::Command;
     use predicates::prelude::*;
     use std::env;
 
+    use std::sync::Once;
+
+    static SETUP: Once = Once::new();
+
+    // TODO: Move to ct-test-utils crate
+    pub fn setup() {
+        SETUP.call_once(|| {
+            if env::var("AWS_ENDPOINT_URL").is_err() {
+                env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
+            }
+        });
+    }
+
     #[test]
     fn test_deploy_command() {
-        if env::var("AWS_ENDPOINT_URL").is_err() {
-            env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
-        }
+        setup();
 
         let temp_dir = tempfile::tempdir().unwrap();
         let state_file = temp_dir.path().join("state.json");
@@ -81,15 +94,17 @@ mod tests {
             .stdout(predicate::str::contains("Instance ID:"));
     }
 
-    #[test]
-    fn test_destroy_command() {
-        let instance_id = "i-0102f03dc608749c3";
+    #[tokio::test]
+    async fn test_destroy_command() {
+        setup();
+
+        let instance_id = create_ec2_instance().await.unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();
         let state_file = temp_dir.path().join("state.json");
 
         let state = State {
-            instance_id: String::from(instance_id),
+            instance_id: String::from(&instance_id),
         };
         let state_json = serde_json::to_string(&state).unwrap();
 
