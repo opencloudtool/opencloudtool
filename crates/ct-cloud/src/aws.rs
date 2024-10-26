@@ -19,11 +19,8 @@ pub async fn create_ec2_instance() -> Result<String, Box<dyn std::error::Error>>
     let ami_id = "ami-0c65adc9a5c1b5d7c";
 
     // Generate ssh key pair
-    let key_pair = client
-        .create_key_pair()
-        .key_name(uuid::Uuid::new_v4().to_string())
-        .send()
-        .await?;
+    let key_name = uuid::Uuid::new_v4().to_string();
+    let key_pair = client.create_key_pair().key_name(&key_name).send().await?;
 
     // User data
     let user_data = r#"#!/bin/bash
@@ -58,7 +55,7 @@ sudo systemctl start docker
     match instance_id {
         Some(id) => {
             // Save key pair to file
-            let key_pair_file_path = format!("{}.pem", id);
+            let key_pair_file_path = format!("{}.pem", &key_name);
             std::fs::write(&key_pair_file_path, key_pair.key_material().unwrap())?;
 
             Command::new("chmod")
@@ -107,7 +104,7 @@ pub async fn destroy_ec2_instance(instance_id: &str) -> Result<(), Box<dyn std::
     client.delete_key_pair().key_name(key_name).send().await?;
 
     // Delete key pair file
-    std::fs::remove_file(format!("{}.pem", instance_id))?;
+    std::fs::remove_file(format!("{}.pem", &key_name))?;
 
     Ok(())
 }
