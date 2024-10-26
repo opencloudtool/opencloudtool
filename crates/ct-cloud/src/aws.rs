@@ -29,11 +29,9 @@ pub async fn create_ec2_instance() -> Result<String, Box<dyn std::error::Error>>
     let user_data = r#"#!/bin/bash
 set -e
 
-echo 'Hello, world!' > /home/ubuntu/hello.txt
-echo 'This is a multiline user data script' >> /home/ubuntu/hello.txt
-apt-get update
-apt-get install -y nginx
-systemctl start nginx
+sudo apt update
+sudo apt install docker.io -y
+sudo systemctl start docker
 "#;
 
     let encoded_user_data = general_purpose::STANDARD.encode(user_data);
