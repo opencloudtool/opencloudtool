@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use ct_cloud::{create_ec2_instance, destroy_ec2_instance};
+use ct_cloud::aws;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Parser)]
@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Deploy(args) => {
-            let instance_id = create_ec2_instance().await?;
+            let instance_id = aws::create_ec2_instance().await?;
             println!("Instance ID: {}", instance_id);
 
             let state = State { instance_id };
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("Destroying instance: {}", state.instance_id);
 
-            destroy_ec2_instance(&state.instance_id).await?;
+            aws::destroy_ec2_instance(&state.instance_id).await?;
         }
     }
 
@@ -59,7 +59,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_ec2_instance, State};
+    use super::State;
+
+    use ct_cloud::aws;
 
     use assert_cmd::Command;
     use predicates::prelude::*;
@@ -98,7 +100,7 @@ mod tests {
     async fn test_destroy_command() {
         setup();
 
-        let instance_id = create_ec2_instance().await.unwrap();
+        let instance_id = aws::create_ec2_instance().await.unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();
         let state_file = temp_dir.path().join("state.json");
