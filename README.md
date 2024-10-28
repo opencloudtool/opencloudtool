@@ -2,6 +2,10 @@
 
 A tool to hide the complexity of the cloud
 
+## Design
+
+![CloudTool Design](./docs/design.png)
+
 ## TODOs
 
 ### [PoC] Deploy simple rest service to the cloud:
