@@ -1,4 +1,6 @@
-![CI](https://github.com/21inchLingcod/opencloudtool/actions/workflows/postsubmit.yml/badge.svg)
+
+[![Actions status](https://github.com/21inchLingcod/opencloudtool/actions/workflows/postsubmit.yml/badge.svg)](https://github.com/21inchLingcod/opencloudtool/actions)
+
 
 # Open Cloud Tool
 
