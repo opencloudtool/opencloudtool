@@ -1,10 +1,10 @@
-# CloudTool
+# Open Cloud Tool
 
 A tool to hide the complexity of the cloud
 
 ## Design
 
-![CloudTool Design](./docs/design.png)
+![OpenCloudTool Design](./docs/design.png)
 
 ## TODOs
 
