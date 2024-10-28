@@ -1,3 +1,5 @@
+![CI](https://github.com/github/docs/actions/workflows/main.yml/badge.svg](https://github.com/21inchLingcod/opencloudtool/actions/workflows/postsubmit.yml/badge.svg)
+
 # Open Cloud Tool
 
 A tool to hide the complexity of the cloud
