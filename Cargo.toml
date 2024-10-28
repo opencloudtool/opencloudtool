@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
-ct-cloud = { path = "crates/ct-cloud" }
+oct-cloud = { path = "crates/oct-cloud" }
 
 assert_cmd = "2.0.16"
 async-trait = "0.1.83"

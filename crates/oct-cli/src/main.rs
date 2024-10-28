@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use ct_cloud::aws;
+use oct_cloud::aws;
 use serde_derive::{Deserialize, Serialize};
 use std::process::Command;
 
@@ -23,6 +23,14 @@ struct CommandArgs {
     /// Path to the state file
     #[clap(long, default_value = "./state.json")]
     state_file_path: String,
+
+    /// Path to the Dockerfile
+    #[clap(long, default_value = ".")]
+    dockerfile_path: String,
+
+    /// Context path
+    #[clap(long, default_value = ".")]
+    context_path: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("ECR repository URI: {}", repository_uri);
 
             // Try to find Dockerfile in the current directory
-            let dockerfile_path = std::fs::read_dir(".")?.find(|entry| {
+            let dockerfile_path = std::fs::read_dir(&args.dockerfile_path)?.find(|entry| {
                 entry
                     .as_ref()
                     .unwrap()
@@ -59,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .arg(&image_tag)
                 .arg("--platform")
                 .arg("linux/amd64")
-                .arg(".")
+                .arg(&args.context_path)
                 .output()?;
 
             println!("Docker image {} built successfully", image_tag);
@@ -106,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::State;
 
-    use ct_cloud::aws;
+    use oct_cloud::aws;
 
     use assert_cmd::Command;
     use predicates::prelude::*;
@@ -141,7 +149,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let state_file = temp_dir.path().join("state.json");
 
-        let mut cmd = Command::cargo_bin("ct-cli").unwrap();
+        let mut cmd = Command::cargo_bin("oct-cli").unwrap();
         cmd.arg("deploy")
             .arg("--state-file-path")
             .arg(state_file.to_str().unwrap())
@@ -166,7 +174,7 @@ mod tests {
 
         std::fs::write(&state_file, state_json).unwrap();
 
-        let mut cmd = Command::cargo_bin("ct-cli").unwrap();
+        let mut cmd = Command::cargo_bin("oct-cli").unwrap();
         cmd.arg("destroy")
             .arg("--state-file-path")
             .arg(state_file.to_str().unwrap())
@@ -177,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_invalid_command() {
-        let mut cmd = Command::cargo_bin("ct-cli").unwrap();
+        let mut cmd = Command::cargo_bin("oct-cli").unwrap();
         cmd.arg("invalid").assert().failure();
     }
 }

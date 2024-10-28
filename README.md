@@ -22,3 +22,42 @@ A tool to hide the complexity of the cloud
 - [ ] Add support for multiple cloud regions
 - [ ] Add UI for monitoring and configuring the cloud
 - [ ] Add security for the cloud (connect from specific ip address)
+
+## Usage
+
+### Build project
+
+```bash
+ cargo build
+```
+
+### Run deploy command
+
+```bash
+ cargo run oct-cli deploy --dockerfile-path "your_dockerfile_path" --context-path "your_context_path"
+```
+
+### Run destroy command
+
+```bash
+ cargo run oct-cli destroy
+```
+
+### Show all available commands
+
+```bash
+ cargo run oct-cli --help
+```
+
+
+### Show all available parameters for command
+
+```bash
+ cargo run oct-cli command --help
+```
+
+For example:
+
+```bash
+ cargo run oct-cli deploy --help
+```

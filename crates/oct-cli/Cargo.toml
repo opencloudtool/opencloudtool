@@ -1,10 +1,10 @@
 [package]
-name = "ct-cli"
+name = "oct-cli"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ct-cloud = { workspace = true }
+oct-cloud = { workspace = true }
 
 assert_cmd = { workspace = true }
 clap = { workspace = true }
