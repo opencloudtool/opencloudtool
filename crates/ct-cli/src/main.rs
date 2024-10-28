@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use ct_cloud::aws;
 use serde_derive::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -35,7 +36,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Deploy(args) => {
-            let instance_id = aws::create_ec2_instance().await?;
+            // Create ECR repository
+            let repository_uri = aws::create_ecr_repository("ct-app").await?;
+            println!("ECR repository URI: {}", repository_uri);
+
+            // Try to find Dockerfile in the current directory
+            let dockerfile_path = std::fs::read_dir(".")?.find(|entry| {
+                entry
+                    .as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with("Dockerfile")
+            });
+            println!("Dockerfile path: {:?}", dockerfile_path);
+
+            // Build docker image
+            let image_tag = format!("{}:latest", repository_uri);
+            let _build_result = Command::new("docker")
+                .arg("build")
+                .arg("-t")
+                .arg(&image_tag)
+                .arg("--platform")
+                .arg("linux/amd64")
+                .arg(".")
+                .output()?;
+
+            println!("Docker image {} built successfully", image_tag);
+
+            // Push docker image to ECR repository
+            let push_result = Command::new("docker")
+                .arg("push")
+                .arg(&image_tag)
+                .status()?;
+
+            if !push_result.success() {
+                return Err(format!("Failed to push docker image: {}", image_tag).into());
+            }
+
+            println!("Docker image {} pushed successfully", image_tag);
+
+            // Create EC2 instance
+            let instance_id = aws::create_ec2_instance(&image_tag).await?;
             println!("Instance ID: {}", instance_id);
 
             let state = State { instance_id };
@@ -51,6 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Destroying instance: {}", state.instance_id);
 
             aws::destroy_ec2_instance(&state.instance_id).await?;
+
+            // Delete ECR repository
+            aws::delete_ecr_repository("ct-app").await?;
         }
     }
 
@@ -109,7 +154,7 @@ mod tests {
     async fn test_destroy_command() {
         setup();
 
-        let instance_id = aws::create_ec2_instance().await.unwrap();
+        let instance_id = aws::create_ec2_instance("1234567890").await.unwrap();
 
         let temp_dir = tempfile::tempdir().unwrap();
         let state_file = temp_dir.path().join("state.json");
