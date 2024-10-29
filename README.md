@@ -1,14 +1,16 @@
-
 [![Actions status](https://github.com/21inchLingcod/opencloudtool/actions/workflows/postsubmit.yml/badge.svg)](https://github.com/21inchLingcod/opencloudtool/actions)
-
 
 # Open Cloud Tool
 
 A tool to hide the complexity of the cloud
 
-## Design
+## High Level Design
 
-![OpenCloudTool Design](./docs/design.png)
+![OpenCloudTool Design](./docs/high-level-design.png)
+
+## Versions Design
+
+![OpenCloudTool Versions](./docs/versions-design.png)
 
 ## TODOs
 
@@ -52,7 +54,6 @@ A tool to hide the complexity of the cloud
 ```bash
  cargo run oct-cli --help
 ```
-
 
 ### Show all available parameters for command
 
