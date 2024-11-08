@@ -11,4 +11,5 @@ aws-sdk-ecr = { workspace = true }
 aws-sdk-iam = { workspace = true }
 base64 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+mockall = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

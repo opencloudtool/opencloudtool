@@ -1,7 +1,10 @@
 use aws_config;
 use aws_sdk_ec2;
+use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
 use base64::{engine::general_purpose, Engine as _};
+
+use mockall::automock;
 
 /// Now we deploy only one EC2 instance where the services from
 /// the config.
@@ -17,9 +20,49 @@ trait Resource {
     async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
+struct Ec2Impl {
+    inner: aws_sdk_ec2::Client,
+}
+
+#[cfg_attr(test, automock)]
+impl Ec2Impl {
+    pub fn new(inner: aws_sdk_ec2::Client) -> Self {
+        Self { inner }
+    }
+
+    pub async fn run_instances(
+        &self,
+        instance_type: aws_sdk_ec2::types::InstanceType,
+        ami: String,
+        user_data_base64: String,
+    ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
+        let response = self
+            .inner
+            .run_instances()
+            .instance_type(instance_type.clone())
+            .image_id(ami.clone())
+            .user_data(user_data_base64.clone())
+            .min_count(1)
+            .max_count(1)
+            .send()
+            .await?;
+
+        Ok(response)
+    }
+}
+
+#[cfg(not(test))]
+use Ec2Impl as Ec2;
+#[cfg(test)]
+use MockEc2Impl as Ec2;
+
 struct Ec2Instance {
+    client: Ec2,
+
     // Known after creation
     id: Option<String>,
+
+    arn: Option<String>,
 
     public_ip: Option<String>,
     public_dns: Option<String>,
@@ -28,11 +71,8 @@ struct Ec2Instance {
     region: String,
 
     ami: String,
-    arn: String,
 
     instance_type: aws_sdk_ec2::types::InstanceType,
-
-    key_name: String,
 
     name: String,
     user_data: String,
@@ -40,26 +80,32 @@ struct Ec2Instance {
 }
 
 impl Ec2Instance {
-    fn new(
+    async fn new(
         region: String,
         ami: String,
-        arn: String,
         instance_type: aws_sdk_ec2::types::InstanceType,
-        key_name: String,
         name: String,
         user_data: String,
     ) -> Self {
         let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
 
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
         Self {
+            client: Ec2::new(ec2_client),
             id: None,
+            arn: None,
             public_ip: None,
             public_dns: None,
             region,
             ami,
-            arn,
             instance_type,
-            key_name,
             name,
             user_data,
             user_data_base64,
@@ -69,23 +115,14 @@ impl Ec2Instance {
 
 impl Resource for Ec2Instance {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Load AWS configuration
-        let region_provider = aws_sdk_ec2::config::Region::new(self.region.clone());
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region_provider)
-            .load()
-            .await;
-        let ec2_client = aws_sdk_ec2::Client::new(&config);
-
         // Launch EC2 instance
-        let response = ec2_client
-            .run_instances()
-            .instance_type(self.instance_type.clone())
-            .image_id(self.ami.clone())
-            .user_data(self.user_data_base64.clone())
-            .min_count(1)
-            .max_count(1)
-            .send()
+        let response = self
+            .client
+            .run_instances(
+                self.instance_type.clone(),
+                self.ami.clone(),
+                self.user_data_base64.clone(),
+            )
             .await?;
 
         // Extract instance id, public ip and dns
@@ -109,56 +146,59 @@ impl Resource for Ec2Instance {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-
-    use std::sync::Once;
-
-    static SETUP: Once = Once::new();
-
-    // TODO: Move to ct-test-utils crate
-    pub fn setup() {
-        SETUP.call_once(|| {
-            if env::var("AWS_ENDPOINT_URL").is_err() {
-                env::set_var("AWS_ENDPOINT_URL", "http://localhost:4566");
-            }
-            if env::var("AWS_REGION").is_err() {
-                env::set_var("AWS_REGION", "eu-central-1");
-            }
-            if env::var("AWS_ACCESS_KEY_ID").is_err() {
-                env::set_var("AWS_ACCESS_KEY_ID", "test");
-            }
-            if env::var("AWS_SECRET_ACCESS_KEY").is_err() {
-                env::set_var("AWS_SECRET_ACCESS_KEY", "test");
-            }
-        });
-    }
+    use mockall::predicate::eq;
 
     #[tokio::test]
     async fn test_create_ec2_instance() {
-        setup();
+        // Arrange
+        let mut ec2_impl_mock = MockEc2Impl::default();
+        ec2_impl_mock
+            .expect_run_instances()
+            .with(
+                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq("ami-830c94e3".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| {
+                Ok(RunInstancesOutput::builder()
+                    .instances(
+                        aws_sdk_ec2::types::Instance::builder()
+                            .instance_id("id")
+                            .public_ip_address("1.1.1.1")
+                            .public_dns_name("example.com")
+                            .build(),
+                    )
+                    .build())
+            });
 
-        let mut instance = Ec2Instance::new(
-            "us-west-2".to_string(),
-            "ami-830c94e3".to_string(),
-            "arn:aws:ec2:us-west-2:595634067310:instance/i-0e2939f5d64eba517".to_string(),
-            aws_sdk_ec2::types::InstanceType::T2Micro,
-            "test".to_string(),
-            "test".to_string(),
-            "test".to_string(),
-        );
+        let mut instance = Ec2Instance {
+            client: ec2_impl_mock,
+            id: None,
+            arn: None,
+            public_ip: None,
+            public_dns: None,
+            region: "us-west-2".to_string(),
+            ami: "ami-830c94e3".to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            name: "test".to_string(),
+            user_data: "test".to_string(),
+            user_data_base64: "test".to_string(),
+        };
 
+        // Act
         instance.create().await.unwrap();
 
-        assert!(instance.id.is_some());
-        assert!(instance.public_ip.is_some());
-        assert!(instance.public_dns.is_some());
+        // Assert
+        assert!(instance.id == Some("id".to_string()));
+        assert!(instance.public_ip == Some("1.1.1.1".to_string()));
+        assert!(instance.public_dns == Some("example.com".to_string()));
 
-        assert!(instance.region == "us-west-2");
-        assert!(instance.ami == "ami-830c94e3");
-        assert!(instance.arn == "arn:aws:ec2:us-west-2:595634067310:instance/i-0e2939f5d64eba517");
-        assert!(instance.instance_type == aws_sdk_ec2::types::InstanceType::T2Micro);
-        assert!(instance.key_name == "test");
-        assert!(instance.name == "test");
-        assert!(instance.user_data == "test");
+        // assert!(instance.region == "us-west-2");
+        // assert!(instance.ami == "ami-830c94e3");
+        // assert!(instance.arn == "arn:aws:ec2:us-west-2:595634067310:instance/i-0e2939f5d64eba517");
+        // assert!(instance.instance_type == aws_sdk_ec2::types::InstanceType::T2Micro);
+        // assert!(instance.key_name == "test");
+        // assert!(instance.name == "test");
+        // assert!(instance.user_data == "test");
     }
 }
