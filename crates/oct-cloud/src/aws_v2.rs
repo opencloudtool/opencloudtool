@@ -17,13 +17,14 @@ use mockall::automock;
 /// - Update if exists
 trait Resource {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 struct Ec2Impl {
     inner: aws_sdk_ec2::Client,
 }
 
+/// TODO: Add tests using static replay
 #[cfg_attr(test, automock)]
 impl Ec2Impl {
     pub fn new(inner: aws_sdk_ec2::Client) -> Self {
@@ -48,6 +49,19 @@ impl Ec2Impl {
             .await?;
 
         Ok(response)
+    }
+
+    pub async fn terminate_instance(
+        &self,
+        instance_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.inner
+            .terminate_instances()
+            .instance_ids(instance_id)
+            .send()
+            .await?;
+
+        Ok(())
     }
 }
 
@@ -138,7 +152,15 @@ impl Resource for Ec2Instance {
         Ok(())
     }
 
-    async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .terminate_instance(self.id.clone().ok_or("No instance id")?)
+            .await?;
+
+        self.id = None;
+        self.public_ip = None;
+        self.public_dns = None;
+
         Ok(())
     }
 }
@@ -200,5 +222,37 @@ mod tests {
         // assert!(instance.key_name == "test");
         // assert!(instance.name == "test");
         // assert!(instance.user_data == "test");
+    }
+
+    #[tokio::test]
+    async fn test_destroy_ec2_instance() {
+        // Arrange
+        let mut ec2_impl_mock = MockEc2Impl::default();
+        ec2_impl_mock
+            .expect_terminate_instance()
+            .with(eq("id".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut instance = Ec2Instance {
+            client: ec2_impl_mock,
+            id: Some("id".to_string()),
+            arn: None,
+            public_ip: None,
+            public_dns: None,
+            region: "us-west-2".to_string(),
+            ami: "ami-830c94e3".to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            name: "test".to_string(),
+            user_data: "test".to_string(),
+            user_data_base64: "test".to_string(),
+        };
+
+        // Act
+        instance.destroy().await.unwrap();
+
+        // Assert
+        assert!(instance.id == None);
+        assert!(instance.public_ip == None);
+        assert!(instance.public_dns == None);
     }
 }
