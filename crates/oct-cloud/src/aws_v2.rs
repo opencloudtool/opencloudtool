@@ -146,6 +146,7 @@ impl Resource for Ec2Instance {
             .ok_or("No instances returned")?;
 
         self.id = instance.instance_id.clone();
+        self.arn = instance.outpost_arn.clone();
         self.public_ip = instance.public_ip_address.clone();
         self.public_dns = instance.public_dns_name.clone();
 
@@ -158,6 +159,7 @@ impl Resource for Ec2Instance {
             .await?;
 
         self.id = None;
+        self.arn = None;
         self.public_ip = None;
         self.public_dns = None;
 
@@ -188,6 +190,7 @@ mod tests {
                             .instance_id("id")
                             .public_ip_address("1.1.1.1")
                             .public_dns_name("example.com")
+                            .outpost_arn("arn")
                             .build(),
                     )
                     .build())
@@ -212,6 +215,7 @@ mod tests {
 
         // Assert
         assert!(instance.id == Some("id".to_string()));
+        assert!(instance.arn == Some("arn".to_string()));
         assert!(instance.public_ip == Some("1.1.1.1".to_string()));
         assert!(instance.public_dns == Some("example.com".to_string()));
 
@@ -258,6 +262,7 @@ mod tests {
         assert!(creation_result.is_err());
 
         assert!(instance.id == None);
+        assert!(instance.arn == None);
         assert!(instance.public_ip == None);
         assert!(instance.public_dns == None);
     }
@@ -274,9 +279,9 @@ mod tests {
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
             id: Some("id".to_string()),
-            arn: None,
-            public_ip: None,
-            public_dns: None,
+            arn: Some("arn".to_string()),
+            public_ip: Some("1.1.1.1".to_string()),
+            public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
@@ -290,7 +295,42 @@ mod tests {
 
         // Assert
         assert!(instance.id == None);
+        assert!(instance.arn == None);
         assert!(instance.public_ip == None);
         assert!(instance.public_dns == None);
+    }
+
+    #[tokio::test]
+    async fn test_destroy_ec2_instance_no_instance_id() {
+        // Arrange
+        let mut ec2_impl_mock = MockEc2Impl::default();
+        ec2_impl_mock
+            .expect_terminate_instance()
+            .with(eq("id".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut instance = Ec2Instance {
+            client: ec2_impl_mock,
+            id: None,
+            arn: Some("arn".to_string()),
+            public_ip: Some("1.1.1.1".to_string()),
+            public_dns: Some("example.com".to_string()),
+            region: "us-west-2".to_string(),
+            ami: "ami-830c94e3".to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            name: "test".to_string(),
+            user_data: "test".to_string(),
+            user_data_base64: "test".to_string(),
+        };
+
+        // Act
+        let destroy_result = instance.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+
+        assert!(instance.id == None);
+        assert!(instance.public_ip == Some("1.1.1.1".to_string()));
+        assert!(instance.public_dns == Some("example.com".to_string()));
     }
 }
