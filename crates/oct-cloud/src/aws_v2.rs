@@ -225,6 +225,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_create_ec2_instance_no_instance() {
+        // Arrange
+        let mut ec2_impl_mock = MockEc2Impl::default();
+        ec2_impl_mock
+            .expect_run_instances()
+            .with(
+                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq("ami-830c94e3".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok(RunInstancesOutput::builder().build()));
+
+        let mut instance = Ec2Instance {
+            client: ec2_impl_mock,
+            id: None,
+            arn: None,
+            public_ip: None,
+            public_dns: None,
+            region: "us-west-2".to_string(),
+            ami: "ami-830c94e3".to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            name: "test".to_string(),
+            user_data: "test".to_string(),
+            user_data_base64: "test".to_string(),
+        };
+
+        // Act
+        let creation_result = instance.create().await;
+
+        // Assert
+        assert!(creation_result.is_err());
+
+        assert!(instance.id == None);
+        assert!(instance.public_ip == None);
+        assert!(instance.public_dns == None);
+    }
+
+    #[tokio::test]
     async fn test_destroy_ec2_instance() {
         // Arrange
         let mut ec2_impl_mock = MockEc2Impl::default();
