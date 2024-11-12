@@ -12,6 +12,32 @@ A tool to hide the complexity of the cloud
 
 ![OpenCloudTool Versions](./docs/versions-design.png)
 
+## Pricing comparison
+
+### Simple REST service
+
+Main components:
+
+- Django REST service (0.5 vCPU, 1GB RAM)
+- Celery worker (0.5 vCPU, 1GB RAM)
+- Redis (0.5 vCPU, 1GB RAM)
+- Postgres (0.5 vCPU, 1GB RAM)
+- Load Balancer (nginx, ELB, etc.)
+
+#### AWS ECS Fargate
+
+- 2 vCPU (1 vCPU per hour - $0.04048) - $61.5 per month
+- 4 GB RAM (1 GB RAM per hour - $0.004445) - $13.5 per month
+- Load Balancer ($0.0225 per hour) - $17 per month
+
+Total: $92 per month
+
+#### OpenCloudTool Pricing with EC2 only
+
+- 1 EC2 [t4g.medium](https://aws.amazon.com/ec2/pricing/on-demand/) instance ($0.0336 per hour): $25.5 per month
+
+Total: $25.5 per month
+
 ## TODOs
 
 ### [PoC] Deploy simple rest service to the cloud:
