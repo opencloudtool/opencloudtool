@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
-use oct_cloud::aws_v2;
-use oct_cloud::aws_v2::Resource;
+use oct_cloud::aws;
+use oct_cloud::aws::Resource;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -40,10 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Deploy(args) => {
             // Create EC2 instance
-            let mut instance = aws_v2::Ec2Instance::new(
+            let mut instance = aws::Ec2Instance::new(
                 "us-west-2".to_string(),
                 "ami-0c65adc9a5c1b5d7c".to_string(),
-                aws_v2::aws_sdk_ec2::types::InstanceType::T2Micro,
+                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
                 "Hello, World!".to_string(),
             ).await;
@@ -53,10 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Instance created: {instance:?}");
         }
         Commands::Destroy(args) => {
-            let mut instance = aws_v2::Ec2Instance::new(
+            let mut instance = aws::Ec2Instance::new(
                 "us-west-2".to_string(),
                 "ami-0c65adc9a5c1b5d7c".to_string(),
-                aws_v2::aws_sdk_ec2::types::InstanceType::T2Micro,
+                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
                 "Hello, World!".to_string(),
             ).await;
