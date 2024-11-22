@@ -1,5 +1,5 @@
+pub use aws_sdk_ec2;
 use aws_config;
-use aws_sdk_ec2;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
 use base64::{engine::general_purpose, Engine as _};
@@ -15,11 +15,12 @@ use mockall::automock;
 /// - Check state of the resource (by resource name from dynamic config)
 /// - Create if not exists
 /// - Update if exists
-trait Resource {
+pub trait Resource {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>>;
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
+#[derive(Debug)]
 struct Ec2Impl {
     inner: aws_sdk_ec2::Client,
 }
@@ -27,11 +28,11 @@ struct Ec2Impl {
 /// TODO: Add tests using static replay
 #[cfg_attr(test, automock)]
 impl Ec2Impl {
-    pub fn new(inner: aws_sdk_ec2::Client) -> Self {
+    fn new(inner: aws_sdk_ec2::Client) -> Self {
         Self { inner }
     }
 
-    pub async fn run_instances(
+    async fn run_instances(
         &self,
         instance_type: aws_sdk_ec2::types::InstanceType,
         ami: String,
@@ -51,7 +52,7 @@ impl Ec2Impl {
         Ok(response)
     }
 
-    pub async fn terminate_instance(
+    async fn terminate_instance(
         &self,
         instance_id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -70,16 +71,17 @@ use Ec2Impl as Ec2;
 #[cfg(test)]
 use MockEc2Impl as Ec2;
 
-struct Ec2Instance {
+#[derive(Debug)]
+pub struct Ec2Instance {
     client: Ec2,
 
     // Known after creation
-    id: Option<String>,
+    pub id: Option<String>,
 
-    arn: Option<String>,
+    pub arn: Option<String>,
 
-    public_ip: Option<String>,
-    public_dns: Option<String>,
+    pub public_ip: Option<String>,
+    pub public_dns: Option<String>,
 
     // Known before creation
     region: String,
@@ -94,7 +96,7 @@ struct Ec2Instance {
 }
 
 impl Ec2Instance {
-    async fn new(
+    pub async fn new(
         region: String,
         ami: String,
         instance_type: aws_sdk_ec2::types::InstanceType,

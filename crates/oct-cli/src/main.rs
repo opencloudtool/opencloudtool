@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
-use oct_cloud::aws;
-use serde_derive::{Deserialize, Serialize};
-use std::process::Command;
+use oct_cloud::aws_v2;
+use oct_cloud::aws_v2::Resource;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -33,10 +32,6 @@ struct CommandArgs {
     context_path: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct State {
-    instance_id: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,66 +39,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Deploy(args) => {
-            // Create ECR repository
-            let repository_uri = aws::create_ecr_repository("ct-app").await?;
-            println!("ECR repository URI: {}", repository_uri);
-
-            // Try to find Dockerfile in the current directory
-            let dockerfile_path = std::fs::read_dir(&args.dockerfile_path)?.find(|entry| {
-                entry
-                    .as_ref()
-                    .unwrap()
-                    .file_name()
-                    .to_string_lossy()
-                    .ends_with("Dockerfile")
-            });
-            println!("Dockerfile path: {:?}", dockerfile_path);
-
-            // Build docker image
-            let image_tag = format!("{}:latest", repository_uri);
-            let _build_result = Command::new("docker")
-                .arg("build")
-                .arg("-t")
-                .arg(&image_tag)
-                .arg("--platform")
-                .arg("linux/amd64")
-                .arg(&args.context_path)
-                .output()?;
-
-            println!("Docker image {} built successfully", image_tag);
-
-            // Push docker image to ECR repository
-            let push_result = Command::new("docker")
-                .arg("push")
-                .arg(&image_tag)
-                .status()?;
-
-            if !push_result.success() {
-                return Err(format!("Failed to push docker image: {}", image_tag).into());
-            }
-
-            println!("Docker image {} pushed successfully", image_tag);
-
             // Create EC2 instance
-            let instance_id = aws::create_ec2_instance(&image_tag).await?;
-            println!("Instance ID: {}", instance_id);
+            let mut instance = aws_v2::Ec2Instance::new(
+                "us-west-2".to_string(),
+                "ami-0c65adc9a5c1b5d7c".to_string(),
+                aws_v2::aws_sdk_ec2::types::InstanceType::T2Micro,
+                "oct-cli".to_string(),
+                "Hello, World!".to_string(),
+            ).await;
 
-            let state = State { instance_id };
-            let state_json = serde_json::to_string(&state)?;
-            std::fs::write(&args.state_file_path, state_json)?;
+            instance.create().await?;
 
-            println!("State saved to {}", args.state_file_path);
+            println!("Instance created: {instance:?}");
         }
         Commands::Destroy(args) => {
-            let state = std::fs::read_to_string(&args.state_file_path)?;
-            let state: State = serde_json::from_str(&state)?;
+            let mut instance = aws_v2::Ec2Instance::new(
+                "us-west-2".to_string(),
+                "ami-0c65adc9a5c1b5d7c".to_string(),
+                aws_v2::aws_sdk_ec2::types::InstanceType::T2Micro,
+                "oct-cli".to_string(),
+                "Hello, World!".to_string(),
+            ).await;
+            instance.id = Some("".to_string()); // Put instance id here
+            instance.arn = Some("".to_string());
+            instance.public_ip = Some("".to_string());
+            instance.public_dns = Some("".to_string());
 
-            println!("Destroying instance: {}", state.instance_id);
+            instance.destroy().await?;
 
-            aws::destroy_ec2_instance(&state.instance_id).await?;
-
-            // Delete ECR repository
-            aws::delete_ecr_repository("ct-app").await?;
+            println!("Instance destroyed: {instance:?}");
         }
     }
 
