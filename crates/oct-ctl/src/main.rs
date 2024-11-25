@@ -7,10 +7,10 @@ async fn index() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    println!("Starting server at http://127.0.0.1:31888");
-    
+    println!("Starting server at http://0.0.0.0:31888");
+
     HttpServer::new(|| App::new().service(index))
-        .bind(("127.0.0.1", 31888))?
+        .bind(("0.0.0.0", 31888))?
         .run()
         .await
 }
