@@ -1,0 +1,43 @@
+name: Release oct-ctl
+
+on:
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Add this concurrency configuration
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cache Cargo dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+
+    - name: Build oct-ctl
+      run: cargo build -p oct-ctl --release --verbose
+
+    - name: Upload oct-ctl binary to release
+      env:
+        GITHUB_TOKEN: ${{ github.TOKEN }}
+      run: gh release upload ${{github.event.release.tag_name}} target/release/oct-ctl
