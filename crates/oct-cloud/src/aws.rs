@@ -101,8 +101,18 @@ impl Ec2Instance {
         ami: String,
         instance_type: aws_sdk_ec2::types::InstanceType,
         name: String,
-        user_data: String,
     ) -> Self {
+        let user_data = r#"#!/bin/bash
+    set -e
+
+    curl \
+        --output /home/ubuntu/oct-ctl \
+        -L \
+        https://github.com/21inchLingcod/opencloudtool/releases/download/v0.0.2/oct-ctl \
+        && sudo chmod +x /home/ubuntu/oct-ctl \
+        && /home/ubuntu/oct-ctl &
+    "#;
+
         let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
 
         // Load AWS configuration
@@ -123,7 +133,7 @@ impl Ec2Instance {
             ami,
             instance_type,
             name,
-            user_data,
+            user_data: user_data.to_string(),
             user_data_base64,
         }
     }

@@ -42,10 +42,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Create EC2 instance
             let mut instance = aws::Ec2Instance::new(
                 "us-west-2".to_string(),
-                "ami-0c65adc9a5c1b5d7c".to_string(),
+                "ami-04dd23e62ed049936".to_string(),
                 aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
-                "Hello, World!".to_string(),
             ).await;
 
             instance.create().await?;
@@ -55,10 +54,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Destroy(args) => {
             let mut instance = aws::Ec2Instance::new(
                 "us-west-2".to_string(),
-                "ami-0c65adc9a5c1b5d7c".to_string(),
+                "ami-04dd23e62ed049936".to_string(),
                 aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
-                "Hello, World!".to_string(),
             ).await;
             instance.id = Some("".to_string()); // Put instance id here
             instance.arn = Some("".to_string());
