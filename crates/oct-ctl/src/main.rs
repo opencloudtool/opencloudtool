@@ -1,8 +1,20 @@
 use actix_web::{get, App, HttpServer, Responder};
+use std::process::Command;
 
 #[get("/")]
 async fn index() -> impl Responder {
-    "Hello, World!"
+    let command = Command::new("docker")
+        .arg("run")
+        .arg("-d")
+        .arg("-p")
+        .arg("80:80")
+        .arg("nginx")
+        .output();
+
+    match command {
+        Ok(_) => "Success",
+        Err(_) => "Error",
+    }
 }
 
 #[actix_web::main]
