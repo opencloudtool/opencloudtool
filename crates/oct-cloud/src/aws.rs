@@ -105,6 +105,10 @@ impl Ec2Instance {
         let user_data = r#"#!/bin/bash
     set -e
 
+    sudo apt update
+    sudo apt install docker.io -y
+    sudo systemctl start docker
+
     curl \
         --output /home/ubuntu/oct-ctl \
         -L \
