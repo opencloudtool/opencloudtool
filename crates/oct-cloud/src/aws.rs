@@ -93,7 +93,10 @@ pub struct Ec2Instance {
     name: String,
     user_data: String,
     user_data_base64: String,
+
+    // instance_profile: InstanceProfile,
 }
+
 
 impl Ec2Instance {
     pub async fn new(
@@ -181,6 +184,46 @@ impl Resource for Ec2Instance {
         self.public_ip = None;
         self.public_dns = None;
 
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct InstanceProfile {
+    name: String,
+
+    instance_roles: Vec<InstanceRole>,
+}
+
+impl Resource for InstanceProfile {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: Implement create logic
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: Implement destroy logic
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct InstanceRole {
+    name: String,
+
+    assume_role_policy: String,
+
+    policy_arns: Vec<String>,
+}
+
+impl Resource for InstanceRole {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: Implement create logic
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // TODO: Implement destroy logic
         Ok(())
     }
 }
