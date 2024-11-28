@@ -109,6 +109,8 @@ impl Ec2Instance {
     sudo apt install docker.io -y
     sudo systemctl start docker
 
+    aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin {ecr_repo_uri}
+
     curl \
         --output /home/ubuntu/oct-ctl \
         -L \
