@@ -110,13 +110,16 @@ impl IAMImpl {
         Self { inner }
     }
 
-    async fn create_instance_iam_role(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn create_instance_iam_role(
+        &self,
+        name: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         // Create IAM role for EC2 instance
         println!("Creating IAM role for EC2 instance");
 
         self.inner
             .create_role()
-            .role_name(Self::ROLE_NAME)
+            .role_name(name.clone())
             .assume_role_policy_document(Self::ASSUME_ROLE_POLICY)
             .send()
             .await?;
@@ -128,7 +131,7 @@ impl IAMImpl {
 
         self.inner
             .attach_role_policy()
-            .role_name(Self::ROLE_NAME)
+            .role_name(name.clone())
             .policy_arn(Self::POLICY_ARN)
             .send()
             .await?;
@@ -138,12 +141,15 @@ impl IAMImpl {
         Ok(())
     }
 
-    async fn delete_instance_iam_role(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn delete_instance_iam_role(
+        &self,
+        name: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("Detaching IAM role from EC2 instance");
 
         self.inner
             .detach_role_policy()
-            .role_name(Self::ROLE_NAME)
+            .role_name(name.clone())
             .policy_arn(Self::POLICY_ARN)
             .send()
             .await?;
@@ -154,7 +160,7 @@ impl IAMImpl {
 
         self.inner
             .delete_role()
-            .role_name(Self::ROLE_NAME)
+            .role_name(name.clone())
             .send()
             .await?;
 
@@ -163,27 +169,33 @@ impl IAMImpl {
         Ok(())
     }
 
-    async fn create_instance_profile(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn create_instance_profile(
+        &self,
+        name: String,
+        role_names: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         println!("Creating IAM instance profile for EC2 instance");
 
         self.inner
             .create_instance_profile()
-            .instance_profile_name(Self::ROLE_NAME)
+            .instance_profile_name(name.clone())
             .send()
             .await?;
 
         println!("Created IAM instance profile for EC2 instance");
 
-        println!("Adding IAM role to instance profile");
+        for role_name in role_names {
+            println!("Adding '{role_name}' IAM role to instance profile");
 
-        self.inner
-            .add_role_to_instance_profile()
-            .instance_profile_name(Self::ROLE_NAME)
-            .role_name(Self::ROLE_NAME)
-            .send()
-            .await?;
+            self.inner
+                .add_role_to_instance_profile()
+                .instance_profile_name(name.clone())
+                .role_name(role_name.clone())
+                .send()
+                .await?;
 
-        println!("Added IAM role to instance profile");
+            println!("Added '{role_name}' IAM role to instance profile");
+        }
 
         println!("Waiting for instance profile to be ready");
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
@@ -191,23 +203,29 @@ impl IAMImpl {
         Ok(())
     }
 
-    async fn delete_instance_profile(&self) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Removing IAM role from instance profile");
+    async fn delete_instance_profile(
+        &self,
+        name: String,
+        role_names: Vec<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for role_name in role_names {
+            println!("Removing {role_name} IAM role from instance profile");
 
-        self.inner
-            .remove_role_from_instance_profile()
-            .instance_profile_name(Self::ROLE_NAME)
-            .role_name(Self::ROLE_NAME)
-            .send()
-            .await?;
+            self.inner
+                .remove_role_from_instance_profile()
+                .instance_profile_name(name.clone())
+                .role_name(role_name.clone())
+                .send()
+                .await?;
 
-        println!("Removed IAM role from instance profile");
+            println!("Removed {role_name} IAM role from instance profile");
+        }
 
         println!("Deleting IAM instance profile");
 
         self.inner
             .delete_instance_profile()
-            .instance_profile_name(Self::ROLE_NAME)
+            .instance_profile_name(name.clone())
             .send()
             .await?;
 
@@ -379,11 +397,21 @@ impl Resource for InstanceProfile {
             role.create().await?;
         }
 
-        self.client.create_instance_profile().await
+        self.client
+            .create_instance_profile(
+                self.name.clone(),
+                self.instance_roles.iter().map(|r| r.name.clone()).collect(),
+            )
+            .await
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.client.delete_instance_profile().await?;
+        self.client
+            .delete_instance_profile(
+                self.name.clone(),
+                self.instance_roles.iter().map(|r| r.name.clone()).collect(),
+            )
+            .await?;
 
         for role in &mut self.instance_roles {
             role.destroy().await?;
@@ -406,11 +434,15 @@ pub struct InstanceRole {
 
 impl Resource for InstanceRole {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.client.create_instance_iam_role().await
+        self.client
+            .create_instance_iam_role(self.name.clone())
+            .await
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.client.delete_instance_iam_role().await
+        self.client
+            .delete_instance_iam_role(self.name.clone())
+            .await
     }
 }
 
