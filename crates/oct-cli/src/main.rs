@@ -32,7 +32,6 @@ struct CommandArgs {
     context_path: String,
 }
 
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -45,7 +44,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "ami-04dd23e62ed049936".to_string(),
                 aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
-            ).await;
+            )
+            .await;
 
             instance.create().await?;
 
@@ -57,7 +57,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "ami-04dd23e62ed049936".to_string(),
                 aws::aws_sdk_ec2::types::InstanceType::T2Micro,
                 "oct-cli".to_string(),
-            ).await;
+            )
+            .await;
             instance.id = Some("".to_string()); // Put instance id here
             instance.arn = Some("".to_string());
             instance.public_ip = Some("".to_string());
