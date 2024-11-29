@@ -1,6 +1,7 @@
-pub use aws_sdk_ec2;
 use aws_config;
+pub use aws_sdk_ec2;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
+use aws_sdk_iam;
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -37,17 +38,27 @@ impl Ec2Impl {
         instance_type: aws_sdk_ec2::types::InstanceType,
         ami: String,
         user_data_base64: String,
+        instance_profile_name: String,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
+        println!("Starting EC2 instance");
+
         let response = self
             .inner
             .run_instances()
             .instance_type(instance_type.clone())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
+            .iam_instance_profile(
+                aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
+                    .name(instance_profile_name.clone())
+                    .build(),
+            )
             .min_count(1)
             .max_count(1)
             .send()
             .await?;
+
+        println!("Created EC2 instance");
 
         Ok(response)
     }
@@ -72,6 +83,146 @@ use Ec2Impl as Ec2;
 use MockEc2Impl as Ec2;
 
 #[derive(Debug)]
+struct IAMImpl {
+    inner: aws_sdk_iam::Client,
+}
+
+/// TODO: Add tests using static replay
+#[cfg_attr(test, automock)]
+impl IAMImpl {
+    const ROLE_NAME: &str = "ct-app-ecr-role";
+    const POLICY_ARN: &str = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly";
+
+    const ASSUME_ROLE_POLICY: &str = r#"{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    }"#;
+
+    fn new(inner: aws_sdk_iam::Client) -> Self {
+        Self { inner }
+    }
+
+    async fn create_instance_iam_role(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // Create IAM role for EC2 instance
+        println!("Creating IAM role for EC2 instance");
+
+        self.inner
+            .create_role()
+            .role_name(Self::ROLE_NAME)
+            .assume_role_policy_document(Self::ASSUME_ROLE_POLICY)
+            .send()
+            .await?;
+
+        println!("Created IAM role for EC2 instance");
+
+        // Attach AmazonEC2ContainerRegistryReadOnly policy to the role
+        println!("Attaching AmazonEC2ContainerRegistryReadOnly policy to the role");
+
+        self.inner
+            .attach_role_policy()
+            .role_name(Self::ROLE_NAME)
+            .policy_arn(Self::POLICY_ARN)
+            .send()
+            .await?;
+
+        println!("Attached AmazonEC2ContainerRegistryReadOnly policy to the role");
+
+        Ok(())
+    }
+
+    async fn delete_instance_iam_role(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Detaching IAM role from EC2 instance");
+
+        self.inner
+            .detach_role_policy()
+            .role_name(Self::ROLE_NAME)
+            .policy_arn(Self::POLICY_ARN)
+            .send()
+            .await?;
+
+        println!("Detached IAM role from EC2 instance");
+
+        println!("Deleting IAM role for EC2 instance");
+
+        self.inner
+            .delete_role()
+            .role_name(Self::ROLE_NAME)
+            .send()
+            .await?;
+
+        println!("Deleted IAM role for EC2 instance");
+
+        Ok(())
+    }
+
+    async fn create_instance_profile(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Creating IAM instance profile for EC2 instance");
+
+        self.inner
+            .create_instance_profile()
+            .instance_profile_name(Self::ROLE_NAME)
+            .send()
+            .await?;
+
+        println!("Created IAM instance profile for EC2 instance");
+
+        println!("Adding IAM role to instance profile");
+
+        self.inner
+            .add_role_to_instance_profile()
+            .instance_profile_name(Self::ROLE_NAME)
+            .role_name(Self::ROLE_NAME)
+            .send()
+            .await?;
+
+        println!("Added IAM role to instance profile");
+
+        println!("Waiting for instance profile to be ready");
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        Ok(())
+    }
+
+    async fn delete_instance_profile(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Removing IAM role from instance profile");
+
+        self.inner
+            .remove_role_from_instance_profile()
+            .instance_profile_name(Self::ROLE_NAME)
+            .role_name(Self::ROLE_NAME)
+            .send()
+            .await?;
+
+        println!("Removed IAM role from instance profile");
+
+        println!("Deleting IAM instance profile");
+
+        self.inner
+            .delete_instance_profile()
+            .instance_profile_name(Self::ROLE_NAME)
+            .send()
+            .await?;
+
+        println!("Deleted IAM instance profile");
+
+        Ok(())
+    }
+}
+
+#[cfg(not(test))]
+use IAMImpl as IAM;
+#[cfg(test)]
+use MockIAMImpl as IAM;
+
+#[derive(Debug)]
 pub struct Ec2Instance {
     client: Ec2,
 
@@ -94,9 +245,9 @@ pub struct Ec2Instance {
     user_data: String,
     user_data_base64: String,
 
-    // instance_profile: InstanceProfile,
+    // TODO: Make it required
+    instance_profile: Option<InstanceProfile>,
 }
-
 
 impl Ec2Instance {
     pub async fn new(
@@ -130,10 +281,15 @@ impl Ec2Instance {
             .region(region_provider)
             .load()
             .await;
+
+        // TODO: Move clients from Resources
         let ec2_client = aws_sdk_ec2::Client::new(&config);
 
+        let profile_iam_client = aws_sdk_iam::Client::new(&config);
+        let role_iam_client = aws_sdk_iam::Client::new(&config);
+
         Self {
-            client: Ec2::new(ec2_client),
+            client: Ec2::new(ec2_client), // TODO: Remove
             id: None,
             arn: None,
             public_ip: None,
@@ -144,12 +300,28 @@ impl Ec2Instance {
             name,
             user_data: user_data.to_string(),
             user_data_base64,
+            instance_profile: Some(InstanceProfile {
+                client: IAM::new(profile_iam_client), // TODO: Remove
+                name: IAM::ROLE_NAME.to_string(),
+                instance_roles: vec![InstanceRole {
+                    client: IAM::new(role_iam_client), // TODO: Remove
+                    name: IAM::ROLE_NAME.to_string(),
+                    assume_role_policy: IAM::ASSUME_ROLE_POLICY.to_string(),
+                    policy_arns: vec![IAM::POLICY_ARN.to_string()],
+                }],
+            }),
         }
     }
 }
 
 impl Resource for Ec2Instance {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Create IAM role for EC2 instance
+        match &mut self.instance_profile {
+            Some(instance_profile) => instance_profile.create().await,
+            None => Ok(()),
+        }?;
+
         // Launch EC2 instance
         let response = self
             .client
@@ -157,6 +329,7 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
+                IAM::ROLE_NAME.to_string(),
             )
             .await?;
 
@@ -184,12 +357,17 @@ impl Resource for Ec2Instance {
         self.public_ip = None;
         self.public_dns = None;
 
-        Ok(())
+        match &mut self.instance_profile {
+            Some(instance_profile) => instance_profile.destroy().await,
+            None => Ok(()),
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct InstanceProfile {
+    client: IAM,
+
     name: String,
 
     instance_roles: Vec<InstanceRole>,
@@ -197,18 +375,28 @@ pub struct InstanceProfile {
 
 impl Resource for InstanceProfile {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement create logic
-        Ok(())
+        for role in &mut self.instance_roles {
+            role.create().await?;
+        }
+
+        self.client.create_instance_profile().await
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement destroy logic
+        self.client.delete_instance_profile().await?;
+
+        for role in &mut self.instance_roles {
+            role.destroy().await?;
+        }
+
         Ok(())
     }
 }
 
 #[derive(Debug)]
 pub struct InstanceRole {
+    client: IAM,
+
     name: String,
 
     assume_role_policy: String,
@@ -218,13 +406,11 @@ pub struct InstanceRole {
 
 impl Resource for InstanceRole {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement create logic
-        Ok(())
+        self.client.create_instance_iam_role().await
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // TODO: Implement destroy logic
-        Ok(())
+        self.client.delete_instance_iam_role().await
     }
 }
 
@@ -243,8 +429,9 @@ mod tests {
                 eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
+                eq(IAM::ROLE_NAME.to_string()),
             )
-            .return_once(|_, _, _| {
+            .return_once(|_, _, _, _| {
                 Ok(RunInstancesOutput::builder()
                     .instances(
                         aws_sdk_ec2::types::Instance::builder()
@@ -269,6 +456,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            instance_profile: None,
         };
 
         // Act
@@ -299,8 +487,9 @@ mod tests {
                 eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
+                eq(IAM::ROLE_NAME.to_string()),
             )
-            .return_once(|_, _, _| Ok(RunInstancesOutput::builder().build()));
+            .return_once(|_, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
@@ -314,6 +503,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            instance_profile: None,
         };
 
         // Act
@@ -349,6 +539,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            instance_profile: None,
         };
 
         // Act
@@ -382,6 +573,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            instance_profile: None,
         };
 
         // Act
