@@ -38,25 +38,28 @@ impl Ec2Impl {
         instance_type: aws_sdk_ec2::types::InstanceType,
         ami: String,
         user_data_base64: String,
-        instance_profile_name: String,
+        instance_profile_name: Option<String>,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         println!("Starting EC2 instance");
 
-        let response = self
+        let mut request = self
             .inner
             .run_instances()
             .instance_type(instance_type.clone())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
-            .iam_instance_profile(
+            .min_count(1)
+            .max_count(1);
+
+        if let Some(instance_profile_name) = instance_profile_name {
+            request = request.iam_instance_profile(
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
                     .name(instance_profile_name.clone())
                     .build(),
-            )
-            .min_count(1)
-            .max_count(1)
-            .send()
-            .await?;
+            );
+        }
+
+        let response = request.send().await?;
 
         println!("Created EC2 instance");
 
@@ -347,7 +350,10 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
-                IAM::ROLE_NAME.to_string(),
+                match &self.instance_profile {
+                    Some(instance_profile) => Some(instance_profile.name.clone()),
+                    None => None,
+                },
             )
             .await?;
 
@@ -461,7 +467,7 @@ mod tests {
                 eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq(IAM::ROLE_NAME.to_string()),
+                eq(None),
             )
             .return_once(|_, _, _, _| {
                 Ok(RunInstancesOutput::builder()
@@ -519,7 +525,7 @@ mod tests {
                 eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq(IAM::ROLE_NAME.to_string()),
+                eq(None),
             )
             .return_once(|_, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
