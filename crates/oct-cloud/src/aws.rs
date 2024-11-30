@@ -93,22 +93,6 @@ struct IAMImpl {
 /// TODO: Add tests using static replay
 #[cfg_attr(test, automock)]
 impl IAMImpl {
-    const ROLE_NAME: &str = "ct-app-ecr-role";
-    const POLICY_ARN: &str = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly";
-
-    const ASSUME_ROLE_POLICY: &str = r#"{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {
-                    "Service": "ec2.amazonaws.com"
-                },
-                "Action": "sts:AssumeRole"
-            }
-        ]
-    }"#;
-
     fn new(inner: aws_sdk_iam::Client) -> Self {
         Self { inner }
     }
@@ -116,6 +100,8 @@ impl IAMImpl {
     async fn create_instance_iam_role(
         &self,
         name: String,
+        assume_role_policy: String,
+        policy_arns: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Create IAM role for EC2 instance
         println!("Creating IAM role for EC2 instance");
@@ -123,23 +109,24 @@ impl IAMImpl {
         self.inner
             .create_role()
             .role_name(name.clone())
-            .assume_role_policy_document(Self::ASSUME_ROLE_POLICY)
+            .assume_role_policy_document(assume_role_policy)
             .send()
             .await?;
 
         println!("Created IAM role for EC2 instance");
 
-        // Attach AmazonEC2ContainerRegistryReadOnly policy to the role
-        println!("Attaching AmazonEC2ContainerRegistryReadOnly policy to the role");
+        for policy_arn in &policy_arns {
+            println!("Attaching '{policy_arn}' policy to the role");
 
-        self.inner
-            .attach_role_policy()
-            .role_name(name.clone())
-            .policy_arn(Self::POLICY_ARN)
-            .send()
-            .await?;
+            self.inner
+                .attach_role_policy()
+                .role_name(name.clone())
+                .policy_arn(policy_arn)
+                .send()
+                .await?;
 
-        println!("Attached AmazonEC2ContainerRegistryReadOnly policy to the role");
+            println!("Attached '{policy_arn}' policy to the role");
+        }
 
         Ok(())
     }
@@ -147,17 +134,20 @@ impl IAMImpl {
     async fn delete_instance_iam_role(
         &self,
         name: String,
+        policy_arns: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Detaching IAM role from EC2 instance");
+        for policy_arn in &policy_arns {
+            println!("Detaching '{policy_arn}' IAM role from EC2 instance");
 
-        self.inner
-            .detach_role_policy()
-            .role_name(name.clone())
-            .policy_arn(Self::POLICY_ARN)
-            .send()
-            .await?;
+            self.inner
+                .detach_role_policy()
+                .role_name(name.clone())
+                .policy_arn(policy_arn)
+                .send()
+                .await?;
 
-        println!("Detached IAM role from EC2 instance");
+            println!("Detached '{policy_arn}' IAM role from EC2 instance");
+        }
 
         println!("Deleting IAM role for EC2 instance");
 
@@ -303,14 +293,13 @@ impl Ec2Instance {
             .load()
             .await;
 
-        // TODO: Move clients from Resources
         let ec2_client = aws_sdk_ec2::Client::new(&config);
 
-        let profile_iam_client = aws_sdk_iam::Client::new(&config);
-        let role_iam_client = aws_sdk_iam::Client::new(&config);
+        let instance_role = InstanceRole::new(region.clone()).await;
+        let instance_profile = InstanceProfile::new(region.clone(), vec![instance_role]).await;
 
         Self {
-            client: Ec2::new(ec2_client), // TODO: Remove
+            client: Ec2::new(ec2_client),
             id: None,
             arn: None,
             public_ip: None,
@@ -321,16 +310,7 @@ impl Ec2Instance {
             name,
             user_data: user_data.to_string(),
             user_data_base64,
-            instance_profile: Some(InstanceProfile {
-                client: IAM::new(profile_iam_client), // TODO: Remove
-                name: IAM::ROLE_NAME.to_string(),
-                instance_roles: vec![InstanceRole {
-                    client: IAM::new(role_iam_client), // TODO: Remove
-                    name: IAM::ROLE_NAME.to_string(),
-                    assume_role_policy: IAM::ASSUME_ROLE_POLICY.to_string(),
-                    policy_arns: vec![IAM::POLICY_ARN.to_string()],
-                }],
-            }),
+            instance_profile: Some(instance_profile),
         }
     }
 }
@@ -394,7 +374,31 @@ pub struct InstanceProfile {
 
     name: String,
 
+    region: String,
+
     instance_roles: Vec<InstanceRole>,
+}
+
+impl InstanceProfile {
+    const NAME: &str = "ct-app-ecr-role";
+
+    pub async fn new(region: String, instance_roles: Vec<InstanceRole>) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
+        Self {
+            client: IAM::new(iam_client),
+            name: Self::NAME.to_string(),
+            region,
+            instance_roles,
+        }
+    }
 }
 
 impl Resource for InstanceProfile {
@@ -433,21 +437,63 @@ pub struct InstanceRole {
 
     name: String,
 
+    region: String,
+
     assume_role_policy: String,
 
     policy_arns: Vec<String>,
 }
 
+impl InstanceRole {
+    const NAME: &str = "ct-app-ecr-role";
+    const POLICY_ARN: &str = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly";
+    const ASSUME_ROLE_POLICY: &str = r#"{
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ec2.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    }"#;
+
+    pub async fn new(region: String) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
+        Self {
+            client: IAM::new(iam_client),
+            name: Self::NAME.to_string(),
+            region,
+            assume_role_policy: Self::ASSUME_ROLE_POLICY.to_string(),
+            policy_arns: vec![Self::POLICY_ARN.to_string()],
+        }
+    }
+}
+
 impl Resource for InstanceRole {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
-            .create_instance_iam_role(self.name.clone())
+            .create_instance_iam_role(
+                self.name.clone(),
+                self.assume_role_policy.clone(),
+                self.policy_arns.clone(),
+            )
             .await
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
-            .delete_instance_iam_role(self.name.clone())
+            .delete_instance_iam_role(self.name.clone(), self.policy_arns.clone())
             .await
     }
 }
