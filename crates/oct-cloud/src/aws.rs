@@ -2,6 +2,9 @@ use aws_config;
 pub use aws_sdk_ec2;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_iam;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -17,6 +20,77 @@ use mockall::automock;
 /// - Check state of the resource (by resource name from dynamic config)
 /// - Create if not exists
 /// - Update if exists
+
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SerializableInstanceType {
+    instance_type: String,
+}
+
+impl From<aws_sdk_ec2::types::InstanceType> for SerializableInstanceType {
+    fn from(instance_type: aws_sdk_ec2::types::InstanceType) -> Self {
+        SerializableInstanceType {
+            instance_type: instance_type.as_str().to_string(),
+        }
+    }
+}
+
+impl From<SerializableInstanceType> for aws_sdk_ec2::types::InstanceType {
+    fn from(serializable: SerializableInstanceType) -> Self {
+        aws_sdk_ec2::types::InstanceType::from(serializable.instance_type.as_str())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize,)]
+pub struct State {
+    instances: Vec<InstanceState>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InstanceState {
+    pub id: String,
+    pub arn: String,
+    pub public_ip: String,
+    pub public_dns: String,
+    pub region: String,
+    pub ami: String,
+    pub instance_type: SerializableInstanceType,
+    pub name: String,
+}
+
+impl State {
+    /// Load the state file, return empty state if the file doesn't exist
+    pub fn load<P: AsRef<Path>>(path: P) -> Self {
+        if let Ok(data) = fs::read_to_string(&path) {
+            serde_json::from_str(&data).unwrap_or_else(|_| Self { instances: vec![] })
+        } else {
+            Self { instances: vec![] }
+        }
+    }
+
+    // Save the state file
+    pub fn save<P: AsRef<Path>>(&self, path: P) {
+        let data = serde_json::to_string_pretty(self).expect("Failed to serialize state");
+        fs::write(path, data);
+    }
+
+    // Add new instance to the state
+    pub fn add_instance(&mut self, instance: InstanceState) {
+        self.instances.push(instance);
+    }
+
+    // Find instance in the state
+    pub fn get_instance(&self, id: &str) -> Option<InstanceState> {
+        self.instances.iter().find(|i| i.id == id).cloned()
+    }
+
+    // Remove instance from the state
+    pub fn remove_instance(&mut self, id: &str) {
+        self.instances.retain(|i| i.id != id);
+    }
+}
+
+
 pub trait Resource {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>>;
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>>;
@@ -349,13 +423,35 @@ impl Resource for Ec2Instance {
         self.public_ip = instance.public_ip_address.clone();
         self.public_dns = instance.public_dns_name.clone();
 
+        // Save instance info to the state file
+        let mut state = State::load("state.json");
+        state.add_instance(InstanceState {
+            id: self.id.clone().unwrap_or_else(|| "".to_string()),
+            arn: self.arn.clone().unwrap_or_else(|| "".to_string()),
+            public_ip: self.public_ip.clone().unwrap_or_else(|| "".to_string()),
+            public_dns: self.public_dns.clone().unwrap_or_else(|| "".to_string()),
+            region: self.region.clone(),
+            ami: self.ami.clone(),
+            instance_type: self.instance_type.clone().into(),
+            name: self.name.clone(),
+        });
+        state.save("state.json");
+
         Ok(())
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut state = State::load("state.json");
+
+        let instance_id = self.id.clone().ok_or("No instance id")?;
+
         self.client
             .terminate_instance(self.id.clone().ok_or("No instance id")?)
             .await?;
+
+        // Remove instance info from the state file
+        state.remove_instance(&instance_id);
+        state.save("state.json");
 
         self.id = None;
         self.arn = None;
