@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use log;
 use oct_cloud::aws;
 use oct_cloud::aws::Resource;
+use oct_cloud::aws::State;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -55,17 +56,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
         }
         Commands::Destroy(args) => {
+            // Load the state file
+            let mut state = State::load("state.json");
+
+            // Retrieve instance info from the state file
+            let instance_info = state
+                .get_instance("instance_id")
+                .expect("Instance not found in the state file");
+
             let mut instance = aws::Ec2Instance::new(
-                "us-west-2".to_string(),
-                "ami-04dd23e62ed049936".to_string(),
-                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
-                "oct-cli".to_string(),
+                instance_info.region.clone(),
+                instance_info.ami.clone(),
+                instance_info.instance_type.clone().into(),
+                instance_info.name.clone(),
             )
             .await;
-            instance.id = Some("".to_string()); // Put instance id here
-            instance.arn = Some("".to_string());
-            instance.public_ip = Some("".to_string());
-            instance.public_dns = Some("".to_string());
+
+            instance.id = Some(instance_info.id.clone());
+            instance.arn = Some(instance_info.arn.clone());
+            instance.public_ip = Some(instance_info.public_ip.clone());
+            instance.public_dns = Some(instance_info.public_dns.clone());
 
             instance.destroy().await?;
 
