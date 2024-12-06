@@ -1,6 +1,7 @@
 use std::fs;
 
 use clap::{Parser, Subcommand};
+use log;
 use oct_cloud::aws;
 use oct_cloud::aws::Resource;
 use oct_cloud::state;
@@ -189,8 +190,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let orchestrator = Orchestrator::new(cli.state_file_path, cli.user_state_file_path);
 
     match &cli.command {
-        Commands::Deploy => orchestrator.deploy().await?,
-        Commands::Destroy => orchestrator.destroy().await?,
+        Commands::Deploy(args) => {
+            // Create EC2 instance
+            let mut instance = aws::Ec2Instance::new(
+                "us-west-2".to_string(),
+                "ami-04dd23e62ed049936".to_string(),
+                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
+                "oct-cli".to_string(),
+            )
+            .await;
+
+            instance.create().await?;
+
+            log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
+        }
+        Commands::Destroy(args) => {
+            let mut instance = aws::Ec2Instance::new(
+                "us-west-2".to_string(),
+                "ami-04dd23e62ed049936".to_string(),
+                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
+                "oct-cli".to_string(),
+            )
+            .await;
+            instance.id = Some("".to_string()); // Put instance id here
+            instance.arn = Some("".to_string());
+            instance.public_ip = Some("".to_string());
+            instance.public_dns = Some("".to_string());
+
+            instance.destroy().await?;
+
+            log::info!("Instance destroyed");
+        }
     }
 
     Ok(())
