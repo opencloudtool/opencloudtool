@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies]
 actix-web = { workspace = true}
+futures = "0.3.31"
+log = "0.4"
+serde = {  workspace = true, features = ["derive"] }
+serde_json = { version = "1.0", workspace = true }
+env_logger = { workspace = true }
