@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use log;
 use oct_cloud::aws;
 use oct_cloud::aws::Resource;
 
@@ -34,6 +35,8 @@ struct CommandArgs {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let cli = Cli::parse();
 
     match &cli.command {
@@ -49,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             instance.create().await?;
 
-            println!("Instance created: {instance:?}");
+            log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
         }
         Commands::Destroy(args) => {
             let mut instance = aws::Ec2Instance::new(
@@ -66,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             instance.destroy().await?;
 
-            println!("Instance destroyed: {instance:?}");
+            log::info!("Instance destroyed");
         }
     }
 

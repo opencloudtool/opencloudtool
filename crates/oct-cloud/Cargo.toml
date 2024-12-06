@@ -13,3 +13,5 @@ base64 = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 mockall = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+log = { workspace = true }
+env_logger = { workspace = true }

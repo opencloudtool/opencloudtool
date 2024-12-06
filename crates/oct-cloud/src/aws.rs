@@ -5,6 +5,7 @@ use aws_sdk_iam;
 
 use base64::{engine::general_purpose, Engine as _};
 
+use log;
 use mockall::automock;
 
 /// Now we deploy only one EC2 instance where the services from
@@ -40,7 +41,7 @@ impl Ec2Impl {
         user_data_base64: String,
         instance_profile_name: Option<String>,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
-        println!("Starting EC2 instance");
+        log::info!("Starting EC2 instance");
 
         let mut request = self
             .inner
@@ -61,7 +62,7 @@ impl Ec2Impl {
 
         let response = request.send().await?;
 
-        println!("Created EC2 instance");
+        log::info!("Created EC2 instance");
 
         Ok(response)
     }
@@ -104,7 +105,7 @@ impl IAMImpl {
         policy_arns: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Create IAM role for EC2 instance
-        println!("Creating IAM role for EC2 instance");
+        log::info!("Creating IAM role for EC2 instance");
 
         self.inner
             .create_role()
@@ -113,10 +114,10 @@ impl IAMImpl {
             .send()
             .await?;
 
-        println!("Created IAM role for EC2 instance");
+        log::info!("Created IAM role for EC2 instance");
 
         for policy_arn in &policy_arns {
-            println!("Attaching '{policy_arn}' policy to the role");
+            log::info!("Attaching '{policy_arn}' policy to the role");
 
             self.inner
                 .attach_role_policy()
@@ -125,7 +126,7 @@ impl IAMImpl {
                 .send()
                 .await?;
 
-            println!("Attached '{policy_arn}' policy to the role");
+            log::info!("Attached '{policy_arn}' policy to the role");
         }
 
         Ok(())
@@ -137,7 +138,7 @@ impl IAMImpl {
         policy_arns: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for policy_arn in &policy_arns {
-            println!("Detaching '{policy_arn}' IAM role from EC2 instance");
+            log::info!("Detaching '{policy_arn}' IAM role from EC2 instance");
 
             self.inner
                 .detach_role_policy()
@@ -146,10 +147,10 @@ impl IAMImpl {
                 .send()
                 .await?;
 
-            println!("Detached '{policy_arn}' IAM role from EC2 instance");
+            log::info!("Detached '{policy_arn}' IAM role from EC2 instance");
         }
 
-        println!("Deleting IAM role for EC2 instance");
+        log::info!("Deleting IAM role for EC2 instance");
 
         self.inner
             .delete_role()
@@ -157,7 +158,7 @@ impl IAMImpl {
             .send()
             .await?;
 
-        println!("Deleted IAM role for EC2 instance");
+        log::info!("Deleted IAM role for EC2 instance");
 
         Ok(())
     }
@@ -167,7 +168,7 @@ impl IAMImpl {
         name: String,
         role_names: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Creating IAM instance profile for EC2 instance");
+        log::info!("Creating IAM instance profile for EC2 instance");
 
         self.inner
             .create_instance_profile()
@@ -175,10 +176,10 @@ impl IAMImpl {
             .send()
             .await?;
 
-        println!("Created IAM instance profile for EC2 instance");
+        log::info!("Created IAM instance profile for EC2 instance");
 
         for role_name in role_names {
-            println!("Adding '{role_name}' IAM role to instance profile");
+            log::info!("Adding '{role_name}' IAM role to instance profile");
 
             self.inner
                 .add_role_to_instance_profile()
@@ -187,10 +188,10 @@ impl IAMImpl {
                 .send()
                 .await?;
 
-            println!("Added '{role_name}' IAM role to instance profile");
+            log::info!("Added '{role_name}' IAM role to instance profile");
         }
 
-        println!("Waiting for instance profile to be ready");
+        log::info!("Waiting for instance profile to be ready");
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
         Ok(())
@@ -202,7 +203,7 @@ impl IAMImpl {
         role_names: Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for role_name in role_names {
-            println!("Removing {role_name} IAM role from instance profile");
+            log::info!("Removing {role_name} IAM role from instance profile");
 
             self.inner
                 .remove_role_from_instance_profile()
@@ -211,10 +212,10 @@ impl IAMImpl {
                 .send()
                 .await?;
 
-            println!("Removed {role_name} IAM role from instance profile");
+            log::info!("Removed {role_name} IAM role from instance profile");
         }
 
-        println!("Deleting IAM instance profile");
+        log::info!("Deleting IAM instance profile");
 
         self.inner
             .delete_instance_profile()
@@ -222,7 +223,7 @@ impl IAMImpl {
             .send()
             .await?;
 
-        println!("Deleted IAM instance profile");
+        log::info!("Deleted IAM instance profile");
 
         Ok(())
     }
