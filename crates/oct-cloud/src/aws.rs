@@ -1,10 +1,7 @@
 use aws_config;
 pub use aws_sdk_ec2;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
-use aws_sdk_iam;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::Path;
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -20,76 +17,6 @@ use mockall::automock;
 /// - Check state of the resource (by resource name from dynamic config)
 /// - Create if not exists
 /// - Update if exists
-
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SerializableInstanceType {
-    instance_type: String,
-}
-
-impl From<aws_sdk_ec2::types::InstanceType> for SerializableInstanceType {
-    fn from(instance_type: aws_sdk_ec2::types::InstanceType) -> Self {
-        SerializableInstanceType {
-            instance_type: instance_type.as_str().to_string(),
-        }
-    }
-}
-
-impl From<SerializableInstanceType> for aws_sdk_ec2::types::InstanceType {
-    fn from(serializable: SerializableInstanceType) -> Self {
-        aws_sdk_ec2::types::InstanceType::from(serializable.instance_type.as_str())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize,)]
-pub struct State {
-    instances: Vec<InstanceState>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct InstanceState {
-    pub id: String,
-    pub arn: String,
-    pub public_ip: String,
-    pub public_dns: String,
-    pub region: String,
-    pub ami: String,
-    pub instance_type: SerializableInstanceType,
-    pub name: String,
-}
-
-impl State {
-    /// Load the state file, return empty state if the file doesn't exist
-    pub fn load<P: AsRef<Path>>(path: P) -> Self {
-        if let Ok(data) = fs::read_to_string(&path) {
-            serde_json::from_str(&data).unwrap_or_else(|_| Self { instances: vec![] })
-        } else {
-            Self { instances: vec![] }
-        }
-    }
-
-    // Save the state file
-    pub fn save<P: AsRef<Path>>(&self, path: P) {
-        let data = serde_json::to_string_pretty(self).expect("Failed to serialize state");
-        fs::write(path, data);
-    }
-
-    // Add new instance to the state
-    pub fn add_instance(&mut self, instance: InstanceState) {
-        self.instances.push(instance);
-    }
-
-    // Find instance in the state
-    pub fn get_instance(&self, id: &str) -> Option<InstanceState> {
-        self.instances.iter().find(|i| i.id == id).cloned()
-    }
-
-    // Remove instance from the state
-    pub fn remove_instance(&mut self, id: &str) {
-        self.instances.retain(|i| i.id != id);
-    }
-}
-
 
 pub trait Resource {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>>;
@@ -110,17 +37,18 @@ impl Ec2Impl {
 
     async fn run_instances(
         &self,
-        instance_type: aws_sdk_ec2::types::InstanceType,
+        instance_type: String,
         ami: String,
         user_data_base64: String,
         instance_profile_name: Option<String>,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
+        let instance_type_enum = aws_sdk_ec2::types::InstanceType::from(instance_type.as_str());
         let mut request = self
             .inner
             .run_instances()
-            .instance_type(instance_type.clone())
+            .instance_type(instance_type_enum)
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
             .min_count(1)
@@ -154,7 +82,6 @@ impl Ec2Impl {
         Ok(())
     }
 }
-
 #[cfg(not(test))]
 use Ec2Impl as Ec2;
 #[cfg(test)]
@@ -308,9 +235,10 @@ use IAMImpl as IAM;
 #[cfg(test)]
 use MockIAMImpl as IAM;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Ec2Instance {
-    client: Ec2,
+    #[serde(skip_deserializing, skip_serializing)]
+    client: Option<Ec2>,
 
     // Known after creation
     pub id: Option<String>,
@@ -325,8 +253,7 @@ pub struct Ec2Instance {
 
     ami: String,
 
-    instance_type: aws_sdk_ec2::types::InstanceType,
-
+    instance_type: String,
     name: String,
     user_data: String,
     user_data_base64: String,
@@ -336,12 +263,7 @@ pub struct Ec2Instance {
 }
 
 impl Ec2Instance {
-    pub async fn new(
-        region: String,
-        ami: String,
-        instance_type: aws_sdk_ec2::types::InstanceType,
-        name: String,
-    ) -> Self {
+    pub async fn new(region: String, ami: String, instance_type: String, name: String) -> Self {
         let user_data = r#"#!/bin/bash
     set -e
 
@@ -374,7 +296,7 @@ impl Ec2Instance {
         let instance_profile = InstanceProfile::new(region.clone(), vec![instance_role]).await;
 
         Self {
-            client: Ec2::new(ec2_client),
+            client: Some(Ec2::new(ec2_client)),
             id: None,
             arn: None,
             public_ip: None,
@@ -399,8 +321,8 @@ impl Resource for Ec2Instance {
         }?;
 
         // Launch EC2 instance
-        let response = self
-            .client
+        let client = self.client.as_ref().expect("EC2 client not initialized");
+        let response = client
             .run_instances(
                 self.instance_type.clone(),
                 self.ami.clone(),
@@ -423,35 +345,16 @@ impl Resource for Ec2Instance {
         self.public_ip = instance.public_ip_address.clone();
         self.public_dns = instance.public_dns_name.clone();
 
-        // Save instance info to the state file
-        let mut state = State::load("state.json");
-        state.add_instance(InstanceState {
-            id: self.id.clone().unwrap_or_else(|| "".to_string()),
-            arn: self.arn.clone().unwrap_or_else(|| "".to_string()),
-            public_ip: self.public_ip.clone().unwrap_or_else(|| "".to_string()),
-            public_dns: self.public_dns.clone().unwrap_or_else(|| "".to_string()),
-            region: self.region.clone(),
-            ami: self.ami.clone(),
-            instance_type: self.instance_type.clone().into(),
-            name: self.name.clone(),
-        });
-        state.save("state.json");
-
         Ok(())
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut state = State::load("state.json");
-
         let instance_id = self.id.clone().ok_or("No instance id")?;
+        let client = self.client.as_ref().expect("EC2 client not initialized");
 
-        self.client
+        client
             .terminate_instance(self.id.clone().ok_or("No instance id")?)
             .await?;
-
-        // Remove instance info from the state file
-        state.remove_instance(&instance_id);
-        state.save("state.json");
 
         self.id = None;
         self.arn = None;
@@ -465,9 +368,10 @@ impl Resource for Ec2Instance {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InstanceProfile {
-    client: IAM,
+    #[serde(skip_deserializing, skip_serializing)]
+    client: Option<IAM>,
 
     name: String,
 
@@ -490,7 +394,7 @@ impl InstanceProfile {
         let iam_client = aws_sdk_iam::Client::new(&config);
 
         Self {
-            client: IAM::new(iam_client),
+            client: Some(IAM::new(iam_client)),
             name: Self::NAME.to_string(),
             region,
             instance_roles,
@@ -505,6 +409,8 @@ impl Resource for InstanceProfile {
         }
 
         self.client
+            .as_ref()
+            .expect("IAM client not initialized")
             .create_instance_profile(
                 self.name.clone(),
                 self.instance_roles.iter().map(|r| r.name.clone()).collect(),
@@ -514,6 +420,8 @@ impl Resource for InstanceProfile {
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
+            .as_ref()
+            .expect("IAM client not initialized")
             .delete_instance_profile(
                 self.name.clone(),
                 self.instance_roles.iter().map(|r| r.name.clone()).collect(),
@@ -528,9 +436,10 @@ impl Resource for InstanceProfile {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InstanceRole {
-    client: IAM,
+    #[serde(skip_deserializing, skip_serializing)]
+    client: Option<IAM>,
 
     name: String,
 
@@ -568,7 +477,7 @@ impl InstanceRole {
         let iam_client = aws_sdk_iam::Client::new(&config);
 
         Self {
-            client: IAM::new(iam_client),
+            client: Some(IAM::new(iam_client)),
             name: Self::NAME.to_string(),
             region,
             assume_role_policy: Self::ASSUME_ROLE_POLICY.to_string(),
@@ -580,6 +489,8 @@ impl InstanceRole {
 impl Resource for InstanceRole {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
+            .as_ref()
+            .expect("IAM client not initialized")
             .create_instance_iam_role(
                 self.name.clone(),
                 self.assume_role_policy.clone(),
@@ -590,6 +501,8 @@ impl Resource for InstanceRole {
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
+            .as_ref()
+            .expect("IAM client not initialized")
             .delete_instance_iam_role(self.name.clone(), self.policy_arns.clone())
             .await
     }
@@ -598,6 +511,7 @@ impl Resource for InstanceRole {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_sdk_ec2::types::InstanceType;
     use mockall::predicate::eq;
 
     #[tokio::test]
@@ -607,7 +521,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq("t2.micro".to_string()),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -626,14 +540,14 @@ mod tests {
             });
 
         let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
+            client: Some(ec2_impl_mock),
             id: None,
             arn: None,
             public_ip: None,
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -661,11 +575,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance_no_instance() {
         // Arrange
+
         let mut ec2_impl_mock = MockEc2Impl::default();
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq(aws_sdk_ec2::types::InstanceType::T2Micro.to_string()),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -673,14 +588,14 @@ mod tests {
             .return_once(|_, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
         let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
+            client: Some(ec2_impl_mock),
             id: None,
             arn: None,
             public_ip: None,
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -709,14 +624,14 @@ mod tests {
             .return_once(|_| Ok(()));
 
         let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
+            client: Some(ec2_impl_mock),
             id: Some("id".to_string()),
             arn: Some("arn".to_string()),
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -743,14 +658,14 @@ mod tests {
             .return_once(|_| Ok(()));
 
         let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
+            client: Some(ec2_impl_mock),
             id: None,
             arn: Some("arn".to_string()),
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
