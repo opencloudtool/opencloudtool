@@ -2,8 +2,11 @@ use std::fs;
 
 use clap::{Parser, Subcommand};
 use log;
-use oct_cloud::aws;
 use oct_cloud::aws::Resource;
+use oct_cloud::aws::{
+    self, Ec2Impl, Ec2Instance, Ec2InstanceState, InstanceProfile, InstanceProfileState,
+    InstanceRole, InstanceRoleState,
+};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -57,19 +60,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             instance.create().await?;
 
             // Save to state file
-            let instance_state = serde_json::to_string_pretty(&instance)?;
-            fs::write(state_file_path, instance_state)?;
+            let instance_state = Ec2InstanceState {
+                id: instance.id.clone().unwrap_or_default(),
+                arn: instance.arn.clone().unwrap_or_default(),
+                public_ip: instance.public_ip.clone().unwrap_or_default(),
+                public_dns: instance.public_dns.clone().unwrap_or_default(),
+                region: instance.region.clone(),
+                ami: instance.ami.clone(),
+                instance_type: instance.instance_type.clone(),
+                name: instance.name.clone(),
+                instance_profile: instance.instance_profile.as_ref().map(|ip| {
+                    InstanceProfileState {
+                        name: ip.name.clone(),
+                        region: ip.region.clone(),
+                        instance_roles: ip
+                            .instance_roles
+                            .iter()
+                            .map(|ir| InstanceRoleState {
+                                name: ir.name.clone(),
+                                region: ir.region.clone(),
+                                assume_role_policy: ir.assume_role_policy.clone(),
+                                policy_arns: ir.policy_arns.clone(),
+                            })
+                            .collect(),
+                    }
+                }),
+            };
+
+            let json_data = serde_json::to_string_pretty(&instance_state)?;
+            fs::write(state_file_path, json_data)?;
 
             log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
         }
         Commands::Destroy(args) => {
             // Load instance from state file
-            let instance_state = fs::read_to_string(state_file_path).expect("Unable to read file");
-            let mut instance: aws::Ec2Instance = serde_json::from_str(&instance_state)?;
+            let json_data = fs::read_to_string(state_file_path).expect("Unable to read file");
+            let state: aws::Ec2InstanceState = serde_json::from_str(&json_data)?;
+
+            let mut instance = aws::Ec2Instance::new_from_state(state).await?;
 
             instance.destroy().await?;
 
-            println!("Instance destroyed: {instance:?}");
+            log::info!("Instance destroyed");
 
             // Remove instance from state file
             fs::remove_file(state_file_path).expect("Unable to remove file");
