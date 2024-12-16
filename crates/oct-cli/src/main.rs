@@ -2,8 +2,8 @@ use std::fs;
 
 use clap::{Parser, Subcommand};
 use log;
+use oct_cloud::aws;
 use oct_cloud::aws::Resource;
-use oct_cloud::aws::{self};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]

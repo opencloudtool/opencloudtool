@@ -71,11 +71,10 @@ impl Ec2Impl {
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
-        let instance_type_enum = aws_sdk_ec2::types::InstanceType::from(instance_type.as_str());
         let mut request = self
             .inner
             .run_instances()
-            .instance_type(instance_type_enum)
+            .instance_type(instance_type.clone())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
             .min_count(1)
@@ -109,6 +108,7 @@ impl Ec2Impl {
         Ok(())
     }
 }
+
 #[cfg(not(test))]
 use Ec2Impl as Ec2;
 #[cfg(test)]
@@ -368,12 +368,11 @@ impl Ec2Instance {
             .await;
 
         let ec2_client = aws_sdk_ec2::Client::new(&config);
-        let iam_client = aws_sdk_iam::Client::new(&config);
 
         let instance_type = aws_sdk_ec2::types::InstanceType::from(state.instance_type.as_str());
         // Initialize instance profile
         let instance_profile = if let Some(profile_state) = state.instance_profile {
-            Some(InstanceProfile::new_from_state(profile_state, iam_client.clone()).await?)
+            Some(InstanceProfile::new_from_state(profile_state).await?)
         } else {
             None
         };
@@ -482,12 +481,20 @@ impl InstanceProfile {
 
     pub async fn new_from_state(
         state: InstanceProfileState,
-        iam_client: aws_sdk_iam::Client,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut instance_roles = Vec::new();
 
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
         for role_state in state.instance_roles {
-            let role = InstanceRole::new_from_state(role_state, iam_client.clone()).await;
+            let role = InstanceRole::new_from_state(role_state).await;
             instance_roles.push(role);
         }
 
@@ -589,7 +596,16 @@ impl InstanceRole {
         }
     }
 
-    pub async fn new_from_state(state: InstanceRoleState, iam_client: aws_sdk_iam::Client) -> Self {
+    pub async fn new_from_state(state: InstanceRoleState) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
         Self {
             client: IAM::new(iam_client),
             name: state.name,
@@ -692,7 +708,6 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance_no_instance() {
         // Arrange
-
         let mut ec2_impl_mock = MockEc2Impl::default();
         ec2_impl_mock
             .expect_run_instances()
