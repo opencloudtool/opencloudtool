@@ -15,7 +15,7 @@ aws-sdk-iam = "1.49.0"
 base64 = "0.22.1"
 clap = { version = "4.5.20", features = ["derive"] }
 predicates = "3.1.2"
-serde = "1.0.213"
+serde = "1.0.216"
 serde_derive = "1.0.213"
 serde_json = "1.0.132"
 tempfile = "3.13.0"
