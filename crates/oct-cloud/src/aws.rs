@@ -52,7 +52,7 @@ pub struct InstanceRoleState {
 }
 
 #[derive(Debug)]
-pub struct Ec2Impl {
+struct Ec2Impl {
     inner: aws_sdk_ec2::Client,
 }
 
@@ -64,7 +64,7 @@ impl Ec2Impl {
     }
     async fn run_instances(
         &self,
-        instance_type: String,
+        instance_type: aws_sdk_ec2::types::InstanceType,
         ami: String,
         user_data_base64: String,
         instance_profile_name: Option<String>,
@@ -275,21 +275,26 @@ pub struct Ec2Instance {
     pub public_dns: Option<String>,
 
     // Known before creation
-    pub region: String,
+    region: String,
 
-    pub ami: String,
+    ami: String,
 
-    pub instance_type: String,
-    pub name: String,
+    instance_type: aws_sdk_ec2::types::InstanceType,
+    name: String,
     user_data: String,
     user_data_base64: String,
 
     // TODO: Make it required
-    pub instance_profile: Option<InstanceProfile>,
+    instance_profile: Option<InstanceProfile>,
 }
 
 impl Ec2Instance {
-    pub async fn new(region: String, ami: String, instance_type: String, name: String) -> Self {
+    pub async fn new(
+        region: String,
+        ami: String,
+        instance_type: aws_sdk_ec2::types::InstanceType,
+        name: String,
+    ) -> Self {
         let user_data = r#"#!/bin/bash
     set -e
 
@@ -336,6 +341,22 @@ impl Ec2Instance {
             instance_profile: Some(instance_profile),
         }
     }
+    pub fn to_state(&self) -> Ec2InstanceState {
+        Ec2InstanceState {
+            id: self.id.clone().unwrap_or_default(),
+            arn: self.arn.clone().unwrap_or_default(),
+            public_ip: self.public_ip.clone().unwrap_or_default(),
+            public_dns: self.public_dns.clone().unwrap_or_default(),
+            region: self.region.clone(),
+            ami: self.ami.clone(),
+            instance_type: self.instance_type.clone().to_string(),
+            name: self.name.clone(),
+            instance_profile: self
+                .instance_profile
+                .as_ref()
+                .map(|profile| profile.to_state()),
+        }
+    }
     pub async fn new_from_state(
         state: Ec2InstanceState,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -347,27 +368,12 @@ impl Ec2Instance {
             .await;
 
         let ec2_client = aws_sdk_ec2::Client::new(&config);
+        let iam_client = aws_sdk_iam::Client::new(&config);
 
+        let instance_type = aws_sdk_ec2::types::InstanceType::from(state.instance_type.as_str());
         // Initialize instance profile
         let instance_profile = if let Some(profile_state) = state.instance_profile {
-            let instance_roles = profile_state
-                .instance_roles
-                .into_iter()
-                .map(|role_state| InstanceRole {
-                    client: IAM::new(aws_sdk_iam::Client::new(&config)),
-                    name: role_state.name,
-                    region: role_state.region,
-                    assume_role_policy: role_state.assume_role_policy,
-                    policy_arns: role_state.policy_arns,
-                })
-                .collect();
-
-            Some(InstanceProfile {
-                client: IAM::new(aws_sdk_iam::Client::new(&config)),
-                name: profile_state.name,
-                region: profile_state.region,
-                instance_roles,
-            })
+            Some(InstanceProfile::new_from_state(profile_state, iam_client.clone()).await?)
         } else {
             None
         };
@@ -380,7 +386,7 @@ impl Ec2Instance {
             public_dns: Some(state.public_dns),
             region: state.region,
             ami: state.ami,
-            instance_type: state.instance_type,
+            instance_type,
             name: state.name,
             user_data: "".to_string(),
             user_data_base64: "".to_string(),
@@ -426,8 +432,6 @@ impl Resource for Ec2Instance {
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let instance_id = self.id.clone().ok_or("No instance id")?;
-
         self.client
             .terminate_instance(self.id.clone().ok_or("No instance id")?)
             .await?;
@@ -448,11 +452,11 @@ impl Resource for Ec2Instance {
 pub struct InstanceProfile {
     client: IAM,
 
-    pub name: String,
+    name: String,
 
-    pub region: String,
+    region: String,
 
-    pub instance_roles: Vec<InstanceRole>,
+    instance_roles: Vec<InstanceRole>,
 }
 
 impl InstanceProfile {
@@ -473,6 +477,36 @@ impl InstanceProfile {
             name: Self::NAME.to_string(),
             region,
             instance_roles,
+        }
+    }
+
+    pub async fn new_from_state(
+        state: InstanceProfileState,
+        iam_client: aws_sdk_iam::Client,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut instance_roles = Vec::new();
+
+        for role_state in state.instance_roles {
+            let role = InstanceRole::new_from_state(role_state, iam_client.clone()).await;
+            instance_roles.push(role);
+        }
+
+        Ok(Self {
+            client: IAM::new(iam_client),
+            name: state.name,
+            region: state.region,
+            instance_roles,
+        })
+    }
+    pub fn to_state(&self) -> InstanceProfileState {
+        InstanceProfileState {
+            name: self.name.clone(),
+            region: self.region.clone(),
+            instance_roles: self
+                .instance_roles
+                .iter()
+                .map(|role| role.to_state())
+                .collect(),
         }
     }
 }
@@ -511,13 +545,13 @@ impl Resource for InstanceProfile {
 pub struct InstanceRole {
     client: IAM,
 
-    pub name: String,
+    name: String,
 
-    pub region: String,
+    region: String,
 
-    pub assume_role_policy: String,
+    assume_role_policy: String,
 
-    pub policy_arns: Vec<String>,
+    policy_arns: Vec<String>,
 }
 
 impl InstanceRole {
@@ -554,6 +588,24 @@ impl InstanceRole {
             policy_arns: vec![Self::POLICY_ARN.to_string()],
         }
     }
+
+    pub async fn new_from_state(state: InstanceRoleState, iam_client: aws_sdk_iam::Client) -> Self {
+        Self {
+            client: IAM::new(iam_client),
+            name: state.name,
+            region: state.region,
+            assume_role_policy: state.assume_role_policy,
+            policy_arns: state.policy_arns,
+        }
+    }
+    pub fn to_state(&self) -> InstanceRoleState {
+        InstanceRoleState {
+            name: self.name.clone(),
+            region: self.region.clone(),
+            assume_role_policy: self.assume_role_policy.clone(),
+            policy_arns: self.policy_arns.clone(),
+        }
+    }
 }
 
 impl Resource for InstanceRole {
@@ -577,7 +629,6 @@ impl Resource for InstanceRole {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_sdk_ec2::types::InstanceType;
     use mockall::predicate::eq;
 
     #[tokio::test]
@@ -587,7 +638,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq("t2.micro".to_string()),
+                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -613,7 +664,7 @@ mod tests {
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -646,7 +697,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(aws_sdk_ec2::types::InstanceType::T2Micro.to_string()),
+                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -661,7 +712,7 @@ mod tests {
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -697,7 +748,7 @@ mod tests {
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -731,7 +782,7 @@ mod tests {
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro.to_string(),
+            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
