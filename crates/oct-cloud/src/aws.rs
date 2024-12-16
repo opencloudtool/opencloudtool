@@ -343,10 +343,10 @@ impl Ec2Instance {
     }
     pub fn to_state(&self) -> Ec2InstanceState {
         Ec2InstanceState {
-            id: self.id.clone().unwrap_or_default(),
-            arn: self.arn.clone().unwrap_or_default(),
-            public_ip: self.public_ip.clone().unwrap_or_default(),
-            public_dns: self.public_dns.clone().unwrap_or_default(),
+            id: self.id.clone().expect("Instance id is not set"),
+            arn: self.arn.clone().expect("Instance arn is not set"),
+            public_ip: self.public_ip.clone().expect("Public ip is not set"),
+            public_dns: self.public_dns.clone().expect("Public dns is not set"),
             region: self.region.clone(),
             ami: self.ami.clone(),
             instance_type: self.instance_type.clone().to_string(),
