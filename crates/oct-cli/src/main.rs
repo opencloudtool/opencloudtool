@@ -188,6 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     let orchestrator = Orchestrator::new(cli.state_file_path, cli.user_state_file_path);
+    let state_file_path = "./state.json";
 
     match &cli.command {
         Commands::Deploy(args) => {
@@ -202,24 +203,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             instance.create().await?;
 
+            // Save to state file
+            let instance_state = instance.to_state();
+            let json_data = serde_json::to_string_pretty(&instance_state)?;
+            fs::write(state_file_path, json_data)?;
+
             log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
         }
         Commands::Destroy(args) => {
-            let mut instance = aws::Ec2Instance::new(
-                "us-west-2".to_string(),
-                "ami-04dd23e62ed049936".to_string(),
-                aws::aws_sdk_ec2::types::InstanceType::T2Micro,
-                "oct-cli".to_string(),
-            )
-            .await;
-            instance.id = Some("".to_string()); // Put instance id here
-            instance.arn = Some("".to_string());
-            instance.public_ip = Some("".to_string());
-            instance.public_dns = Some("".to_string());
+            // Load instance from state file
+            let json_data = fs::read_to_string(state_file_path).expect("Unable to read file");
+            let state: aws::Ec2InstanceState = serde_json::from_str(&json_data)?;
+
+            let mut instance = aws::Ec2Instance::new_from_state(state).await?;
 
             instance.destroy().await?;
 
             log::info!("Instance destroyed");
+
+            // Remove instance from state file
+            fs::remove_file(state_file_path).expect("Unable to remove file");
         }
     }
 

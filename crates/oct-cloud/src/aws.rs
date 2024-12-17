@@ -1,6 +1,7 @@
 use aws_config;
 pub use aws_sdk_ec2;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
+use serde::{Deserialize, Serialize};
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -25,6 +26,34 @@ pub trait Resource {
     fn destroy(
         &mut self,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Ec2InstanceState {
+    pub id: String,
+    pub arn: String,
+    pub public_ip: String,
+    pub public_dns: String,
+    pub region: String,
+    pub ami: String,
+    pub instance_type: String,
+    pub name: String,
+    pub instance_profile: Option<InstanceProfileState>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InstanceProfileState {
+    pub name: String,
+    pub region: String,
+    pub instance_roles: Vec<InstanceRoleState>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InstanceRoleState {
+    pub name: String,
+    pub region: String,
+    pub assume_role_policy: String,
+    pub policy_arns: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -282,6 +311,10 @@ pub struct Ec2Instance {
     pub name: String,
     pub user_data: String,
     pub user_data_base64: String,
+    instance_type: aws_sdk_ec2::types::InstanceType,
+    name: String,
+    user_data: String,
+    user_data_base64: String,
 
     // TODO: Make it required
     pub instance_profile: Option<InstanceProfile>,
@@ -352,6 +385,57 @@ impl Ec2Instance {
             user_data_base64,
             instance_profile: Some(instance_profile),
         }
+    }
+    pub fn to_state(&self) -> Ec2InstanceState {
+        Ec2InstanceState {
+            id: self.id.clone().expect("Instance id is not set"),
+            arn: self.arn.clone().expect("Instance arn is not set"),
+            public_ip: self.public_ip.clone().expect("Public ip is not set"),
+            public_dns: self.public_dns.clone().expect("Public dns is not set"),
+            region: self.region.clone(),
+            ami: self.ami.clone(),
+            instance_type: self.instance_type.clone().to_string(),
+            name: self.name.clone(),
+            instance_profile: self
+                .instance_profile
+                .as_ref()
+                .map(|profile| profile.to_state()),
+        }
+    }
+    pub async fn new_from_state(
+        state: Ec2InstanceState,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        let instance_type = aws_sdk_ec2::types::InstanceType::from(state.instance_type.as_str());
+        // Initialize instance profile
+        let instance_profile = if let Some(profile_state) = state.instance_profile {
+            Some(InstanceProfile::new_from_state(profile_state).await?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            client: Ec2::new(ec2_client),
+            id: Some(state.id),
+            arn: Some(state.arn),
+            public_ip: Some(state.public_ip),
+            public_dns: Some(state.public_dns),
+            region: state.region,
+            ami: state.ami,
+            instance_type,
+            name: state.name,
+            user_data: "".to_string(),
+            user_data_base64: "".to_string(),
+            instance_profile,
+        })
     }
 }
 
@@ -475,6 +559,44 @@ impl InstanceProfile {
             instance_roles,
         }
     }
+
+    pub async fn new_from_state(
+        state: InstanceProfileState,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut instance_roles = Vec::new();
+
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
+        for role_state in state.instance_roles {
+            let role = InstanceRole::new_from_state(role_state).await;
+            instance_roles.push(role);
+        }
+
+        Ok(Self {
+            client: IAM::new(iam_client),
+            name: state.name,
+            region: state.region,
+            instance_roles,
+        })
+    }
+    pub fn to_state(&self) -> InstanceProfileState {
+        InstanceProfileState {
+            name: self.name.clone(),
+            region: self.region.clone(),
+            instance_roles: self
+                .instance_roles
+                .iter()
+                .map(|role| role.to_state())
+                .collect(),
+        }
+    }
 }
 
 impl Resource for InstanceProfile {
@@ -557,6 +679,33 @@ impl InstanceRole {
             region,
             assume_role_policy: Self::ASSUME_ROLE_POLICY.to_string(),
             policy_arns: vec![Self::POLICY_ARN.to_string()],
+        }
+    }
+
+    pub async fn new_from_state(state: InstanceRoleState) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let iam_client = aws_sdk_iam::Client::new(&config);
+
+        Self {
+            client: IAM::new(iam_client),
+            name: state.name,
+            region: state.region,
+            assume_role_policy: state.assume_role_policy,
+            policy_arns: state.policy_arns,
+        }
+    }
+    pub fn to_state(&self) -> InstanceRoleState {
+        InstanceRoleState {
+            name: self.name.clone(),
+            region: self.region.clone(),
+            assume_role_policy: self.assume_role_policy.clone(),
+            policy_arns: self.policy_arns.clone(),
         }
     }
 }
