@@ -213,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Destroy(args) => {
             // Load instance from state file
             let json_data = fs::read_to_string(state_file_path).expect("Unable to read file");
-            let state: aws::Ec2InstanceState = serde_json::from_str(&json_data)?;
+            let state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
 
             let mut instance = aws::Ec2Instance::new_from_state(state).await?;
 

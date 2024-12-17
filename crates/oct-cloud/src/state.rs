@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ec2InstanceState {
     pub id: String,
+    pub arn: String,
     pub public_ip: String,
     pub public_dns: String,
     pub region: String,
@@ -57,6 +58,9 @@ impl Ec2InstanceState {
     }
 }
 
+    pub instance_profile: Option<InstanceProfileState>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstanceProfileState {
     pub name: String,
@@ -89,6 +93,7 @@ impl InstanceProfileState {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InstanceRoleState {
     pub name: String,
     pub region: String,
