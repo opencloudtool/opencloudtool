@@ -1537,6 +1537,8 @@ dependencies = [
  "env_logger",
  "log",
  "mockall",
+ "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]
