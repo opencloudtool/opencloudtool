@@ -57,26 +57,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             instance.create().await?;
 
+            let instance_id = instance.id.clone().ok_or("No instance id")?;
+
+            log::info!("Instance created: {}", instance_id);
+
             // Save to state file
-            let instance_state = instance.to_state();
+            let instance_state = state::Ec2InstanceState::new(instance).await;
             let json_data = serde_json::to_string_pretty(&instance_state)?;
             fs::write(state_file_path, json_data)?;
 
-            log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
+            log::info!("Instance: {} saved to state file", instance_id);
         }
         Commands::Destroy(args) => {
             // Load instance from state file
             let json_data = fs::read_to_string(state_file_path).expect("Unable to read file");
             let state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
 
-            let mut instance = aws::Ec2Instance::new_from_state(state).await?;
+            // Create EC2 instance from state
+            let mut instance = state.build_from_state().await?;
 
+            // Destroy EC2 instance
             instance.destroy().await?;
 
             log::info!("Instance destroyed");
 
             // Remove instance from state file
             fs::remove_file(state_file_path).expect("Unable to remove file");
+
+            log::info!("Instance removed from state file");
         }
     }
 
