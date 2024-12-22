@@ -20,6 +20,8 @@ impl Config {
             )
         })?;
 
+    pub fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
+        let data = fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH))?;
         let toml_data: Config = toml::from_str(&data)?;
 
         Ok(toml_data)
@@ -28,12 +30,14 @@ impl Config {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Project {
+pub struct Project {
     pub name: String,
     pub services: Vec<Service>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Service {
+pub struct Service {
     pub name: String,
     pub image: String,
     pub internal_port: u32,

@@ -192,6 +192,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         Commands::Deploy(args) => {
+            // Get project config
+            let config = config::Config::new(None);
+            match config {
+                Ok(config) => {
+                    log::info!("Config: {:#?}", config);
+                }
+                Err(e) => {
+                    log::error!("Error loading config: {}", e);
+                }
+            };
+
+            // TODO: Use config
+
             // Create EC2 instance
             let mut instance = aws::Ec2Instance::new(
                 "us-west-2".to_string(),
