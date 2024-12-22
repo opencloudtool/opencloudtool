@@ -1,0 +1,8 @@
+[project]
+name = "python-fastapi"
+
+[[project.services]]
+name = "app"
+image = "nginx:latest" # TODO: replace with python-fastapi image
+internal_port = 80
+external_port = 80
