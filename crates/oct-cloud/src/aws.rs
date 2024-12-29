@@ -1,8 +1,7 @@
-use crate::state::{Ec2InstanceState, InstanceProfileState, InstanceRoleState};
 use aws_config;
 pub use aws_sdk_ec2;
+use aws_sdk_ec2::operation::describe_instances::DescribeInstancesOutput;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
-use serde::{Deserialize, Serialize};
 
 use base64::{engine::general_purpose, Engine as _};
 
@@ -359,57 +358,6 @@ impl Ec2Instance {
             instance_profile: Some(instance_profile),
         }
     }
-    pub fn to_state(&self) -> Ec2InstanceState {
-        Ec2InstanceState {
-            id: self.id.clone().expect("Instance id is not set"),
-            arn: self.arn.clone().expect("Instance arn is not set"),
-            public_ip: self.public_ip.clone().expect("Public ip is not set"),
-            public_dns: self.public_dns.clone().expect("Public dns is not set"),
-            region: self.region.clone(),
-            ami: self.ami.clone(),
-            instance_type: self.instance_type.clone().to_string(),
-            name: self.name.clone(),
-            instance_profile: self
-                .instance_profile
-                .as_ref()
-                .map(|profile| profile.to_state()),
-        }
-    }
-    pub async fn new_from_state(
-        state: Ec2InstanceState,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Load AWS configuration
-        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region_provider)
-            .load()
-            .await;
-
-        let ec2_client = aws_sdk_ec2::Client::new(&config);
-
-        let instance_type = aws_sdk_ec2::types::InstanceType::from(state.instance_type.as_str());
-        // Initialize instance profile
-        let instance_profile = if let Some(profile_state) = state.instance_profile {
-            Some(InstanceProfile::new_from_state(profile_state).await?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            client: Ec2::new(ec2_client),
-            id: Some(state.id),
-            arn: Some(state.arn),
-            public_ip: Some(state.public_ip),
-            public_dns: Some(state.public_dns),
-            region: state.region,
-            ami: state.ami,
-            instance_type,
-            name: state.name,
-            user_data: "".to_string(),
-            user_data_base64: "".to_string(),
-            instance_profile,
-        })
-    }
 }
 
 impl Resource for Ec2Instance {
@@ -532,44 +480,6 @@ impl InstanceProfile {
             instance_roles,
         }
     }
-
-    pub async fn new_from_state(
-        state: InstanceProfileState,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut instance_roles = Vec::new();
-
-        // Load AWS configuration
-        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region_provider)
-            .load()
-            .await;
-
-        let iam_client = aws_sdk_iam::Client::new(&config);
-
-        for role_state in state.instance_roles {
-            let role = InstanceRole::new_from_state(role_state).await;
-            instance_roles.push(role);
-        }
-
-        Ok(Self {
-            client: IAM::new(iam_client),
-            name: state.name,
-            region: state.region,
-            instance_roles,
-        })
-    }
-    pub fn to_state(&self) -> InstanceProfileState {
-        InstanceProfileState {
-            name: self.name.clone(),
-            region: self.region.clone(),
-            instance_roles: self
-                .instance_roles
-                .iter()
-                .map(|role| role.to_state())
-                .collect(),
-        }
-    }
 }
 
 impl Resource for InstanceProfile {
@@ -652,33 +562,6 @@ impl InstanceRole {
             region,
             assume_role_policy: Self::ASSUME_ROLE_POLICY.to_string(),
             policy_arns: vec![Self::POLICY_ARN.to_string()],
-        }
-    }
-
-    pub async fn new_from_state(state: InstanceRoleState) -> Self {
-        // Load AWS configuration
-        let region_provider = aws_sdk_ec2::config::Region::new(state.region.clone());
-        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .region(region_provider)
-            .load()
-            .await;
-
-        let iam_client = aws_sdk_iam::Client::new(&config);
-
-        Self {
-            client: IAM::new(iam_client),
-            name: state.name,
-            region: state.region,
-            assume_role_policy: state.assume_role_policy,
-            policy_arns: state.policy_arns,
-        }
-    }
-    pub fn to_state(&self) -> InstanceRoleState {
-        InstanceRoleState {
-            name: self.name.clone(),
-            region: self.region.clone(),
-            assume_role_policy: self.assume_role_policy.clone(),
-            policy_arns: self.policy_arns.clone(),
         }
     }
 }
