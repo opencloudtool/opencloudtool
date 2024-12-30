@@ -1,6 +1,5 @@
 use aws_config;
 pub use aws_sdk_ec2;
-use aws_sdk_ec2::operation::describe_instances::DescribeInstancesOutput;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
 use base64::{engine::general_purpose, Engine as _};

@@ -1,5 +1,6 @@
 use std::fs;
 
+use crate::oct_ctl_sdk::run_container;
 use clap::{Parser, Subcommand};
 use log;
 use oct_cloud::aws;
@@ -193,17 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Deploy(args) => {
             // Get project config
-            let config = config::Config::new(None);
-            match config {
-                Ok(config) => {
-                    log::info!("Config: {:#?}", config);
-                }
-                Err(e) => {
-                    log::error!("Error loading config: {}", e);
-                }
-            };
-
-            // TODO: Use config
+            let config = config::Config::new(None)?;
 
             // Create EC2 instance
             let mut instance = aws::Ec2Instance::new(
@@ -225,11 +216,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             log::info!("Instance created: {}", instance_id);
 
             // Save to state file
-            let instance_state = state::Ec2InstanceState::new(instance).await;
+            let instance_state = state::Ec2InstanceState::new(&instance).await;
             let json_data = serde_json::to_string_pretty(&instance_state)?;
             fs::write(state_file_path, json_data)?;
 
-            log::info!("Instance {} saved to state file", instance_id);
+            log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
+
+            log::info!("Waiting for oct-ctl to be ready");
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+
+            match instance.public_ip {
+                Some(public_ip) => {
+                    for service in config.project.services {
+                        log::info!("Running container for service: {}", service.name);
+
+                        run_container(
+                            service.image.to_string(),
+                            service.external_port.to_string(),
+                            service.internal_port.to_string(),
+                            public_ip.to_string(),
+                        )
+                        .await?;
+                    }
+                }
+                None => {
+                    log::error!("Public IP not found");
+                }
+            }
         }
         Commands::Destroy(args) => {
             // Load instance from state file

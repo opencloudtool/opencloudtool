@@ -19,3 +19,8 @@ tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true
+actix-web = { workspace = true}
+serde = {  workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }

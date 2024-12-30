@@ -3,6 +3,8 @@ use mockall::mock;
 
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
+use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 use tower_http::trace::{self, TraceLayer};
 
@@ -62,6 +64,41 @@ impl ContainerEngine {
         match command {
             Ok(_) => Ok(()),
             Err(err) => Err(Box::new(err)),
+    image_uri: String,
+    internal_port: String,
+    external_port: String,
+}
+
+#[post("/run-container")]
+async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
+    let command = Command::new("podman")
+        .args([
+            "run",
+            "-d",
+            "-p",
+            format!(
+                "{external_port}:{internal_port}",
+                external_port = &payload.external_port,
+                internal_port = &payload.internal_port
+            )
+            .as_str(),
+            &payload.image_uri.as_str(),
+        ])
+        .output();
+
+    log::info!(
+        "{}",
+        String::from_utf8_lossy(&command.as_ref().expect("failed").stdout)
+    );
+
+    match command {
+        Ok(res) => {
+            println!("Result: {}", String::from_utf8_lossy(&res.stdout));
+            "Success"
+        }
+        Err(err) => {
+            println!("{}", err);
+            "Error"
         }
     }
 }
@@ -334,4 +371,18 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    log::info!("Starting server at http://0.0.0.0:31888");
+
+    HttpServer::new(|| {
+        let logger = Logger::default();
+        App::new().wrap(logger).service(run)
+    })
+    .bind(("0.0.0.0", 31888))?
+    .run()
+    .await
 }
+
+// TODO: add tests
