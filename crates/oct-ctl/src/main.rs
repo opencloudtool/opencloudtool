@@ -33,11 +33,11 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
 
     match command {
         Ok(res) => {
-            println!("Result: {}", String::from_utf8_lossy(&res.stdout));
+            log::info!("Result: {}", String::from_utf8_lossy(&res.stdout));
             "Success"
         }
         Err(err) => {
-            println!("{}", err);
+            log::error!("{}", err);
             "Error"
         }
     }
