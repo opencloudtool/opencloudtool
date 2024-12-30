@@ -230,13 +230,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for service in config.project.services {
                         log::info!("Running container for service: {}", service.name);
 
-                        run_container(
+                        let response = run_container(
                             service.image.to_string(),
                             service.external_port.to_string(),
                             service.internal_port.to_string(),
                             public_ip.to_string(),
                         )
                         .await?;
+
+                        log::info!("Response: {}", response.text().await?);
                     }
                 }
                 None => {
