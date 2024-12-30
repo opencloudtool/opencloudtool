@@ -15,7 +15,7 @@ pub struct Ec2InstanceState {
 }
 
 impl Ec2InstanceState {
-    pub async fn new(ec2_instance: aws::Ec2Instance) -> Self {
+    pub async fn new(ec2_instance: &aws::Ec2Instance) -> Self {
         Self {
             id: ec2_instance.id.clone().expect("Instance id is not set"),
             public_ip: ec2_instance
