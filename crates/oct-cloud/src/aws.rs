@@ -1,6 +1,5 @@
 use aws_config;
 pub use aws_sdk_ec2;
-use aws_sdk_ec2::operation::describe_instances::DescribeInstancesOutput;
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
 use base64::{engine::general_purpose, Engine as _};
@@ -298,10 +297,10 @@ impl Ec2Instance {
     set -e
 
     sudo apt update
-    sudo apt install docker.io -y
-    sudo systemctl start docker
+    sudo apt -y install podman
+    sudo systemctl start podman
 
-    aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin {ecr_repo_uri}
+    # aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {ecr_repo_uri}
 
     curl \
         --output /home/ubuntu/oct-ctl \
@@ -316,6 +315,11 @@ impl Ec2Instance {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
             .region(region_provider)
             .load()
             .await;
@@ -448,6 +452,11 @@ impl InstanceProfile {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
             .region(region_provider)
             .load()
             .await;
@@ -526,6 +535,11 @@ impl InstanceRole {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
             .region(region_provider)
             .load()
             .await;
