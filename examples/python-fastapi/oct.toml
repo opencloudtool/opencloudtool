@@ -7,5 +7,6 @@ image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 internal_port = 8000
 external_port = 8000
 image = "nginx:latest" # TODO: replace with python-fastapi image
+image = "docker.io/nginx:latest" # TODO: replace with python-fastapi image
 internal_port = 80
 external_port = 80
