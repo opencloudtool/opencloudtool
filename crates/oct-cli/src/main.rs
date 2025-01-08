@@ -220,8 +220,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let json_data = serde_json::to_string_pretty(&instance_state)?;
             fs::write(state_file_path, json_data)?;
 
-            log::info!("Instance created: {}", instance.id.ok_or("No instance id")?);
-
             log::info!("Waiting for oct-ctl to be ready");
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
