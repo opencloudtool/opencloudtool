@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::process::Command;
 use tower_http::trace::{self, TraceLayer};
 
@@ -373,7 +374,12 @@ mod tests {
     }
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let target = Box::new(File::create("/var/log/oct-ctl.log").expect("Can't create file"));
+
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Pipe(target))
+        .init();
+
     log::info!("Starting server at http://0.0.0.0:31888");
 
     HttpServer::new(|| {
