@@ -11,6 +11,11 @@ struct RunContainerPayload {
     external_port: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct RemoveContainerPayload {
+    name: String,
+}
+
 #[post("/run-container")]
 async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
     let command = Command::new("podman")
@@ -47,6 +52,29 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
     }
 }
 
+#[post("/remove-container")]
+async fn remove(payload: web::Json<RemoveContainerPayload>) -> impl Responder {
+    let command = Command::new("podman")
+        .args(["rm", "-f", &payload.name.as_str()])
+        .output();
+
+    log::info!(
+        "{}",
+        String::from_utf8_lossy(&command.as_ref().expect("failed").stdout)
+    );
+
+    match command {
+        Ok(res) => {
+            log::info!("Result: {}", String::from_utf8_lossy(&res.stdout));
+            "Success"
+        }
+        Err(err) => {
+            log::error!("{}", err);
+            "Error"
+        }
+    }
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let target = Box::new(File::create("/var/log/oct-ctl.log").expect("Can't create file"));
@@ -59,7 +87,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         let logger = Logger::default();
-        App::new().wrap(logger).service(run)
+        App::new().wrap(logger).service(run).service(remove)
     })
     .bind(("0.0.0.0", 31888))?
     .run()
