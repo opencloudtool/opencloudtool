@@ -86,6 +86,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         log::info!("Running container for service: {}", service.name);
 
                         let response = run_container(
+                            service.name.to_string(),
                             service.image.to_string(),
                             service.external_port.to_string(),
                             service.internal_port.to_string(),

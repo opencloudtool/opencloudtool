@@ -5,7 +5,8 @@ use std::process::Command;
 
 #[derive(Serialize, Deserialize)]
 struct RunContainerPayload {
-    image_uri: String,
+    name: String,
+    image: String,
     internal_port: String,
     external_port: String,
 }
@@ -16,6 +17,8 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
         .args([
             "run",
             "-d",
+            "--name",
+            &payload.name.as_str(),
             "-p",
             format!(
                 "{external_port}:{internal_port}",
@@ -23,7 +26,7 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
                 internal_port = &payload.internal_port
             )
             .as_str(),
-            &payload.image_uri.as_str(),
+            &payload.image.as_str(),
         ])
         .output();
 

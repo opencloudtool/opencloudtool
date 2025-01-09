@@ -2,7 +2,8 @@ use reqwest::Response;
 use std::collections::HashMap;
 
 pub async fn run_container(
-    container_name: String,
+    name: String,
+    image: String,
     internal_port: String,
     external_port: String,
     public_ip: String,
@@ -10,7 +11,8 @@ pub async fn run_container(
     let client = reqwest::Client::new();
 
     let mut map = HashMap::new();
-    map.insert("image_uri", container_name.as_str());
+    map.insert("name", name.as_str());
+    map.insert("image", image.as_str());
     map.insert("external_port", external_port.as_str());
     map.insert("internal_port", internal_port.as_str());
 
