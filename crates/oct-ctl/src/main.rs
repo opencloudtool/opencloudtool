@@ -13,59 +13,6 @@ use tower_http::trace::{self, TraceLayer};
 struct RunContainerPayload {
     name: String,
     image: String,
-    external_port: String,
-    internal_port: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct RemoveContainerPayload {
-    name: String,
-}
-
-/// Container engine implementation
-#[derive(Clone, Default)]
-struct ContainerEngine;
-
-impl ContainerEngine {
-    /// Runs container using `podman`
-    fn run(
-        &self,
-        name: &str,
-        image: &str,
-        external_port: &str,
-        internal_port: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let command = Command::new("podman")
-            .args([
-                "run",
-                "-d",
-                "--name",
-                name,
-                "-p",
-                format!(
-                    "{external_port}:{internal_port}",
-                    external_port = &external_port,
-                    internal_port = &internal_port
-                )
-                .as_str(),
-                image,
-            ])
-            .output();
-
-        match command {
-            Ok(_) => Ok(()),
-            Err(err) => Err(Box::new(err)),
-        }
-    }
-
-    /// Removes container
-    fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let command = Command::new("podman").args(["rm", "-f", name]).output();
-
-        match command {
-            Ok(_) => Ok(()),
-            Err(err) => Err(Box::new(err)),
-    image_uri: String,
     internal_port: String,
     external_port: String,
 }
@@ -76,6 +23,8 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
         .args([
             "run",
             "-d",
+            "--name",
+            &payload.name.as_str(),
             "-p",
             format!(
                 "{external_port}:{internal_port}",
@@ -83,7 +32,7 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
                 internal_port = &payload.internal_port
             )
             .as_str(),
-            &payload.image_uri.as_str(),
+            &payload.image.as_str(),
         ])
         .output();
 
