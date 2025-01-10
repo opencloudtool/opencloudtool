@@ -22,6 +22,19 @@ This is a simple "Hello World" application using FastAPI and Python 3.12. It dem
 
 3. Open your browser and navigate to `http://localhost:8000`
 
+## Build and push image to GitHub Container Registry
+
+### Auth in GitHub Container Registry
+
+https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic
+
+### Build and push
+
+```bash
+docker build --platform linux/amd64 -t ghcr.io/opencloudtool/example-python-fastapi:latest .
+docker push ghcr.io/opencloudtool/example-python-fastapi:latest
+```
+
 ## Project Structure
 
 - `main.py`: Contains the FastAPI application code
