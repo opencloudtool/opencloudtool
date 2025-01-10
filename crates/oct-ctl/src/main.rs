@@ -17,6 +17,11 @@ struct RunContainerPayload {
     external_port: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct RemoveContainerPayload {
+    name: String,
+}
+
 #[post("/run-container")]
 async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
     let command = Command::new("podman")
@@ -131,196 +136,6 @@ async fn remove(
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let log_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/var/log/oct-ctl.log")
-        .expect("Failed to open log file");
-
-    // Tracing initialization code was inspired by
-    // https://github.com/tower-rs/tower-http/issues/296#issuecomment-1301108593
-    tracing_subscriber::fmt().with_writer(log_file).init();
-
-    let container_engine = ContainerEngineImpl::default();
-    let server_config = ServerConfig { container_engine };
-
-    let app = Router::new()
-        .route("/run-container", post(run))
-        .route("/remove-container", post(remove))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-                .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
-        )
-        .with_state(server_config);
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:31888")
-        .await
-        .unwrap();
-
-    tracing::info!("Listening on {}", listener.local_addr().unwrap());
-
-    axum::serve(listener, app).await.unwrap();
-}
-
-// TODO: Use parametrization and fixtures from
-//     https://github.com/la10736/rstest
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use axum::routing::Router;
-    use tower::ServiceExt;
-
-    fn get_container_engine_mock(is_ok: bool) -> ContainerEngineImpl {
-        let mut container_engine_mock = ContainerEngineImpl::default();
-        container_engine_mock
-            .expect_run()
-            .returning(
-                move |_, _, _, _| {
-                    if is_ok {
-                        Ok(())
-                    } else {
-                        Err("error".into())
-                    }
-                },
-            );
-        container_engine_mock.expect_remove().returning(move |_| {
-            if is_ok {
-                Ok(())
-            } else {
-                Err("error".into())
-            }
-        });
-
-        container_engine_mock
-            .expect_clone()
-            .returning(move || get_container_engine_mock(is_ok));
-
-        container_engine_mock
-    }
-
-    #[tokio::test]
-    async fn test_run_container_success() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(true),
-        };
-
-        let app = Router::new()
-            .route("/run-container", post(run))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/run-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                            "image": "nginx:latest",
-                            "external_port": "8080",
-                            "internal_port": "80",
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-    }
-
-    #[tokio::test]
-    async fn test_run_container_failure() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(false),
-        };
-
-        let app = Router::new()
-            .route("/run-container", post(run))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/run-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                            "image": "nginx:latest",
-                            "external_port": "8080",
-                            "internal_port": "80",
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_success() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(true),
-        };
-
-        let app = Router::new()
-            .route("/remove-container", post(remove))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/remove-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_failure() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(false),
-        };
-
-        let app = Router::new()
-            .route("/remove-container", post(remove))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/remove-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                        })
-                        .to_string(),
-                    ))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    }
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let target = Box::new(File::create("/var/log/oct-ctl.log").expect("Can't create file"));
@@ -333,7 +148,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         let logger = Logger::default();
-        App::new().wrap(logger).service(run)
+        App::new().wrap(logger).service(run).service(remove)
     })
     .bind(("0.0.0.0", 31888))?
     .run()
