@@ -1,6 +1,5 @@
 use std::fs;
 
-use crate::oct_ctl_sdk::run_container;
 use clap::{Parser, Subcommand};
 use log;
 use oct_cloud::aws;
@@ -85,7 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     for service in config.project.services {
                         log::info!("Running container for service: {}", service.name);
 
-                        let response = run_container(
+                        let response = oct_ctl_sdk::run_container(
                             service.name.to_string(),
                             service.image.to_string(),
                             service.external_port.to_string(),
@@ -96,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         log::info!("Response: {}", response.text().await?);
                     }
+                    // TODO Save to user state file
                 }
                 None => {
                     log::error!("Public IP not found");
@@ -109,6 +109,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Create EC2 instance from state
             let mut instance = state.new_from_state().await?;
+
+            // Remove container from instance
+            match instance.public_ip.clone() {
+                Some(public_ip) => {
+                    for service in config::Config::new(None)?.project.services {
+                        log::info!("Removing container for service: {}", service.name);
+
+                        let response = oct_ctl_sdk::remove_container(
+                            service.name.to_string(),
+                            public_ip.to_string(),
+                        )
+                        .await?;
+
+                        log::info!("Response: {}", response.text().await?);
+                    }
+                }
+                None => {
+                    log::error!("Public IP not found");
+                }
+            }
 
             // Destroy EC2 instance
             instance.destroy().await?;
