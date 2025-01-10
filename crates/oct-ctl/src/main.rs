@@ -13,8 +13,8 @@ use tower_http::trace::{self, TraceLayer};
 struct RunContainerPayload {
     name: String,
     image: String,
-    internal_port: String,
     external_port: String,
+    internal_port: String,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -237,6 +237,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await?;
 
                         log::info!("Response: {}", response.text().await?);
+                        log::info!(
+                            "Service is available at http://{}:{}",
+                            public_ip,
+                            service.external_port
+                        );
                     }
                     // TODO Save to user state file
                 }

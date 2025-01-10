@@ -198,8 +198,8 @@ use std::collections::HashMap;
 pub async fn run_container(
     name: String,
     image: String,
-    internal_port: String,
     external_port: String,
+    internal_port: String,
     public_ip: String,
 ) -> Result<Response, reqwest::Error> {
     let client = reqwest::Client::new();
