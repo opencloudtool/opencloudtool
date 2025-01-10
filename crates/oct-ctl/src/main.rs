@@ -7,8 +7,8 @@ use std::process::Command;
 struct RunContainerPayload {
     name: String,
     image: String,
-    internal_port: String,
     external_port: String,
+    internal_port: String,
 }
 
 #[derive(Serialize, Deserialize)]
