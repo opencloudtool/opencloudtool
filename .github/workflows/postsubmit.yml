@@ -50,6 +50,9 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
+    - name: Run fmt
+      run: cargo fmt --check
+
     - name: Run tests
       env:
         RUST_BACKTRACE: full
