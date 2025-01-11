@@ -314,7 +314,7 @@ impl Ec2Instance {
     curl \
         --output /home/ubuntu/oct-ctl \
         -L \
-        https://github.com/21inchLingcod/opencloudtool/releases/download/v0.0.5/oct-ctl \
+        https://github.com/21inchLingcod/opencloudtool/releases/download/v0.0.7/oct-ctl \
         && sudo chmod +x /home/ubuntu/oct-ctl \
         && /home/ubuntu/oct-ctl &
     "#;
