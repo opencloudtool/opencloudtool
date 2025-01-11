@@ -4,14 +4,14 @@ use serde::{Deserialize, Serialize};
 use toml;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Config {
+pub(crate) struct Config {
     pub project: Project,
 }
 
 impl Config {
     const DEFAULT_CONFIG_PATH: &'static str = "oct.toml";
 
-    pub fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
         let data = fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH))?;
         let toml_data: Config = toml::from_str(&data)?;
 
@@ -20,13 +20,13 @@ impl Config {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Project {
+pub(crate) struct Project {
     pub name: String,
     pub services: Vec<Service>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct Service {
+pub(crate) struct Service {
     pub name: String,
     pub image: String,
     pub internal_port: u32,

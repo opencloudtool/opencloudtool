@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_state_file_path = "./user_state.json";
 
     match &cli.command {
-        Commands::Deploy(args) => {
+        Commands::Deploy(_args) => {
             // Get project config
             let config = config::Config::new(None)?;
 
@@ -122,7 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        Commands::Destroy(args) => {
+        Commands::Destroy(_args) => {
             // Load instance from state file
             let json_data = fs::read_to_string(state_file_path).expect("Unable to read file");
             let state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;

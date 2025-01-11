@@ -5,6 +5,7 @@ use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use base64::{engine::general_purpose, Engine as _};
 
 use log;
+#[allow(unused_imports)]
 use mockall::automock;
 
 /// Now we deploy only one EC2 instance where the services from
@@ -18,8 +19,12 @@ use mockall::automock;
 /// - Update if exists
 
 pub trait Resource {
-    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>>;
-    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>>;
+    fn create(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+    fn destroy(
+        &mut self,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
 }
 
 #[derive(Debug)]

@@ -1,7 +1,7 @@
 use reqwest::Response;
 use std::collections::HashMap;
 
-pub async fn run_container(
+pub(crate) async fn run_container(
     name: String,
     image: String,
     external_port: String,
@@ -34,7 +34,10 @@ pub async fn run_container(
     }
 }
 
-pub async fn remove_container(name: String, public_ip: String) -> Result<Response, reqwest::Error> {
+pub(crate) async fn remove_container(
+    name: String,
+    public_ip: String,
+) -> Result<Response, reqwest::Error> {
     let client = reqwest::Client::new();
 
     let mut map = HashMap::new();
