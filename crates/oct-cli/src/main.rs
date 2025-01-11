@@ -130,28 +130,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Create EC2 instance from state
             let mut instance = state.new_from_state().await?;
 
-            // Load service from user state file
-            let service_json_data =
-                fs::read_to_string(user_state_file_path).expect("Unable to read user state file");
-            let user_state: user_state::UserState = serde_json::from_str(&service_json_data)?;
+            // Check if user state file exists
+            if std::path::Path::new(user_state_file_path).exists() {
+                // Load service from user state file
+                let service_json_data = fs::read_to_string(user_state_file_path)
+                    .expect("Unable to read user state file");
+                let user_state: user_state::UserState = serde_json::from_str(&service_json_data)?;
 
-            // Remove container from instance
-            log::info!(
-                "Removing container for service: {}",
-                user_state.service_name
-            );
+                // Remove container from instance
+                log::info!(
+                    "Removing container for service: {}",
+                    user_state.service_name
+                );
 
-            let response = oct_ctl_sdk::remove_container(
-                user_state.service_name.to_string(),
-                user_state.public_ip.to_string(),
-            )
-            .await?;
+                let response = oct_ctl_sdk::remove_container(
+                    user_state.service_name.to_string(),
+                    user_state.public_ip.to_string(),
+                )
+                .await?;
 
-            log::info!("Response: {}", response.text().await?);
+                log::info!("Response: {}", response.text().await?);
 
-            // Remove service from user state file
-            fs::remove_file(user_state_file_path).expect("Unable to remove file");
-            log::info!("Service removed from user state file");
+                // Remove service from user state file
+                fs::remove_file(user_state_file_path).expect("Unable to remove file");
+                log::info!("Service removed from user state file");
+            } else {
+                log::warn!("User state file not found or no containers are running");
+            }
 
             // Destroy EC2 instance
             instance.destroy().await?;
