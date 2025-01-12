@@ -1,7 +1,8 @@
-use actix_web::{middleware::Logger, post, web, App, HttpServer, Responder};
+use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::process::Command;
+use tower_http::trace::{self, TraceLayer};
 
 #[derive(Serialize, Deserialize)]
 struct RunContainerPayload {
@@ -16,8 +17,7 @@ struct RemoveContainerPayload {
     name: String,
 }
 
-#[post("/run-container")]
-async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
+async fn run(Json(payload): Json<RunContainerPayload>) -> impl IntoResponse {
     let command = Command::new("podman")
         .args([
             "run",
@@ -43,17 +43,16 @@ async fn run(payload: web::Json<RunContainerPayload>) -> impl Responder {
     match command {
         Ok(res) => {
             log::info!("Result: {}", String::from_utf8_lossy(&res.stdout));
-            "Success"
+            (StatusCode::CREATED, "Success")
         }
         Err(err) => {
             log::error!("{}", err);
-            "Error"
+            (StatusCode::BAD_REQUEST, "Error")
         }
     }
 }
 
-#[post("/remove-container")]
-async fn remove(payload: web::Json<RemoveContainerPayload>) -> impl Responder {
+async fn remove(Json(payload): Json<RemoveContainerPayload>) -> impl IntoResponse {
     let command = Command::new("podman")
         .args(["rm", "-f", &payload.name.as_str()])
         .output();
@@ -66,32 +65,43 @@ async fn remove(payload: web::Json<RemoveContainerPayload>) -> impl Responder {
     match command {
         Ok(res) => {
             log::info!("Result: {}", String::from_utf8_lossy(&res.stdout));
-            "Success"
+            (StatusCode::OK, "Success")
         }
         Err(err) => {
             log::error!("{}", err);
-            "Error"
+            (StatusCode::BAD_REQUEST, "Error")
         }
     }
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    let target = Box::new(File::create("/var/log/oct-ctl.log").expect("Can't create file"));
+#[tokio::main]
+async fn main() {
+    let log_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/var/log/oct-ctl.log")
+        .expect("Failed to open log file");
 
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .target(env_logger::Target::Pipe(target))
-        .init();
+    // Tracing initialization code was inspired by
+    // https://github.com/tower-rs/tower-http/issues/296#issuecomment-1301108593
+    tracing_subscriber::fmt().with_writer(log_file).init();
 
-    log::info!("Starting server at http://0.0.0.0:31888");
+    let app = Router::new()
+        .route("/run-container", post(run))
+        .route("/remove-container", post(remove))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+                .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
+        );
 
-    HttpServer::new(|| {
-        let logger = Logger::default();
-        App::new().wrap(logger).service(run).service(remove)
-    })
-    .bind(("0.0.0.0", 31888))?
-    .run()
-    .await
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:31888")
+        .await
+        .unwrap();
+
+    tracing::info!("Listening on {}", listener.local_addr().unwrap());
+
+    axum::serve(listener, app).await.unwrap();
 }
 
 // TODO: add tests
