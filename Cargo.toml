@@ -11,6 +11,7 @@ aws-config = "1.5.13"
 aws-sdk-ec2 = "1.101.0"
 aws-sdk-ecr = "1.51.0"
 aws-sdk-iam = "1.56.0"
+axum = "0.8.1"
 base64 = "0.22.1"
 clap = { version = "4.5.26", features = ["derive"] }
 predicates = "3.1.3"
@@ -24,7 +25,11 @@ uuid = { version = "1.11.1", features = ["v4"] }
 log = "0.4.22"
 env_logger = "0.11.6"
 toml = "0.8.19"
-reqwest = "0.12.12"
+reqwest = { version = "0.12.12", features = ["json"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3" }
 
 [workspace.lints.rust]
 unsafe_code = "warn"
