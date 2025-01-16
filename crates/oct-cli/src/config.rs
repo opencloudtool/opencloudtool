@@ -12,7 +12,14 @@ impl Config {
     const DEFAULT_CONFIG_PATH: &'static str = "oct.toml";
 
     pub(crate) fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
-        let data = fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH))?;
+        let data = fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH)).map_err(|e| {
+            format!(
+                "Failed to read config file {}: {}",
+                Self::DEFAULT_CONFIG_PATH,
+                e
+            )
+        })?;
+
         let toml_data: Config = toml::from_str(&data)?;
 
         Ok(toml_data)
