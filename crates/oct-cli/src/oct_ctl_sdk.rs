@@ -1,20 +1,14 @@
-/// TODO: Generate this from `oct-ctl`'s `OpenAPI` spec
+/// TODO: Generate this from `oct-ctl`'s OpenAPI spec
+use reqwest::Response;
 use std::collections::HashMap;
 
-/// HTTP client to access `oct-ctl`'s API
 pub(crate) struct Client {
     public_ip: String,
-    port: u16,
 }
 
 impl Client {
-    const DEFAULT_PORT: u16 = 31888;
-
-    pub(crate) fn new(public_ip: String, port: Option<u16>) -> Self {
-        Self {
-            public_ip,
-            port: port.unwrap_or(Self::DEFAULT_PORT),
-        }
+    pub(crate) fn new(public_ip: String) -> Self {
+        Self { public_ip }
     }
 
     pub(crate) async fn run_container(
@@ -23,234 +17,48 @@ impl Client {
         image: String,
         external_port: String,
         internal_port: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<Response, reqwest::Error> {
         let client = reqwest::Client::new();
 
-        let map = HashMap::from([
-            ("name", name.as_str()),
-            ("image", image.as_str()),
-            ("external_port", external_port.as_str()),
-            ("internal_port", internal_port.as_str()),
-        ]);
+        let mut map = HashMap::new();
+        map.insert("name", name.as_str());
+        map.insert("image", image.as_str());
+        map.insert("external_port", external_port.as_str());
+        map.insert("internal_port", internal_port.as_str());
 
         let response = client
-            .post(format!(
-                "http://{}:{}/run-container",
-                self.public_ip, self.port
-            ))
+            .post(format!("http://{}:31888/run-container", self.public_ip))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
-            .body(serde_json::to_string(&map)?)
+            .body(serde_json::to_string(&map).unwrap())
             .send()
             .await?;
 
-        match response.error_for_status() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Box::new(e)),
-        }
-    }
-
-    pub(crate) async fn remove_container(
-        &self,
-        name: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = reqwest::Client::new();
-
-        let map = HashMap::from([("name", name.as_str())]);
-
-        let response = client
-            .post(format!(
-                "http://{}:{}/remove-container",
-                self.public_ip, self.port
-            ))
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .body(serde_json::to_string(&map)?)
-            .send()
-            .await?;
-
-        match response.error_for_status() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Box::new(e)),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    async fn setup_server() -> (String, u16, mockito::ServerGuard) {
-        let server = mockito::Server::new_async().await;
-
-        let (ip, port) = if let std::net::SocketAddr::V4(addr) = server.socket_address() {
-            (addr.ip().to_string(), addr.port())
+        if response.status().is_success() {
+            Ok(response)
         } else {
-            panic!("Server address is not IPv4")
-        };
-
-        (ip, port, server)
+            response.error_for_status()
+        }
     }
 
-    #[tokio::test]
-    async fn test_run_container_success() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
+    pub(crate) async fn remove_container(&self, name: String) -> Result<Response, reqwest::Error> {
+        let client = reqwest::Client::new();
 
-        let server_mock = server
-            .mock("POST", "/run-container")
-            .with_status(201)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
+        let mut map = HashMap::new();
+        map.insert("name", name.as_str());
 
-        let client = Client::new(ip, Some(port));
-
-        // Act
         let response = client
-            .run_container(
-                "test".to_string(),
-                "nginx:latest".to_string(),
-                "8080".to_string(),
-                "80".to_string(),
-            )
-            .await;
+            .post(format!("http://{}:31888/remove-container", self.public_ip))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .body(serde_json::to_string(&map).unwrap())
+            .send()
+            .await?;
 
-        // Assert
-        assert_eq!(response.is_ok(), true);
-        server_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_run_container_failure() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let server_mock = server
-            .mock("POST", "/run-container")
-            .with_status(500)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client::new(ip, Some(port));
-
-        // Act
-        let response = client
-            .run_container(
-                "test".to_string(),
-                "nginx:latest".to_string(),
-                "8080".to_string(),
-                "80".to_string(),
-            )
-            .await;
-
-        // Assert
-        assert_eq!(response.is_ok(), false);
-        server_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_success() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let server_mock = server
-            .mock("POST", "/remove-container")
-            .with_status(200)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client::new(ip, Some(port));
-
-        // Act
-        let response = client.remove_container("test".to_string()).await;
-
-        // Assert
-        assert_eq!(response.is_ok(), true);
-        server_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_failure() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let server_mock = server
-            .mock("POST", "/remove-container")
-            .with_status(500)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client::new(ip, Some(port));
-
-        // Act
-        let response = client.remove_container("test".to_string()).await;
-
-        // Assert
-        assert_eq!(response.is_ok(), false);
-        server_mock.assert();
-use reqwest::Response;
-use std::collections::HashMap;
-
-pub(crate) async fn run_container(
-    name: String,
-    image: String,
-    external_port: String,
-    internal_port: String,
-    public_ip: String,
-) -> Result<Response, reqwest::Error> {
-    let client = reqwest::Client::new();
-
-    let mut map = HashMap::new();
-    map.insert("name", name.as_str());
-    map.insert("image", image.as_str());
-    map.insert("external_port", external_port.as_str());
-    map.insert("internal_port", internal_port.as_str());
-
-    let response = client
-        .post(format!(
-            "http://{public_ip}:31888/run-container",
-            public_ip = public_ip
-        ))
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .body(serde_json::to_string(&map).unwrap())
-        .send()
-        .await?;
-
-    if response.status().is_success() {
-        Ok(response)
-    } else {
-        response.error_for_status()
-    }
-}
-
-pub(crate) async fn remove_container(
-    name: String,
-    public_ip: String,
-) -> Result<Response, reqwest::Error> {
-    let client = reqwest::Client::new();
-
-    let mut map = HashMap::new();
-    map.insert("name", name.as_str());
-
-    let response = client
-        .post(format!(
-            "http://{public_ip}:31888/remove-container",
-            public_ip = public_ip
-        ))
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json")
-        .body(serde_json::to_string(&map).unwrap())
-        .send()
-        .await?;
-
-    if response.status().is_success() {
-        Ok(response)
-    } else {
-        response.error_for_status()
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            response.error_for_status()
+        }
     }
 }
