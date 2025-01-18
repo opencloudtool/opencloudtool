@@ -50,14 +50,22 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
+    - name: Install grcov
+      run: cargo install grcov
+
+    - name: Install llvm-tools-preview
+      run: rustup component add llvm-tools-preview
+
     - name: Run fmt
       run: cargo fmt --check
 
     - name: Run tests
       env:
         RUST_BACKTRACE: full
-        AWS_ENDPOINT_URL: http://localhost:4566
-        AWS_REGION: us-east-1
-        AWS_ACCESS_KEY_ID: test
-        AWS_SECRET_ACCESS_KEY: test
+        CARGO_INCREMENTAL: 0
+        RUSTFLAGS: -Cinstrument-coverage
+        LLVM_PROFILE_FILE: 'coverage/%p-%m.profraw'
       run: cargo test --verbose
+
+    - name: Generate coverage report
+      run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"

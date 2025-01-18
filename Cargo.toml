@@ -31,6 +31,7 @@ tower = "0.5.2"
 tower-http = { version = "0.6.2", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3" }
+grcov = "0.8.20"
 
 [workspace.lints.rust]
 unsafe_code = "warn"
