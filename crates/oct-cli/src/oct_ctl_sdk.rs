@@ -20,11 +20,12 @@ impl Client {
     ) -> Result<Response, reqwest::Error> {
         let client = reqwest::Client::new();
 
-        let mut map = HashMap::new();
-        map.insert("name", name.as_str());
-        map.insert("image", image.as_str());
-        map.insert("external_port", external_port.as_str());
-        map.insert("internal_port", internal_port.as_str());
+        let map = HashMap::from([
+            ("name", name.as_str()),
+            ("image", image.as_str()),
+            ("external_port", external_port.as_str()),
+            ("internal_port", internal_port.as_str()),
+        ]);
 
         let response = client
             .post(format!("http://{}:31888/run-container", self.public_ip))
@@ -44,8 +45,7 @@ impl Client {
     pub(crate) async fn remove_container(&self, name: String) -> Result<Response, reqwest::Error> {
         let client = reqwest::Client::new();
 
-        let mut map = HashMap::new();
-        map.insert("name", name.as_str());
+        let map = HashMap::from([("name", name.as_str())]);
 
         let response = client
             .post(format!("http://{}:31888/remove-container", self.public_ip))
