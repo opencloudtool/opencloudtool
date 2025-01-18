@@ -1,7 +1,6 @@
 use std::fs;
 
 use clap::{Parser, Subcommand};
-use log;
 use oct_cloud::aws;
 use oct_cloud::aws::Resource;
 use oct_cloud::state;
@@ -84,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let public_ip = instance.public_ip.ok_or("Public IP not found")?;
 
-            let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
+            let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
 
             for service in config.project.services {
                 log::info!("Running container for service: {}", service.name);
@@ -96,9 +95,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         service.external_port.to_string(),
                         service.internal_port.to_string(),
                     )
-                    .await?;
+                    .await;
 
-                log::info!("Response: {}", response.text().await?);
+                if response.is_err() {
+                    log::error!("Failed to run '{}' service", service.name);
+                    continue;
+                }
+
                 log::info!(
                     "Service is available at http://{}:{}",
                     public_ip,
@@ -139,15 +142,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     user_state.service_name
                 );
 
-                let oct_ctl_client = oct_ctl_sdk::Client::new(user_state.public_ip);
+                let oct_ctl_client = oct_ctl_sdk::Client::new(user_state.public_ip, None);
 
                 let response = oct_ctl_client
                     .remove_container(user_state.service_name)
-                    .await?;
+                    .await;
 
-                // Remove service from user state file
-                fs::remove_file(&args.user_state_file_path).expect("Unable to remove file");
-                log::info!("Service removed from user state file");
+                match response {
+                    Ok(()) => {
+                        fs::remove_file(&args.user_state_file_path).expect("Unable to remove file");
+                        log::info!("Service removed from user state file");
+                    }
+                    Err(err) => log::error!("Failed to remove service: {}", err),
+                }
             } else {
                 log::warn!("User state file not found or no containers are running");
             }
