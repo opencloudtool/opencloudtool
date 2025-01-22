@@ -70,6 +70,9 @@ jobs:
     - name: Generate coverage report
       run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
 
+    - name: Display coverage report
+      run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"
+
     - name: Upload coverage report
       if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       uses: codecov/codecov-action@v5
