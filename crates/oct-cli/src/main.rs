@@ -83,11 +83,32 @@ impl Orchestrator {
         fs::write(&self.state_file_path, json_data)?;
 
         log::info!("Waiting for oct-ctl to be ready");
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+
 
         let public_ip = instance.public_ip.ok_or("Public IP not found")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
+        let max_tries = 10;
+        let mut tries = 0;
+
+        loop {
+            let response = oct_ctl_client.health().await;
+
+            match response {
+                Ok(_) => {
+                    log::info!("oct-ctl is ready");
+                    break;
+                }
+                Err(err) => {
+                    log::error!("oct-ctl is not ready: {}", err);
+                    if tries == max_tries {
+                        return Err("oct-ctl is not ready".into());
+                    }
+                    tries += 1;
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            }
+        }
 
         for service in config.project.services {
             log::info!("Running container for service: {}", service.name);

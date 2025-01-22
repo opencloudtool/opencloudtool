@@ -1,0 +1,3 @@
+curl http://localhost:31888/run-containers -H "Content-Type: application/json" -X POST -d '{"containers": [{"name": "test"}]}'
+
+curl https://google.com

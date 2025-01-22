@@ -74,6 +74,25 @@ impl Client {
             Err(e) => Err(Box::new(e)),
         }
     }
+
+    pub async fn health(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(format!(
+                "http://{}:{}/health",
+                self.public_ip, self.port
+            ))
+            .send()
+            .await?;
+
+        match response.error_for_status() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
+
 }
 
 #[cfg(test)]
