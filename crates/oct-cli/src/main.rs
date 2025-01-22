@@ -130,7 +130,8 @@ impl Orchestrator {
 
     async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Load instance from state file
-        let json_data = fs::read_to_string(&self.state_file_path).expect("Unable to read file");
+        let json_data =
+            fs::read_to_string(&self.state_file_path).expect("Unable to read state file");
         let state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
 
         // Create EC2 instance from state
@@ -196,7 +197,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// TODO: Add tests
-// #[cfg(test)]
-// mod tests {
-// }
+#[cfg(test)]
+mod tests {
+    use assert_cmd::Command;
+    use predicates::prelude::*;
+
+    #[tokio::test]
+    async fn test_main_deploy_no_oct_toml() {
+        // Arrange
+        let mut oct_cli_bin = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+
+        // Act
+        let cmd = oct_cli_bin.arg("deploy");
+
+        // Assert
+        cmd.assert().failure().stderr(predicate::str::contains(
+            "Failed to read config file oct.toml",
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_main_destroy_no_oct_toml() {
+        // Arrange
+        let mut oct_cli_bin = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+
+        // Act
+        let cmd = oct_cli_bin.arg("destroy");
+
+        // Assert
+        cmd.assert()
+            .failure()
+            .stderr(predicate::str::contains("Unable to read state file"));
+    }
+}
