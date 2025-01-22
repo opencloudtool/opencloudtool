@@ -1,4 +1,7 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+use axum::{
+    extract::State, http::StatusCode, response::IntoResponse, routing::get, routing::post, Json,
+    Router,
+};
 use mockall::mock;
 
 use serde::{Deserialize, Serialize};
@@ -64,6 +67,10 @@ impl ContainerEngine {
             Err(err) => Err(Box::new(err)),
         }
     }
+
+    fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 }
 
 // As long as ContainerEngine implemnts Clone, we mock it using
@@ -80,6 +87,7 @@ mock! {
         ) -> Result<(), Box<dyn std::error::Error>>;
 
         fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
+        fn health_check(&self) -> Result<(), Box<dyn std::error::Error>>;
     }
 
     impl Clone for ContainerEngine {
@@ -144,6 +152,14 @@ async fn remove(
     }
 }
 
+/// Health endpoint definition for Axum
+async fn health_check(State(server_config): State<ServerConfig>) -> impl IntoResponse {
+    match server_config.container_engine.health_check() {
+        Ok(_) => (StatusCode::OK, "Success"),
+        Err(_) => (StatusCode::BAD_REQUEST, "Error"),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let log_file = OpenOptions::new()
@@ -162,6 +178,7 @@ async fn main() {
     let app = Router::new()
         .route("/run-container", post(run))
         .route("/remove-container", post(remove))
+        .route("/health-check", get(health_check))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
@@ -202,6 +219,7 @@ mod tests {
                     }
                 },
             );
+
         container_engine_mock.expect_remove().returning(move |_| {
             if is_ok {
                 Ok(())
@@ -209,6 +227,10 @@ mod tests {
                 Err("error".into())
             }
         });
+
+        container_engine_mock
+            .expect_health_check()
+            .returning(move || if is_ok { Ok(()) } else { Err("error".into()) });
 
         container_engine_mock
             .expect_clone()
@@ -329,6 +351,40 @@ mod tests {
                     ))
                     .unwrap(),
             )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_health_check() {
+        let server_config = ServerConfig {
+            container_engine: get_container_engine_mock(true),
+        };
+        let app = Router::new()
+            .route("/health-check", get(health_check))
+            .with_state(server_config);
+
+        let response = app
+            .oneshot(Request::get("/health-check").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure() {
+        let server_config = ServerConfig {
+            container_engine: get_container_engine_mock(false),
+        };
+        let app = Router::new()
+            .route("/health-check", get(health_check))
+            .with_state(server_config);
+
+        let response = app
+            .oneshot(Request::get("/health-check").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
