@@ -78,7 +78,7 @@ impl Orchestrator {
         log::info!("Instance created: {}", instance_id);
 
         // Save to state file
-        let instance_state = state::Ec2InstanceState::new(&instance).await;
+        let instance_state = state::Ec2InstanceState::new(&instance);
         let json_data = serde_json::to_string_pretty(&instance_state)?;
         fs::write(&self.state_file_path, json_data)?;
 
