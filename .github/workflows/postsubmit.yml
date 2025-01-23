@@ -47,7 +47,7 @@ jobs:
       run: cargo test --verbose
 
     - name: Install grcov
-      run: cargo install grcov --force
+      run: which grcov || cargo install grcov
     
     - name: Display coverage report
       run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"
