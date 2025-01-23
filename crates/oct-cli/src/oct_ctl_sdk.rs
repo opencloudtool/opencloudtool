@@ -74,6 +74,24 @@ impl Client {
             Err(e) => Err(Box::new(e)),
         }
     }
+
+    pub async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(format!(
+                "http://{}:{}/health-check",
+                self.public_ip, self.port
+            ))
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await?;
+
+        match response.error_for_status() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
 }
 
 #[cfg(test)]
