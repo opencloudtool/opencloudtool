@@ -8,37 +8,26 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
+
+    env:
+      RUSTFLAGS: -Cinstrument-coverage
+      LLVM_PROFILE_FILE: 'coverage/%p-%m.profraw'
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Cache Cargo dependencies
-      uses: actions/cache@v4
+    - uses: dtolnay/rust-toolchain@stable
       with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Build
-      run: cargo build --verbose
-
-    - name: Install grcov
-      run: cargo install grcov
-
-    - name: Install llvm-tools-preview
-      run: rustup component add llvm-tools-preview
+        components: "llvm-tools-preview"
+    - uses: Swatinem/rust-cache@v2
 
     - name: Run fmt
       run: cargo fmt --check
@@ -46,19 +35,26 @@ jobs:
     - name: Machete
       uses: bnjbvr/cargo-machete@main
 
+    - name: Compile for tests
+      run: cargo test --no-run --locked
+
+    # Binaries needs to be compiled separately because
+    # CLI tests call these binaries.
+    - name: Compile debug binaries for tests
+      run: cargo build --bin oct-cli
+
     - name: Run tests
-      env:
-        RUST_BACKTRACE: full
-        CARGO_INCREMENTAL: 0
-        RUSTFLAGS: -Cinstrument-coverage
-        LLVM_PROFILE_FILE: 'coverage/%p-%m.profraw'
       run: cargo test --verbose
 
-    - name: Generate coverage report
-      run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
-
+    - name: Install grcov
+      run: cargo install grcov --force
+    
     - name: Display coverage report
       run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"
+
+    - name: Generate coverage report
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
 
     - name: Upload coverage report
       if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
