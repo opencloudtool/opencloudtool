@@ -1,8 +1,12 @@
 name: Release oct-ctl
 
 on:
-  release:
-    types: [published]
+  workflow_run:
+    workflows:
+      - Post-submit Checks
+    types:
+      - completed
+  
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,7 +21,7 @@ permissions:
 
 jobs:
   build:
-
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.ref_name == 'main' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +41,10 @@ jobs:
     - name: Build oct-ctl
       run: cargo build -p oct-ctl --release --verbose
 
-    - name: Upload oct-ctl binary to release
+    - name: Upload release
       env:
         GITHUB_TOKEN: ${{ github.TOKEN }}
-      run: gh release upload ${{github.event.release.tag_name}} target/release/oct-ctl
+      run: |
+        git tag -fa tip -m "Latest Continuous Release"
+        git push -f origin tip
+        gh release create tip target/release/oct-ctl --title "Latest Continuous Release" --notes "This is the latest build of oct-ctl." --target tip --prerelease --force
