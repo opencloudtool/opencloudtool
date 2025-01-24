@@ -1,4 +1,4 @@
-name: Release oct-ctl
+name: Release Tip
 
 on:
   workflow_run:
@@ -43,7 +43,7 @@ jobs:
     - name: Upload release
       uses: softprops/action-gh-release@v2
       with:
-        name: 'oct-ctl Tip'
+        name: 'Opencloudtool Tip ("Nightly")'
         prerelease: true
         tag_name: tip
         target_commitish: ${{ github.sha }}
