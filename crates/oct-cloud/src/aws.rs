@@ -637,14 +637,11 @@ mod tests {
         assert!(instance.id == Some("id".to_string()));
         assert!(instance.public_ip == Some("1.1.1.1".to_string()));
         assert!(instance.public_dns == Some("example.com".to_string()));
-
-        // assert!(instance.region == "us-west-2");
-        // assert!(instance.ami == "ami-830c94e3");
-        // assert!(instance.arn == "arn:aws:ec2:us-west-2:595634067310:instance/i-0e2939f5d64eba517");
-        // assert!(instance.instance_type == aws_sdk_ec2::types::InstanceType::T2Micro);
-        // assert!(instance.key_name == "test");
-        // assert!(instance.name == "test");
-        // assert!(instance.user_data == "test");
+        assert!(instance.region == "us-west-2");
+        assert!(instance.ami == "ami-830c94e3");
+        assert!(instance.instance_type == aws_sdk_ec2::types::InstanceType::T2Micro);
+        assert!(instance.name == "test");
+        assert!(instance.user_data == "test");
     }
 
     #[tokio::test]
@@ -750,5 +747,97 @@ mod tests {
         assert!(instance.id == None);
         assert!(instance.public_ip == Some("1.1.1.1".to_string()));
         assert!(instance.public_dns == Some("example.com".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_instance_profile() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_create_instance_profile()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Ok(()));
+
+        let mut instance_profile = InstanceProfile {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            instance_roles: vec![],
+        };
+
+        // Act
+        let create_result = instance_profile.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_instance_profile_error() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_create_instance_profile()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut instance_profile = InstanceProfile {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            instance_roles: vec![],
+        };
+
+        // Act
+        let create_result = instance_profile.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_instance_profile() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_delete_instance_profile()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Ok(()));
+
+        let mut instance_profile = InstanceProfile {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            instance_roles: vec![],
+        };
+
+        // Act
+        let destroy_result = instance_profile.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_instance_profile_error() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_delete_instance_profile()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut instance_profile = InstanceProfile {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            instance_roles: vec![],
+        };
+
+        // Act
+        let destroy_result = instance_profile.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
     }
 }
