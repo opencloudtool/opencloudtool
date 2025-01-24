@@ -6,7 +6,8 @@ on:
       - Post-submit Checks
     types:
       - completed
-  
+    branches:
+      - main
 
 env:
   CARGO_TERM_COLOR: always
