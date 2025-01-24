@@ -1,0 +1,41 @@
+name: Release Tagged Release
+
+on:
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+concurrency:
+  group: ${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.release.tag_name }}
+
+    - name: Cache Cargo dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build oct-ctl
+      run: cargo build -p oct-ctl --release --verbose
+
+    - name: Upload artifacts
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ github.event.release.tag_name }}
+        prerelease: false
+        tag_name: ${{ github.event.release.tag_name }}
+        target_commitish: ${{ github.sha }}
+        files: |
+          target/release/oct-ctl
