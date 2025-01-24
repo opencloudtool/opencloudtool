@@ -840,4 +840,100 @@ mod tests {
         // Assert
         assert!(destroy_result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_create_instance_iam_role() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_create_instance_iam_role()
+            .with(eq("test".to_string()), eq("".to_string()), eq(vec![]))
+            .return_once(|_, _, _| Ok(()));
+
+        let mut instance_role = InstanceRole {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            assume_role_policy: "".to_string(),
+            policy_arns: vec![],
+        };
+
+        // Act
+        let create_result = instance_role.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_instance_iam_role_error() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_create_instance_iam_role()
+            .with(eq("test".to_string()), eq("".to_string()), eq(vec![]))
+            .return_once(|_, _, _| Err("Error".into()));
+
+        let mut instance_role = InstanceRole {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            assume_role_policy: "".to_string(),
+            policy_arns: vec![],
+        };
+
+        // Act
+        let create_result = instance_role.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_instance_iam_role() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_delete_instance_iam_role()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Ok(()));
+
+        let mut instance_role = InstanceRole {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            assume_role_policy: "".to_string(),
+            policy_arns: vec![],
+        };
+
+        // Act
+        let destroy_result = instance_role.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_instance_iam_role_error() {
+        // Arrange
+        let mut iam_impl_mock = MockIAMImpl::default();
+        iam_impl_mock
+            .expect_delete_instance_iam_role()
+            .with(eq("test".to_string()), eq(vec![]))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut instance_role = InstanceRole {
+            client: iam_impl_mock,
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+            assume_role_policy: "".to_string(),
+            policy_arns: vec![],
+        };
+
+        // Act
+        let destroy_result = instance_role.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
 }
