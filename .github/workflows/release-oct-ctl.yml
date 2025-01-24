@@ -13,8 +13,8 @@ env:
 
 # Add this concurrency configuration
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -41,10 +41,19 @@ jobs:
     - name: Build oct-ctl
       run: cargo build -p oct-ctl --release --verbose
 
-    - name: Upload release
-      env:
-        GITHUB_TOKEN: ${{ github.TOKEN }}
+    - name: Tip Tag
       run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git tag -fa tip -m "Latest Continuous Release"
         git push -f origin tip
-        gh release create tip target/release/oct-ctl --title "Latest Continuous Release" --notes "This is the latest build of oct-ctl." --target tip --prerelease --force
+
+    - name: Upload release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: 'oct-ctl Tip'
+        prerelease: true
+        tag_name: tip
+        target_commitish: ${{ github.sha }}
+        files: |
+          target/release/oct-ctl
