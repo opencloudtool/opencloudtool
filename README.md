@@ -3,7 +3,7 @@
 
 # Open Cloud Tool
 
-A tool to hide the complexity of the cloud
+A tool to hide the complexity of the cloud.
 
 ## High Level Design
 
