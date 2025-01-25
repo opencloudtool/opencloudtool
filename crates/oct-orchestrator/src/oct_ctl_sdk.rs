@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 /// HTTP client to access `oct-ctl`'s API
 pub(crate) struct Client {
-    public_ip: String,
+    pub(crate) public_ip: String,
     port: u16,
 }
 
