@@ -1568,16 +1568,9 @@ dependencies = [
  "assert_cmd",
  "clap",
  "env_logger",
- "log",
- "mockito",
- "oct-cloud",
+ "oct-orchestrator",
  "predicates",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
  "tokio",
- "toml",
 ]
 
 [[package]]
@@ -1608,6 +1601,21 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "oct-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "mockito",
+ "oct-cloud",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
 ]
 
 [[package]]
