@@ -75,7 +75,7 @@ impl Client {
         }
     }
 
-    pub async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let response = client

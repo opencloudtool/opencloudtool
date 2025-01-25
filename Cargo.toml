@@ -4,6 +4,7 @@ resolver = "2"
 
 [workspace.dependencies]
 oct-cloud = { path = "crates/oct-cloud" }
+oct-orchestrator = { path = "crates/oct-orchestrator" }
 
 assert_cmd = "2.0.16"
 async-trait = "0.1.85"
