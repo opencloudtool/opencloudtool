@@ -50,25 +50,11 @@ impl Orchestrator {
         let json_data = serde_json::to_string_pretty(&instance_state)?;
         fs::write(&self.state_file_path, json_data)?;
 
-        log::info!("Waiting for oct-ctl to be ready");
-
         let public_ip = instance.public_ip.ok_or("Public IP not found")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
-        let max_tries = 10;
 
-        for _ in 0..max_tries {
-            match oct_ctl_client.health_check().await {
-                Ok(_) => {
-                    log::info!("oct-ctl is ready");
-                    break;
-                }
-                Err(err) => {
-                    log::error!("oct-ctl is not ready: {}", err);
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
-            }
-        }
+        let _ = self.check_host_health(&oct_ctl_client).await?;
 
         for service in config.project.services {
             log::info!("Running container for service: {}", service.name);
@@ -159,6 +145,39 @@ impl Orchestrator {
         log::info!("Instance removed from state file");
 
         Ok(())
+    }
+
+    /// Waits for a host to be healthy
+    async fn check_host_health(
+        &self,
+        oct_ctl_client: &oct_ctl_sdk::Client,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let public_ip = &oct_ctl_client.public_ip;
+
+        let max_tries = 24;
+        let sleep_duration_s = 5;
+
+        log::info!("Waiting for host '{public_ip}' to be ready");
+
+        for _ in 0..max_tries {
+            match oct_ctl_client.health_check().await {
+                Ok(_) => {
+                    log::info!("Host '{public_ip}' is ready");
+
+                    return Ok(());
+                }
+                Err(err) => {
+                    log::info!(
+                        "Host '{public_ip}' responded with error: {err}. \
+                        Retrying in {sleep_duration_s} sec..."
+                    );
+
+                    tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+                }
+            }
+        }
+
+        Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
     }
 }
 
