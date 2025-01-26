@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      RUSTFLAGS: -Cinstrument-coverage
+      RUSTFLAGS: -Dwarnings -Cinstrument-coverage
       LLVM_PROFILE_FILE: 'coverage/%p-%m.profraw'
 
     steps:

@@ -26,6 +26,7 @@ struct RemoveContainerPayload {
 #[derive(Clone, Default)]
 struct ContainerEngine;
 
+#[cfg_attr(test, allow(dead_code))]
 impl ContainerEngine {
     /// Runs container using `podman`
     fn run(
