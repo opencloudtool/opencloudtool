@@ -288,17 +288,7 @@ pub struct Ec2Instance {
 }
 
 impl Ec2Instance {
-    pub async fn new(
-        id: Option<String>,
-        public_ip: Option<String>,
-        public_dns: Option<String>,
-        region: String,
-        ami: String,
-        instance_type: aws_sdk_ec2::types::InstanceType,
-        name: String,
-        instance_profile: Option<InstanceProfile>,
-    ) -> Self {
-        let user_data = r#"#!/bin/bash
+    const USER_DATA: &str = r#"#!/bin/bash
     set -e
 
     sudo apt update
@@ -315,7 +305,17 @@ impl Ec2Instance {
         && /home/ubuntu/oct-ctl &
     "#;
 
-        let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
+    pub async fn new(
+        id: Option<String>,
+        public_ip: Option<String>,
+        public_dns: Option<String>,
+        region: String,
+        ami: String,
+        instance_type: aws_sdk_ec2::types::InstanceType,
+        name: String,
+        instance_profile: Option<InstanceProfile>,
+    ) -> Self {
+        let user_data_base64 = general_purpose::STANDARD.encode(&Self::USER_DATA);
 
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
@@ -348,7 +348,7 @@ impl Ec2Instance {
             ami,
             instance_type,
             name,
-            user_data: user_data.to_string(),
+            user_data: Self::USER_DATA.to_string(),
             user_data_base64,
             instance_profile: Some(instance_profile),
         }
