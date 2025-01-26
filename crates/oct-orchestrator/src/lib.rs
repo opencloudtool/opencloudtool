@@ -42,6 +42,7 @@ impl Orchestrator {
         instance.create().await?;
 
         let instance_id = instance.id.clone().ok_or("No instance id")?;
+        let public_ip = instance.public_ip.clone().ok_or("Public IP not found")?;
 
         log::info!("Instance created: {}", instance_id);
 
@@ -49,8 +50,6 @@ impl Orchestrator {
         let instance_state = state::Ec2InstanceState::new(&instance);
         let json_data = serde_json::to_string_pretty(&instance_state)?;
         fs::write(&self.state_file_path, json_data)?;
-
-        let public_ip = instance.public_ip.ok_or("Public IP not found")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
 
