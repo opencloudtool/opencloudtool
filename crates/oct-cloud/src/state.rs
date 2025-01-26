@@ -1,4 +1,3 @@
-use crate::aws;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,8 +15,6 @@ pub struct Ec2InstanceState {
 
 #[cfg(test)]
 mod mocks {
-    use super::*;
-
     pub struct MockEc2Instance {
         pub id: Option<String>,
         pub public_ip: Option<String>,
@@ -89,7 +86,7 @@ mod mocks {
 }
 
 #[cfg(not(test))]
-use aws::{Ec2Instance, InstanceProfile, InstanceRole};
+use crate::aws::{Ec2Instance, InstanceProfile, InstanceRole};
 
 #[cfg(test)]
 use mocks::{

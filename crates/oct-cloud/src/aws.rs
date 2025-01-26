@@ -8,16 +8,10 @@ use log;
 #[allow(unused_imports)]
 use mockall::automock;
 
-/// Now we deploy only one EC2 instance where the services from
-/// the config.
-/// In state we store only the information about the instance and
-/// related resources (IAM role, ECR repository, etc.).
-///
-/// User flow:
-/// - Check state of the resource (by resource name from dynamic config)
-/// - Create if not exists
-/// - Update if exists
-
+/// Defines the basic operations for managing cloud resources.
+/// It includes methods for creating and destroying resources asynchronously.
+/// Implementations of this trait should provide the specific logic for
+/// resource management in the context of the cloud provider being used.
 pub trait Resource {
     fn create(
         &mut self,
@@ -33,6 +27,7 @@ struct Ec2Impl {
 }
 
 /// TODO: Add tests using static replay
+#[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl Ec2Impl {
     fn new(inner: aws_sdk_ec2::Client) -> Self {
@@ -121,6 +116,7 @@ struct IAMImpl {
 }
 
 /// TODO: Add tests using static replay
+#[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl IAMImpl {
     fn new(inner: aws_sdk_iam::Client) -> Self {
