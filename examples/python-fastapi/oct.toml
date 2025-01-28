@@ -6,5 +6,5 @@ name = "app"
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 internal_port = 8000
 external_port = 8000
-cpu = 250
+cpus = 250
 memory = 64

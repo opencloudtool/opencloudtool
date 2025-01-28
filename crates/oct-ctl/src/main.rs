@@ -11,14 +11,23 @@ use tower_http::trace::{self, TraceLayer};
 
 #[derive(Serialize, Deserialize)]
 struct RunContainerPayload {
+    /// Name of the container
     name: String,
+    /// Image to use for the container
     image: String,
+    /// External container port
     external_port: String,
+    /// Internal container port
     internal_port: String,
+    /// CPU millicores
+    cpus: u32,
+    /// Memory in MB
+    memory: u64,
 }
 
 #[derive(Serialize, Deserialize)]
 struct RemoveContainerPayload {
+    /// Name of the container
     name: String,
 }
 
@@ -35,7 +44,11 @@ impl ContainerEngine {
         image: &str,
         external_port: &str,
         internal_port: &str,
+        cpus: u32,
+        memory: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
+
         let command = Command::new("podman")
             .args([
                 "run",
@@ -49,6 +62,10 @@ impl ContainerEngine {
                     internal_port = &internal_port
                 )
                 .as_str(),
+                "--cpus",
+                format!("{:.2}", cpus).as_str(),
+                "--memory",
+                format!("{}m", memory).as_str(),
                 image,
             ])
             .output();
@@ -85,6 +102,8 @@ mock! {
             image: &str,
             external_port: &str,
             internal_port: &str,
+            cpus: u32,
+            memory: u64,
         ) -> Result<(), Box<dyn std::error::Error>>;
 
         fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
@@ -118,6 +137,8 @@ async fn run(
         &payload.image.as_str(),
         &payload.external_port,
         &payload.internal_port,
+        payload.cpus,
+        payload.memory,
     );
 
     match run_result {
@@ -212,7 +233,7 @@ mod tests {
         container_engine_mock
             .expect_run()
             .returning(
-                move |_, _, _, _| {
+                move |_, _, _, _, _, _| {
                     if is_ok {
                         Ok(())
                     } else {
@@ -255,13 +276,15 @@ mod tests {
                 Request::post("/run-container")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                            "image": "nginx:latest",
-                            "external_port": "8080",
-                            "internal_port": "80",
+                        serde_json::to_string_pretty(&RunContainerPayload {
+                            name: "test".to_string(),
+                            image: "nginx:latest".to_string(),
+                            external_port: "8080".to_string(),
+                            internal_port: "80".to_string(),
+                            cpus: 250,
+                            memory: 64,
                         })
-                        .to_string(),
+                        .unwrap(),
                     ))
                     .unwrap(),
             )
@@ -286,13 +309,15 @@ mod tests {
                 Request::post("/run-container")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
-                            "image": "nginx:latest",
-                            "external_port": "8080",
-                            "internal_port": "80",
+                        serde_json::to_string_pretty(&RunContainerPayload {
+                            name: "test".to_string(),
+                            image: "nginx:latest".to_string(),
+                            external_port: "8080".to_string(),
+                            internal_port: "80".to_string(),
+                            cpus: 250,
+                            memory: 64,
                         })
-                        .to_string(),
+                        .unwrap(),
                     ))
                     .unwrap(),
             )
@@ -317,10 +342,10 @@ mod tests {
                 Request::post("/remove-container")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
+                        serde_json::to_string_pretty(&RemoveContainerPayload {
+                            name: "test".to_string(),
                         })
-                        .to_string(),
+                        .unwrap(),
                     ))
                     .unwrap(),
             )
@@ -345,10 +370,10 @@ mod tests {
                 Request::post("/remove-container")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        serde_json::json!({
-                            "name": "test",
+                        serde_json::to_string_pretty(&RemoveContainerPayload {
+                            name: "test".to_string(),
                         })
-                        .to_string(),
+                        .unwrap(),
                     ))
                     .unwrap(),
             )

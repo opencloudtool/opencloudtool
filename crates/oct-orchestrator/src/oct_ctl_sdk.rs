@@ -1,10 +1,25 @@
-/// TODO: Generate this from `oct-ctl`'s `OpenAPI` spec
-use std::collections::HashMap;
+/// TODO(#147): Generate this from `oct-ctl`'s `OpenAPI` spec
+use serde::{Deserialize, Serialize};
 
 /// HTTP client to access `oct-ctl`'s API
 pub(crate) struct Client {
     pub(crate) public_ip: String,
     port: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RunContainerRequest {
+    name: String,
+    image: String,
+    external_port: String,
+    internal_port: String,
+    cpus: u32,
+    memory: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RemoveContainerRequest {
+    name: String,
 }
 
 impl Client {
@@ -23,15 +38,19 @@ impl Client {
         image: String,
         external_port: String,
         internal_port: String,
+        cpus: u32,
+        memory: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
-        let map = HashMap::from([
-            ("name", name.as_str()),
-            ("image", image.as_str()),
-            ("external_port", external_port.as_str()),
-            ("internal_port", internal_port.as_str()),
-        ]);
+        let request = RunContainerRequest {
+            name,
+            image,
+            external_port,
+            internal_port,
+            cpus,
+            memory,
+        };
 
         let response = client
             .post(format!(
@@ -40,7 +59,7 @@ impl Client {
             ))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
-            .body(serde_json::to_string(&map)?)
+            .body(serde_json::to_string(&request)?)
             .send()
             .await?;
 
@@ -56,7 +75,7 @@ impl Client {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
-        let map = HashMap::from([("name", name.as_str())]);
+        let request = RemoveContainerRequest { name };
 
         let response = client
             .post(format!(
@@ -65,7 +84,7 @@ impl Client {
             ))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
-            .body(serde_json::to_string(&map)?)
+            .body(serde_json::to_string(&request)?)
             .send()
             .await?;
 
@@ -131,6 +150,8 @@ mod tests {
                 "nginx:latest".to_string(),
                 "8080".to_string(),
                 "80".to_string(),
+                250,
+                64,
             )
             .await;
 
@@ -160,6 +181,8 @@ mod tests {
                 "nginx:latest".to_string(),
                 "8080".to_string(),
                 "80".to_string(),
+                250,
+                64,
             )
             .await;
 
