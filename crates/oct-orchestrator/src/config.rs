@@ -31,12 +31,22 @@ pub(crate) struct Project {
     pub services: Vec<Service>,
 }
 
+/// Configuration for a service
+/// This configuration is managed by the user and used to deploy the service
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Service {
-    pub name: String,
-    pub image: String,
-    pub internal_port: u32,
-    pub external_port: u32,
+    /// Name of the service
+    pub(crate) name: String,
+    /// Image to use for the container
+    pub(crate) image: String,
+    /// Internal port exposed from the container
+    pub(crate) internal_port: u32,
+    /// External port exposed to the public internet
+    pub(crate) external_port: u32,
+    /// CPU millicores
+    pub(crate) cpu: u32,
+    /// Memory in MB
+    pub(crate) memory: u32,
 }
 
 #[cfg(test)]
@@ -59,12 +69,16 @@ name = "app_1"
 image = "nginx:latest"
 internal_port = 80
 external_port = 80
+cpu = 1024
+memory = 4096
 
 [[project.services]]
 name = "app_2"
 image = "nginx:latest"
 internal_port = 80
 external_port = 80
+cpu = 1024
+memory = 4096
     "#;
 
         let mut file = tempfile::NamedTempFile::new().unwrap();
@@ -85,12 +99,16 @@ external_port = 80
                             image: "nginx:latest".to_string(),
                             internal_port: 80,
                             external_port: 80,
+                            cpu: 1024,
+                            memory: 4096,
                         },
                         Service {
                             name: "app_2".to_string(),
                             image: "nginx:latest".to_string(),
                             internal_port: 80,
                             external_port: 80,
+                            cpu: 1024,
+                            memory: 4096,
                         }
                     ]
                 }
