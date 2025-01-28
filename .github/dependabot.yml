@@ -11,3 +11,17 @@ updates:
       interval: "weekly"
     assignees:
       - "minev-dev"
+      - "andagaev"
+      - "olegasics"
+    groups:
+      version-updates:
+        applies-to: version-updates
+        update-types:
+          - "major"
+          - "patch"
+          - "minor"
+      security-updates:
+        applies-to: security-updates
+        update-types:
+          - "patch"
+          - "minor"
