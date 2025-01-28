@@ -44,9 +44,9 @@ pub(crate) struct Service {
     /// External port exposed to the public internet
     pub(crate) external_port: u32,
     /// CPU millicores
-    pub(crate) cpu: u32,
+    pub(crate) cpus: u32,
     /// Memory in MB
-    pub(crate) memory: u32,
+    pub(crate) memory: u64,
 }
 
 #[cfg(test)]
@@ -69,16 +69,16 @@ name = "app_1"
 image = "nginx:latest"
 internal_port = 80
 external_port = 80
-cpu = 1024
-memory = 4096
+cpus = 250
+memory = 64
 
 [[project.services]]
 name = "app_2"
 image = "nginx:latest"
 internal_port = 80
 external_port = 80
-cpu = 1024
-memory = 4096
+cpus = 250
+memory = 64
     "#;
 
         let mut file = tempfile::NamedTempFile::new().unwrap();
@@ -99,16 +99,16 @@ memory = 4096
                             image: "nginx:latest".to_string(),
                             internal_port: 80,
                             external_port: 80,
-                            cpu: 1024,
-                            memory: 4096,
+                            cpus: 250,
+                            memory: 64,
                         },
                         Service {
                             name: "app_2".to_string(),
                             image: "nginx:latest".to_string(),
                             internal_port: 80,
                             external_port: 80,
-                            cpu: 1024,
-                            memory: 4096,
+                            cpus: 250,
+                            memory: 64,
                         }
                     ]
                 }

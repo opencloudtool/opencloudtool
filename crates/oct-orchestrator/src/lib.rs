@@ -64,6 +64,8 @@ impl Orchestrator {
                     service.image.to_string(),
                     service.external_port.to_string(),
                     service.internal_port.to_string(),
+                    service.cpus,
+                    service.memory,
                 )
                 .await;
 
