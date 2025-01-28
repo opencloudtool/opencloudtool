@@ -48,8 +48,12 @@ jobs:
       run: cargo test --verbose
 
     - name: Install grcov
-      run: which grcov || cargo install grcov
-    
+      if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+      uses: clechasseur/rs-cargo@v3
+      with:
+        command: install
+        args: grcov
+
     - name: Display coverage report
       if: ${{ github.event_name == 'pull_request' }}
       run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"
