@@ -1,263 +1,9 @@
-use aws_config;
-pub use aws_sdk_ec2;
-use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
+pub use aws_sdk_ec2::types::InstanceType;
 
 use base64::{engine::general_purpose, Engine as _};
 
-use log;
-#[allow(unused_imports)]
-use mockall::automock;
-
-/// Defines the basic operations for managing cloud resources.
-/// It includes methods for creating and destroying resources asynchronously.
-/// Implementations of this trait should provide the specific logic for
-/// resource management in the context of the cloud provider being used.
-pub trait Resource {
-    fn create(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
-    fn destroy(
-        &mut self,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
-}
-
-#[derive(Debug)]
-struct Ec2Impl {
-    inner: aws_sdk_ec2::Client,
-}
-
-/// TODO: Add tests using static replay
-#[cfg_attr(test, allow(dead_code))]
-#[cfg_attr(test, automock)]
-impl Ec2Impl {
-    fn new(inner: aws_sdk_ec2::Client) -> Self {
-        Self { inner }
-    }
-
-    // Retrieve metadata about specific EC2 instance
-    async fn describe_instances(
-        &self,
-        instance_id: String,
-    ) -> Result<aws_sdk_ec2::types::Instance, Box<dyn std::error::Error>> {
-        let response = self
-            .inner
-            .describe_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
-
-        let instance = response
-            .reservations()
-            .first()
-            .ok_or("No reservations")?
-            .instances()
-            .first()
-            .ok_or("No instances")?;
-
-        Ok(instance.clone())
-    }
-
-    // TODO: Return Instance instead of response
-    async fn run_instances(
-        &self,
-        instance_type: aws_sdk_ec2::types::InstanceType,
-        ami: String,
-        user_data_base64: String,
-        instance_profile_name: Option<String>,
-    ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
-        log::info!("Starting EC2 instance");
-
-        let mut request = self
-            .inner
-            .run_instances()
-            .instance_type(instance_type.clone())
-            .image_id(ami.clone())
-            .user_data(user_data_base64.clone())
-            .min_count(1)
-            .max_count(1);
-
-        if let Some(instance_profile_name) = instance_profile_name {
-            request = request.iam_instance_profile(
-                aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
-                    .name(instance_profile_name)
-                    .build(),
-            );
-        }
-
-        let response = request.send().await?;
-
-        log::info!("Created EC2 instance");
-
-        Ok(response)
-    }
-
-    async fn terminate_instance(
-        &self,
-        instance_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.inner
-            .terminate_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
-
-        Ok(())
-    }
-}
-
-#[cfg(not(test))]
-use Ec2Impl as Ec2;
-#[cfg(test)]
-use MockEc2Impl as Ec2;
-
-#[derive(Debug)]
-struct IAMImpl {
-    inner: aws_sdk_iam::Client,
-}
-
-/// TODO: Add tests using static replay
-#[cfg_attr(test, allow(dead_code))]
-#[cfg_attr(test, automock)]
-impl IAMImpl {
-    fn new(inner: aws_sdk_iam::Client) -> Self {
-        Self { inner }
-    }
-
-    async fn create_instance_iam_role(
-        &self,
-        name: String,
-        assume_role_policy: String,
-        policy_arns: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // Create IAM role for EC2 instance
-        log::info!("Creating IAM role for EC2 instance");
-
-        self.inner
-            .create_role()
-            .role_name(name.clone())
-            .assume_role_policy_document(assume_role_policy)
-            .send()
-            .await?;
-
-        log::info!("Created IAM role for EC2 instance");
-
-        for policy_arn in &policy_arns {
-            log::info!("Attaching '{policy_arn}' policy to the role");
-
-            self.inner
-                .attach_role_policy()
-                .role_name(name.clone())
-                .policy_arn(policy_arn)
-                .send()
-                .await?;
-
-            log::info!("Attached '{policy_arn}' policy to the role");
-        }
-
-        Ok(())
-    }
-
-    async fn delete_instance_iam_role(
-        &self,
-        name: String,
-        policy_arns: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        for policy_arn in &policy_arns {
-            log::info!("Detaching '{policy_arn}' IAM role from EC2 instance");
-
-            self.inner
-                .detach_role_policy()
-                .role_name(name.clone())
-                .policy_arn(policy_arn)
-                .send()
-                .await?;
-
-            log::info!("Detached '{policy_arn}' IAM role from EC2 instance");
-        }
-
-        log::info!("Deleting IAM role for EC2 instance");
-
-        self.inner
-            .delete_role()
-            .role_name(name.clone())
-            .send()
-            .await?;
-
-        log::info!("Deleted IAM role for EC2 instance");
-
-        Ok(())
-    }
-
-    async fn create_instance_profile(
-        &self,
-        name: String,
-        role_names: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Creating IAM instance profile for EC2 instance");
-
-        self.inner
-            .create_instance_profile()
-            .instance_profile_name(name.clone())
-            .send()
-            .await?;
-
-        log::info!("Created IAM instance profile for EC2 instance");
-
-        for role_name in role_names {
-            log::info!("Adding '{role_name}' IAM role to instance profile");
-
-            self.inner
-                .add_role_to_instance_profile()
-                .instance_profile_name(name.clone())
-                .role_name(role_name.clone())
-                .send()
-                .await?;
-
-            log::info!("Added '{role_name}' IAM role to instance profile");
-        }
-
-        log::info!("Waiting for instance profile to be ready");
-        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-
-        Ok(())
-    }
-
-    async fn delete_instance_profile(
-        &self,
-        name: String,
-        role_names: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        for role_name in role_names {
-            log::info!("Removing {role_name} IAM role from instance profile");
-
-            self.inner
-                .remove_role_from_instance_profile()
-                .instance_profile_name(name.clone())
-                .role_name(role_name.clone())
-                .send()
-                .await?;
-
-            log::info!("Removed {role_name} IAM role from instance profile");
-        }
-
-        log::info!("Deleting IAM instance profile");
-
-        self.inner
-            .delete_instance_profile()
-            .instance_profile_name(name.clone())
-            .send()
-            .await?;
-
-        log::info!("Deleted IAM instance profile");
-
-        Ok(())
-    }
-}
-
-#[cfg(not(test))]
-use IAMImpl as IAM;
-#[cfg(test)]
-use MockIAMImpl as IAM;
+use crate::aws::client::{Ec2, IAM};
+use crate::resource::Resource;
 
 #[derive(Debug)]
 pub struct Ec2Instance {
@@ -274,7 +20,7 @@ pub struct Ec2Instance {
 
     pub ami: String,
 
-    pub instance_type: aws_sdk_ec2::types::InstanceType,
+    pub instance_type: InstanceType,
     pub name: String,
     pub user_data: String,
     pub user_data_base64: String,
@@ -575,12 +321,14 @@ impl Resource for InstanceRole {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
     use mockall::predicate::eq;
 
     #[tokio::test]
     async fn test_create_ec2_instance() {
         // Arrange
-        let mut ec2_impl_mock = MockEc2Impl::default();
+        let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
             .with(
@@ -640,7 +388,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance_no_instance() {
         // Arrange
-        let mut ec2_impl_mock = MockEc2Impl::default();
+        let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
             .with(
@@ -679,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_ec2_instance() {
         // Arrange
-        let mut ec2_impl_mock = MockEc2Impl::default();
+        let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
             .with(eq("id".to_string()))
@@ -711,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_ec2_instance_no_instance_id() {
         // Arrange
-        let mut ec2_impl_mock = MockEc2Impl::default();
+        let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
             .with(eq("id".to_string()))
@@ -745,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_instance_profile() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_create_instance_profile()
             .with(eq("test".to_string()), eq(vec![]))
@@ -768,7 +516,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_instance_profile_error() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_create_instance_profile()
             .with(eq("test".to_string()), eq(vec![]))
@@ -791,7 +539,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_instance_profile() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_delete_instance_profile()
             .with(eq("test".to_string()), eq(vec![]))
@@ -814,7 +562,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_instance_profile_error() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_delete_instance_profile()
             .with(eq("test".to_string()), eq(vec![]))
@@ -837,7 +585,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_instance_iam_role() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_create_instance_iam_role()
             .with(eq("test".to_string()), eq("".to_string()), eq(vec![]))
@@ -861,7 +609,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_instance_iam_role_error() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_create_instance_iam_role()
             .with(eq("test".to_string()), eq("".to_string()), eq(vec![]))
@@ -885,7 +633,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_instance_iam_role() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_delete_instance_iam_role()
             .with(eq("test".to_string()), eq(vec![]))
@@ -909,7 +657,7 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_instance_iam_role_error() {
         // Arrange
-        let mut iam_impl_mock = MockIAMImpl::default();
+        let mut iam_impl_mock = IAM::default();
         iam_impl_mock
             .expect_delete_instance_iam_role()
             .with(eq("test".to_string()), eq(vec![]))

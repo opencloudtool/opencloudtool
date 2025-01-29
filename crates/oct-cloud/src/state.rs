@@ -86,7 +86,7 @@ mod mocks {
 }
 
 #[cfg(not(test))]
-use crate::aws::{Ec2Instance, InstanceProfile, InstanceRole};
+use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole};
 
 #[cfg(test)]
 use mocks::{
