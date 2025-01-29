@@ -26,6 +26,15 @@ impl Orchestrator {
         // Get project config
         let config = config::Config::new(None)?;
 
+        // Get user state file data
+        let mut user_state: user_state::UserState =
+            if std::path::Path::new(&self.user_state_file_path).exists() {
+                let existing_data = fs::read_to_string(&self.user_state_file_path)?;
+                serde_json::from_str::<user_state::UserState>(&existing_data)?
+            } else {
+                user_state::UserState::default()
+            };
+
         // Create EC2 instance
         let mut instance = aws::Ec2Instance::new(
             None,
@@ -69,29 +78,43 @@ impl Orchestrator {
                 )
                 .await;
 
-            if response.is_err() {
-                log::error!("Failed to run '{}' service", service.name);
-                continue;
+            match response {
+                Ok(_) => {
+                    log::info!(
+                        "Service is available at http://{}:{}",
+                        public_ip,
+                        service.external_port
+                    );
+                }
+                Err(err) => {
+                    log::error!(
+                        "Failed to run container for service: {}. Error: {}",
+                        service.name,
+                        err
+                    );
+                    continue;
+                }
             }
 
-            log::info!(
-                "Service is available at http://{}:{}",
-                public_ip,
-                service.external_port
-            );
+            // Add service to deployed services Vec
+            let deployed_service = user_state::Service {
+                name: service.name.to_string(),
+                public_ip: public_ip.clone(),
+            };
+            user_state.services.push(deployed_service);
 
-            // Save service to user state file
-            let deployed_service =
-                user_state::UserState::new(service.name.to_string(), public_ip.to_string());
-            fs::write(
-                &self.user_state_file_path,
-                serde_json::to_string_pretty(&deployed_service)?,
-            )?;
             log::info!(
-                "Service: {} - saved to user state file",
+                "Service: {} - added to deployed services",
                 service.name.to_string()
             );
         }
+
+        // Save services to user state file
+        fs::write(
+            &self.user_state_file_path,
+            serde_json::to_string_pretty(&user_state)?,
+        )?;
+        log::info!("Services saved to user state file");
 
         Ok(())
     }
@@ -107,30 +130,34 @@ impl Orchestrator {
 
         // Check if user state file exists
         if std::path::Path::new(&self.user_state_file_path).exists() {
-            // Load service from user state file
-            let service_json_data = fs::read_to_string(&self.user_state_file_path)
-                .expect("Unable to read user state file");
-            let user_state: user_state::UserState = serde_json::from_str(&service_json_data)?;
+            // Load services from user state file
+            let user_state_json_data = fs::read_to_string(&self.user_state_file_path)?;
+            let user_state = serde_json::from_str::<user_state::UserState>(&user_state_json_data)?;
 
-            // Remove container from instance
-            log::info!(
-                "Removing container for service: {}",
-                user_state.service_name
-            );
+            for service in user_state.services {
+                // Remove container from instance
+                log::info!("Removing container for service: {}", service.name);
 
-            let oct_ctl_client = oct_ctl_sdk::Client::new(user_state.public_ip, None);
+                let oct_ctl_client = oct_ctl_sdk::Client::new(service.public_ip, None);
 
-            let response = oct_ctl_client
-                .remove_container(user_state.service_name)
-                .await;
+                let response = oct_ctl_client.remove_container(service.name.clone()).await;
 
-            match response {
-                Ok(()) => {
-                    fs::remove_file(&self.user_state_file_path).expect("Unable to remove file");
-                    log::info!("Service removed from user state file");
+                match response {
+                    Ok(_) => {
+                        log::info!("Container removed for service: {}", service.name);
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Failed to remove container for service: {}. Error: {}",
+                            service.name,
+                            err
+                        );
+                        continue;
+                    }
                 }
-                Err(err) => log::error!("Failed to remove service: {}", err),
             }
+            // Remove services from user state file
+            let _ = fs::remove_file(&self.user_state_file_path);
         } else {
             log::warn!("User state file not found or no containers are running");
         }
