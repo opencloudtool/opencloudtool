@@ -62,7 +62,7 @@ impl Orchestrator {
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
 
-        let _ = self.check_host_health(&oct_ctl_client).await?;
+        self.check_host_health(&oct_ctl_client).await?;
 
         for service in config.project.services {
             log::info!("Running container for service: {}", service.name);
@@ -79,7 +79,7 @@ impl Orchestrator {
                 .await;
 
             match response {
-                Ok(_) => {
+                Ok(()) => {
                     log::info!(
                         "Service is available at http://{}:{}",
                         public_ip,
@@ -143,7 +143,7 @@ impl Orchestrator {
                 let response = oct_ctl_client.remove_container(service.name.clone()).await;
 
                 match response {
-                    Ok(_) => {
+                    Ok(()) => {
                         log::info!("Container removed for service: {}", service.name);
                     }
                     Err(err) => {
@@ -189,7 +189,7 @@ impl Orchestrator {
 
         for _ in 0..max_tries {
             match oct_ctl_client.health_check().await {
-                Ok(_) => {
+                Ok(()) => {
                     log::info!("Host '{public_ip}' is ready");
 
                     return Ok(());

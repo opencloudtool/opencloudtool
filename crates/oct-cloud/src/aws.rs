@@ -48,10 +48,10 @@ impl Ec2Impl {
 
         let instance = response
             .reservations()
-            .get(0)
+            .first()
             .ok_or("No reservations")?
             .instances()
-            .get(0)
+            .first()
             .ok_or("No instances")?;
 
         Ok(instance.clone())
@@ -79,7 +79,7 @@ impl Ec2Impl {
         if let Some(instance_profile_name) = instance_profile_name {
             request = request.iam_instance_profile(
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
-                    .name(instance_profile_name.clone())
+                    .name(instance_profile_name)
                     .build(),
             );
         }
@@ -311,7 +311,7 @@ impl Ec2Instance {
         name: String,
         instance_profile: Option<InstanceProfile>,
     ) -> Self {
-        let user_data_base64 = general_purpose::STANDARD.encode(&Self::USER_DATA);
+        let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
 
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
@@ -353,6 +353,9 @@ impl Ec2Instance {
 
 impl Resource for Ec2Instance {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        const MAX_ATTEMPTS: usize = 10;
+        const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
+
         // Create IAM role for EC2 instance
         match &mut self.instance_profile {
             Some(instance_profile) => instance_profile.create().await,
@@ -366,10 +369,7 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
-                match &self.instance_profile {
-                    Some(instance_profile) => Some(instance_profile.name.clone()),
-                    None => None,
-                },
+                self.instance_profile.as_ref().map(|p| p.name.clone()),
             )
             .await?;
 
@@ -379,12 +379,9 @@ impl Resource for Ec2Instance {
             .first()
             .ok_or("No instances returned")?;
 
-        self.id = instance.instance_id.clone();
+        self.id.clone_from(&instance.instance_id);
 
         // Poll for metadata
-        const MAX_ATTEMPTS: usize = 10;
-        const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
-
         let instance_id = self.id.as_ref().ok_or("No instance id")?;
 
         for _ in 0..MAX_ATTEMPTS {
