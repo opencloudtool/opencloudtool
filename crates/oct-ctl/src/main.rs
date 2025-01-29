@@ -31,9 +31,26 @@ struct RemoveContainerPayload {
     name: String,
 }
 
+/// Container manager options
+#[derive(Clone, Default)]
+enum ContainerManager {
+    #[default]
+    Podman,
+}
+
+impl ContainerManager {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ContainerManager::Podman => "podman",
+        }
+    }
+}
+
 /// Container engine implementation
 #[derive(Clone, Default)]
-struct ContainerEngine;
+struct ContainerEngine {
+    manager: ContainerManager,
+}
 
 #[cfg_attr(test, allow(dead_code))]
 impl ContainerEngine {
@@ -49,7 +66,7 @@ impl ContainerEngine {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
 
-        let command = Command::new("podman")
+        let command = Command::new(self.manager.as_str())
             .args([
                 "run",
                 "-d",
@@ -63,9 +80,9 @@ impl ContainerEngine {
                 )
                 .as_str(),
                 "--cpus",
-                format!("{:.2}", cpus).as_str(),
+                format!("{cpus:.2}").as_str(),
                 "--memory",
-                format!("{}m", memory).as_str(),
+                format!("{memory}m").as_str(),
                 image,
             ])
             .output();
@@ -78,16 +95,14 @@ impl ContainerEngine {
 
     /// Removes container
     fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let command = Command::new("podman").args(["rm", "-f", name]).output();
+        let command = Command::new(self.manager.as_str())
+            .args(["rm", "-f", name])
+            .output();
 
         match command {
             Ok(_) => Ok(()),
             Err(err) => Err(Box::new(err)),
         }
-    }
-
-    fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
     }
 }
 
@@ -107,7 +122,6 @@ mock! {
         ) -> Result<(), Box<dyn std::error::Error>>;
 
         fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
-        fn health_check(&self) -> Result<(), Box<dyn std::error::Error>>;
     }
 
     impl Clone for ContainerEngine {
@@ -133,8 +147,8 @@ async fn run(
     Json(payload): Json<RunContainerPayload>,
 ) -> impl IntoResponse {
     let run_result = server_config.container_engine.run(
-        &payload.name.as_str(),
-        &payload.image.as_str(),
+        payload.name.as_str(),
+        payload.image.as_str(),
         &payload.external_port,
         &payload.internal_port,
         payload.cpus,
@@ -142,7 +156,7 @@ async fn run(
     );
 
     match run_result {
-        Ok(_) => {
+        Ok(()) => {
             log::info!("Created container: {}", &payload.name);
             (StatusCode::CREATED, "Success")
         }
@@ -158,12 +172,10 @@ async fn remove(
     State(server_config): State<ServerConfig>,
     Json(payload): Json<RemoveContainerPayload>,
 ) -> impl IntoResponse {
-    let command = server_config
-        .container_engine
-        .remove(&payload.name.as_str());
+    let command = server_config.container_engine.remove(payload.name.as_str());
 
     match command {
-        Ok(_) => {
+        Ok(()) => {
             log::info!("Removed container: {}", &payload.name);
             (StatusCode::OK, "Success")
         }
@@ -175,11 +187,8 @@ async fn remove(
 }
 
 /// Health endpoint definition for Axum
-async fn health_check(State(server_config): State<ServerConfig>) -> impl IntoResponse {
-    match server_config.container_engine.health_check() {
-        Ok(_) => (StatusCode::OK, "Success"),
-        Err(_) => (StatusCode::BAD_REQUEST, "Error"),
-    }
+async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, "Success")
 }
 
 #[tokio::main]
@@ -194,8 +203,9 @@ async fn main() {
     // https://github.com/tower-rs/tower-http/issues/296#issuecomment-1301108593
     tracing_subscriber::fmt().with_writer(log_file).init();
 
-    let container_engine = ContainerEngineImpl::default();
-    let server_config = ServerConfig { container_engine };
+    let server_config = ServerConfig {
+        container_engine: ContainerEngineImpl::default(),
+    };
 
     let app = Router::new()
         .route("/run-container", post(run))
@@ -249,10 +259,6 @@ mod tests {
                 Err("error".into())
             }
         });
-
-        container_engine_mock
-            .expect_health_check()
-            .returning(move || if is_ok { Ok(()) } else { Err("error".into()) });
 
         container_engine_mock
             .expect_clone()
@@ -398,22 +404,5 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn test_health_check_failure() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(false),
-        };
-        let app = Router::new()
-            .route("/health-check", get(health_check))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(Request::get("/health-check").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
