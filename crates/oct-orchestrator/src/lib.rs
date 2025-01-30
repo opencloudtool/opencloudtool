@@ -1,7 +1,7 @@
 use std::fs;
 
-use oct_cloud::aws;
-use oct_cloud::aws::Resource;
+use oct_cloud::aws::resource::{Ec2Instance, InstanceType};
+use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
 mod config;
@@ -36,13 +36,13 @@ impl Orchestrator {
             };
 
         // Create EC2 instance
-        let mut instance = aws::Ec2Instance::new(
+        let mut instance = Ec2Instance::new(
             None,
             None,
             None,
             "us-west-2".to_string(),
             "ami-04dd23e62ed049936".to_string(),
-            aws::aws_sdk_ec2::types::InstanceType::T2Micro,
+            InstanceType::T2Micro,
             "oct-cli".to_string(),
             None,
         )
