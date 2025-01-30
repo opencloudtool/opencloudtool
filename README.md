@@ -7,11 +7,11 @@ A tool to hide the complexity of the cloud.
 
 ## High Level Design
 
-![OpenCloudTool Design](./docs/high-level-design.png)
+![OpenCloudTool Design](./docs/high-level-design.excalidraw.png)
 
 ## Versions Design
 
-![OpenCloudTool Versions](./docs/versions-design.png)
+![OpenCloudTool Versions](./docs/versions-design.excalidraw.png)
 
 ## Usage
 
