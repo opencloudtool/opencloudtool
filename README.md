@@ -11,7 +11,15 @@ A tool to hide the complexity of the cloud.
 
 ## Versions Design
 
-![OpenCloudTool Versions](./docs/versions-design.excalidraw.png)
+Each version of OpenCloudTool has a mini-project to prove the design and implementation.
+
+### v0.2.0 "Orchestrator and multi-service deployment"
+
+![v0.2.0](./docs/v0.2.0.excalidraw.png)
+
+### v0.3.0 "Multi-host deployment"
+
+![v0.3.0](./docs/v0.3.0.excalidraw.png)
 
 ## Usage
 
