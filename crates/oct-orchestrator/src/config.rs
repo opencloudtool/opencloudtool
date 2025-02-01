@@ -49,6 +49,7 @@ pub(crate) struct Service {
     /// Memory in MB
     pub(crate) memory: u64,
     /// Environment variables to set in the container
+    #[serde(default)]
     pub(crate) envs: HashMap<String, String>,
 }
 
@@ -87,11 +88,7 @@ internal_port = 80
 external_port = 80
 cpus = 250
 memory = 64
-
-[project.services.envs]
-KEY3 = "VALUE3"
-KEY4 = "VALUE4"
-    "#;
+"#;
 
         let mut file = tempfile::NamedTempFile::new().unwrap();
         file.write_all(config_file_content.as_bytes()).unwrap();
@@ -125,10 +122,7 @@ KEY4 = "VALUE4"
                             external_port: 80,
                             cpus: 250,
                             memory: 64,
-                            envs: HashMap::from([
-                                ("KEY3".to_string(), "VALUE3".to_string()),
-                                ("KEY4".to_string(), "VALUE4".to_string()),
-                            ]),
+                            envs: HashMap::new(),
                         }
                     ]
                 }
