@@ -1,4 +1,6 @@
 /// TODO(#147): Generate this from `oct-ctl`'s `OpenAPI` spec
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 /// HTTP client to access `oct-ctl`'s API
@@ -15,6 +17,7 @@ struct RunContainerRequest {
     internal_port: String,
     cpus: u32,
     memory: u64,
+    envs: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,6 +43,7 @@ impl Client {
         internal_port: String,
         cpus: u32,
         memory: u64,
+        envs: HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
@@ -50,6 +54,7 @@ impl Client {
             internal_port,
             cpus,
             memory,
+            envs,
         };
 
         let response = client
@@ -152,6 +157,7 @@ mod tests {
                 "80".to_string(),
                 250,
                 64,
+                HashMap::new(),
             )
             .await;
 
@@ -183,6 +189,7 @@ mod tests {
                 "80".to_string(),
                 250,
                 64,
+                HashMap::new(),
             )
             .await;
 

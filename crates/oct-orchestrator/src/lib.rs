@@ -75,6 +75,7 @@ impl Orchestrator {
                     service.internal_port.to_string(),
                     service.cpus,
                     service.memory,
+                    service.envs,
                 )
                 .await;
 
