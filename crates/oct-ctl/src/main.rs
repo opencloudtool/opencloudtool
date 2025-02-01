@@ -68,10 +68,8 @@ impl ContainerEngine {
         internal_port: &str,
         cpus: u32,
         memory: u64,
-        envs: HashMap<String, String>,
+        envs: &HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
-
         let network_create_cmd = Command::new(self.manager.as_str())
             .args(["network", "create", Self::NETWORK_NAME])
             .output()?;
@@ -83,28 +81,18 @@ impl ContainerEngine {
             network_create_cmd.stderr
         );
 
+        let run_container_args = Self::build_run_container_args(
+            name,
+            image,
+            external_port,
+            internal_port,
+            cpus,
+            memory,
+            envs,
+        );
+
         let run_container_cmd = Command::new(self.manager.as_str())
-            .args([
-                "run",
-                "-d",
-                "--name",
-                name,
-                "-p",
-                format!(
-                    "{external_port}:{internal_port}",
-                    external_port = &external_port,
-                    internal_port = &internal_port
-                )
-                .as_str(),
-                "--cpus",
-                format!("{cpus:.2}").as_str(),
-                "--memory",
-                format!("{memory}m").as_str(),
-                "--network",
-                Self::NETWORK_NAME,
-                image,
-            ])
-            .envs(envs)
+            .args(&run_container_args)
             .output()?;
 
         log::info!(
@@ -128,6 +116,47 @@ impl ContainerEngine {
             Err(err) => Err(Box::new(err)),
         }
     }
+
+    fn build_run_container_args(
+        name: &str,
+        image: &str,
+        external_port: &str,
+        internal_port: &str,
+        cpus: u32,
+        memory: u64,
+        envs: &HashMap<String, String>,
+    ) -> Vec<String> {
+        let port_mapping = format!("{external_port}:{internal_port}");
+
+        let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
+        let cpus_str = format!("{cpus:.2}");
+        let memory_str = format!("{memory}m");
+
+        let mut run_container_args = vec![
+            "run".to_string(),
+            "-d".to_string(),
+            "--name".to_string(),
+            name.to_string(),
+            "-p".to_string(),
+            port_mapping,
+            "--cpus".to_string(),
+            cpus_str,
+            "--memory".to_string(),
+            memory_str,
+            "--network".to_string(),
+            Self::NETWORK_NAME.to_string(),
+        ];
+
+        for (key, value) in envs {
+            let env_str = format!("{key}={value}");
+            run_container_args.push("-e".to_string());
+            run_container_args.push(env_str);
+        }
+
+        run_container_args.push(image.to_string());
+
+        run_container_args
+    }
 }
 
 // As long as ContainerEngine implemnts Clone, we mock it using
@@ -143,7 +172,7 @@ mock! {
             internal_port: &str,
             cpus: u32,
             memory: u64,
-            envs: HashMap<String, String>,
+            envs: &HashMap<String, String>,
         ) -> Result<(), Box<dyn std::error::Error>>;
 
         fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
@@ -178,7 +207,7 @@ async fn run(
         &payload.internal_port,
         payload.cpus,
         payload.memory,
-        payload.envs,
+        &payload.envs,
     );
 
     match run_result {
