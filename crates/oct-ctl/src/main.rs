@@ -1,12 +1,13 @@
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::process::Command;
+
 use axum::{
     extract::State, http::StatusCode, response::IntoResponse, routing::get, routing::post, Json,
     Router,
 };
 use mockall::mock;
-
 use serde::{Deserialize, Serialize};
-use std::fs::OpenOptions;
-use std::process::Command;
 use tower_http::trace::{self, TraceLayer};
 
 #[derive(Serialize, Deserialize)]
@@ -23,6 +24,8 @@ struct RunContainerPayload {
     cpus: u32,
     /// Memory in MB
     memory: u64,
+    /// Environment variables
+    envs: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -63,6 +66,7 @@ impl ContainerEngine {
         internal_port: &str,
         cpus: u32,
         memory: u64,
+        envs: HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
 
@@ -85,6 +89,7 @@ impl ContainerEngine {
                 format!("{memory}m").as_str(),
                 image,
             ])
+            .envs(envs)
             .output();
 
         match command {
@@ -119,6 +124,7 @@ mock! {
             internal_port: &str,
             cpus: u32,
             memory: u64,
+            envs: HashMap<String, String>,
         ) -> Result<(), Box<dyn std::error::Error>>;
 
         fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
@@ -153,6 +159,7 @@ async fn run(
         &payload.internal_port,
         payload.cpus,
         payload.memory,
+        payload.envs,
     );
 
     match run_result {
@@ -250,7 +257,7 @@ mod tests {
         container_engine_mock
             .expect_run()
             .returning(
-                move |_, _, _, _, _, _| {
+                move |_, _, _, _, _, _, _| {
                     if is_ok {
                         Ok(())
                     } else {
@@ -296,6 +303,7 @@ mod tests {
                             internal_port: "80".to_string(),
                             cpus: 250,
                             memory: 64,
+                            envs: HashMap::new(),
                         })
                         .unwrap(),
                     ))
@@ -329,6 +337,7 @@ mod tests {
                             internal_port: "80".to_string(),
                             cpus: 250,
                             memory: 64,
+                            envs: HashMap::new(),
                         })
                         .unwrap(),
                     ))
