@@ -57,6 +57,8 @@ struct ContainerEngine {
 
 #[cfg_attr(test, allow(dead_code))]
 impl ContainerEngine {
+    const NETWORK_NAME: &str = "oct";
+
     /// Runs container using `podman`
     fn run(
         &self,
@@ -70,7 +72,18 @@ impl ContainerEngine {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
 
-        let command = Command::new(self.manager.as_str())
+        let network_create_cmd = Command::new(self.manager.as_str())
+            .args(["network", "create", Self::NETWORK_NAME])
+            .output()?;
+
+        log::info!(
+            "Network create command output: status={:?}, stdout={:?}, stderr={:?}",
+            network_create_cmd.status,
+            network_create_cmd.stdout,
+            network_create_cmd.stderr
+        );
+
+        let run_container_cmd = Command::new(self.manager.as_str())
             .args([
                 "run",
                 "-d",
@@ -87,15 +100,21 @@ impl ContainerEngine {
                 format!("{cpus:.2}").as_str(),
                 "--memory",
                 format!("{memory}m").as_str(),
+                "--network",
+                Self::NETWORK_NAME,
                 image,
             ])
             .envs(envs)
-            .output();
+            .output()?;
 
-        match command {
-            Ok(_) => Ok(()),
-            Err(err) => Err(Box::new(err)),
-        }
+        log::info!(
+            "Run container command output: status={:?}, stdout={:?}, stderr={:?}",
+            run_container_cmd.status,
+            run_container_cmd.stdout,
+            run_container_cmd.stderr
+        );
+
+        Ok(())
     }
 
     /// Removes container
