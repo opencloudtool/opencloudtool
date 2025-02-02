@@ -17,9 +17,9 @@ struct RunContainerPayload {
     /// Image to use for the container
     image: String,
     /// External container port
-    external_port: String,
+    external_port: Option<u32>,
     /// Internal container port
-    internal_port: String,
+    internal_port: Option<u32>,
     /// CPU millicores
     cpus: u32,
     /// Memory in MB
@@ -64,8 +64,8 @@ impl ContainerEngine {
         &self,
         name: &str,
         image: &str,
-        external_port: &str,
-        internal_port: &str,
+        external_port: Option<u32>,
+        internal_port: Option<u32>,
         cpus: u32,
         memory: u64,
         envs: &HashMap<String, String>,
@@ -120,14 +120,12 @@ impl ContainerEngine {
     fn build_run_container_args(
         name: &str,
         image: &str,
-        external_port: &str,
-        internal_port: &str,
+        external_port: Option<u32>,
+        internal_port: Option<u32>,
         cpus: u32,
         memory: u64,
         envs: &HashMap<String, String>,
     ) -> Vec<String> {
-        let port_mapping = format!("{external_port}:{internal_port}");
-
         let cpus = f64::from(cpus) / 1000.0; // Convert millicores to cores
         let cpus_str = format!("{cpus:.2}");
         let memory_str = format!("{memory}m");
@@ -137,8 +135,6 @@ impl ContainerEngine {
             "-d".to_string(),
             "--name".to_string(),
             name.to_string(),
-            "-p".to_string(),
-            port_mapping,
             "--cpus".to_string(),
             cpus_str,
             "--memory".to_string(),
@@ -146,6 +142,13 @@ impl ContainerEngine {
             "--network".to_string(),
             Self::NETWORK_NAME.to_string(),
         ];
+
+        if let (Some(external_port), Some(internal_port)) = (external_port, internal_port) {
+            let port_mapping = format!("{external_port}:{internal_port}");
+
+            run_container_args.push("-p".to_string());
+            run_container_args.push(port_mapping);
+        }
 
         for (key, value) in envs {
             let env_str = format!("{key}={value}");
@@ -168,8 +171,8 @@ mock! {
             &self,
             name: &str,
             image: &str,
-            external_port: &str,
-            internal_port: &str,
+            external_port: Option<u32>,
+            internal_port: Option<u32>,
             cpus: u32,
             memory: u64,
             envs: &HashMap<String, String>,
@@ -203,8 +206,8 @@ async fn run(
     let run_result = server_config.container_engine.run(
         payload.name.as_str(),
         payload.image.as_str(),
-        &payload.external_port,
-        &payload.internal_port,
+        payload.external_port,
+        payload.internal_port,
         payload.cpus,
         payload.memory,
         &payload.envs,
@@ -291,6 +294,7 @@ async fn main() {
 
 // TODO: Use parametrization and fixtures from
 //     https://github.com/la10736/rstest
+// TODO: Add integration tests
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,8 +351,8 @@ mod tests {
                         serde_json::to_string_pretty(&RunContainerPayload {
                             name: "test".to_string(),
                             image: "nginx:latest".to_string(),
-                            external_port: "8080".to_string(),
-                            internal_port: "80".to_string(),
+                            external_port: Some(8080),
+                            internal_port: Some(80),
                             cpus: 250,
                             memory: 64,
                             envs: HashMap::new(),
@@ -381,8 +385,8 @@ mod tests {
                         serde_json::to_string_pretty(&RunContainerPayload {
                             name: "test".to_string(),
                             image: "nginx:latest".to_string(),
-                            external_port: "8080".to_string(),
-                            internal_port: "80".to_string(),
+                            external_port: Some(8080),
+                            internal_port: Some(80),
                             cpus: 250,
                             memory: 64,
                             envs: HashMap::new(),

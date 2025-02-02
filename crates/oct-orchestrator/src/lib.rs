@@ -71,8 +71,8 @@ impl Orchestrator {
                 .run_container(
                     service.name.to_string(),
                     service.image.to_string(),
-                    service.external_port.to_string(),
-                    service.internal_port.to_string(),
+                    service.external_port,
+                    service.internal_port,
                     service.cpus,
                     service.memory,
                     service.envs,
@@ -80,19 +80,20 @@ impl Orchestrator {
                 .await;
 
             match response {
-                Ok(()) => {
-                    log::info!(
-                        "Service is available at http://{}:{}",
-                        public_ip,
-                        service.external_port
-                    );
-                }
+                Ok(()) => match service.external_port {
+                    Some(port) => {
+                        log::info!(
+                            "Service {} is available at http://{public_ip}:{port}",
+                            service.name
+                        );
+                    }
+                    None => {
+                        log::info!("Service '{}' is running", service.name);
+                    }
+                },
                 Err(err) => {
-                    log::error!(
-                        "Failed to run container for service: {}. Error: {}",
-                        service.name,
-                        err
-                    );
+                    log::error!("Failed to run '{}' service. Error: {}", service.name, err);
+
                     continue;
                 }
             }
