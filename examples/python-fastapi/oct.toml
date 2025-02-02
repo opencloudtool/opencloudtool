@@ -4,8 +4,6 @@ name = "python-fastapi"
 [[project.services]]
 name = "app_1"
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
-internal_port = 8000
-external_port = 8001
 cpus = 250
 memory = 64
 
@@ -15,8 +13,6 @@ APP_NAME = "app_1"
 [[project.services]]
 name = "app_2"
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
-internal_port = 8000
-external_port = 8002
 cpus = 250
 memory = 64
 
