@@ -41,9 +41,9 @@ pub(crate) struct Service {
     /// Image to use for the container
     pub(crate) image: String,
     /// Internal port exposed from the container
-    pub(crate) internal_port: u32,
+    pub(crate) internal_port: Option<u32>,
     /// External port exposed to the public internet
-    pub(crate) external_port: u32,
+    pub(crate) external_port: Option<u32>,
     /// CPU millicores
     pub(crate) cpus: u32,
     /// Memory in MB
@@ -84,8 +84,6 @@ string"""
 [[project.services]]
 name = "app_2"
 image = "nginx:latest"
-internal_port = 80
-external_port = 80
 cpus = 250
 memory = 64
 "#;
@@ -106,8 +104,8 @@ memory = 64
                         Service {
                             name: "app_1".to_string(),
                             image: "nginx:latest".to_string(),
-                            internal_port: 80,
-                            external_port: 80,
+                            internal_port: Some(80),
+                            external_port: Some(80),
                             cpus: 250,
                             memory: 64,
                             envs: HashMap::from([
@@ -118,8 +116,8 @@ memory = 64
                         Service {
                             name: "app_2".to_string(),
                             image: "nginx:latest".to_string(),
-                            internal_port: 80,
-                            external_port: 80,
+                            internal_port: None,
+                            external_port: None,
                             cpus: 250,
                             memory: 64,
                             envs: HashMap::new(),
