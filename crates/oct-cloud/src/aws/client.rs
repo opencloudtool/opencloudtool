@@ -18,6 +18,60 @@ impl Ec2Impl {
         Self { inner }
     }
 
+    // Create VPC
+    pub(super) async fn create_vpc(
+        &self,
+        cidr_block: String,
+        name: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating VPC");
+
+        let response = self
+            .inner
+            .create_vpc()
+            .cidr_block(cidr_block)
+            .tag_specifications(
+                aws_sdk_ec2::types::TagSpecification::builder()
+                    .resource_type(aws_sdk_ec2::types::ResourceType::Vpc)
+                    .tags(
+                        aws_sdk_ec2::types::Tag::builder()
+                            .key("Name")
+                            .value(name)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await?;
+
+        let vpc_id = response
+            .vpc()
+            .and_then(|vpc| vpc.vpc_id())
+            .ok_or("Failed to retrieve VPC ID")?
+            .to_string();
+
+        log::info!("Created VPC: {vpc_id}");
+
+        Ok(vpc_id)
+    }
+
+    pub(super) async fn delete_vpc(
+        &self,
+        vpc_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting VPC");
+
+        self.inner
+            .delete_vpc()
+            .vpc_id(vpc_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted VPC: {vpc_id}");
+
+        Ok(())
+    }
+
     // Retrieve metadata about specific EC2 instance
     pub(super) async fn describe_instances(
         &self,

@@ -1,6 +1,6 @@
 use std::fs;
 
-use oct_cloud::aws::resource::{Ec2Instance, InstanceType};
+use oct_cloud::aws::resource::{Ec2Instance, InstanceType, VPC};
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -35,6 +35,8 @@ impl Orchestrator {
                 user_state::UserState::default()
             };
 
+        let vpc = VPC::new(None, "us-west-2".to_string(), "ct-app-vpc".to_string()).await;
+
         // Create EC2 instance
         let mut instance = Ec2Instance::new(
             None,
@@ -44,6 +46,7 @@ impl Orchestrator {
             "ami-04dd23e62ed049936".to_string(),
             InstanceType::T2Micro,
             "oct-cli".to_string(),
+            vpc,
             None,
         )
         .await;
@@ -154,7 +157,6 @@ impl Orchestrator {
                             service.name,
                             err
                         );
-                        continue;
                     }
                 }
             }

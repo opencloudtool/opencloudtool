@@ -24,6 +24,7 @@ pub struct Ec2Instance {
     pub name: String,
     pub user_data: String,
     pub user_data_base64: String,
+    pub vpc: VPC,
 
     // TODO: Make it required
     pub instance_profile: Option<InstanceProfile>,
@@ -55,6 +56,7 @@ impl Ec2Instance {
         ami: String,
         instance_type: aws_sdk_ec2::types::InstanceType,
         name: String,
+        vpc: VPC,
         instance_profile: Option<InstanceProfile>,
     ) -> Self {
         let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
@@ -92,6 +94,7 @@ impl Ec2Instance {
             name,
             user_data: Self::USER_DATA.to_string(),
             user_data_base64,
+            vpc,
             instance_profile: Some(instance_profile),
         }
     }
@@ -101,6 +104,9 @@ impl Resource for Ec2Instance {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         const MAX_ATTEMPTS: usize = 10;
         const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
+
+        // Create VPC
+        self.vpc.create().await?;
 
         // Create IAM role for EC2 instance
         match &mut self.instance_profile {
@@ -171,10 +177,82 @@ impl Resource for Ec2Instance {
         self.public_ip = None;
         self.public_dns = None;
 
+        // Destroy VPC
+        self.vpc.destroy().await?;
+
         match &mut self.instance_profile {
             Some(instance_profile) => instance_profile.destroy().await,
             None => Ok(()),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct VPC {
+    client: Ec2,
+
+    // Know after creation
+    pub id: Option<String>,
+
+    pub region: String,
+    pub cidr_block: String,
+    pub name: String,
+}
+
+impl VPC {
+    const CIDR_BLOCK: &str = "10.0.0.0/16";
+
+    pub async fn new(id: Option<String>, region: String, name: String) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        Self {
+            client: Ec2::new(ec2_client),
+            id,
+            region,
+            cidr_block: Self::CIDR_BLOCK.to_string(),
+            name,
+        }
+    }
+}
+
+impl Resource for VPC {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let vpc_id = self
+            .client
+            .create_vpc(self.cidr_block.clone(), self.name.clone())
+            .await?;
+
+        // Extract vpc id
+        self.id = Some(vpc_id);
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.id.clone() {
+            Some(vpc_id) => {
+                self.client.delete_vpc(vpc_id.clone()).await?;
+            }
+            None => {
+                log::warn!("VPC not found");
+            }
+        }
+
+        self.id = None;
+
+        Ok(())
     }
 }
 
@@ -328,6 +406,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance() {
         // Arrange
+        let mut ec2_impl_vpc_mock = Ec2::default();
+        ec2_impl_vpc_mock
+            .expect_create_vpc()
+            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
+            .return_once(|_, _| Ok("vpc-12345".to_string()));
+
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
@@ -368,6 +452,13 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            vpc: VPC {
+                client: ec2_impl_vpc_mock,
+                id: Some("vpc-12345".to_string()),
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/16".to_string(),
+                name: "test".to_string(),
+            },
             instance_profile: None,
         };
 
@@ -388,6 +479,12 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance_no_instance() {
         // Arrange
+        let mut ec2_impl_vpc_mock = Ec2::default();
+        ec2_impl_vpc_mock
+            .expect_create_vpc()
+            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
+            .return_once(|_, _| Ok("vpc-12345".to_string()));
+
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
@@ -410,6 +507,13 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            vpc: VPC {
+                client: ec2_impl_vpc_mock,
+                id: Some("vpc-12345".to_string()),
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/16".to_string(),
+                name: "test".to_string(),
+            },
             instance_profile: None,
         };
 
@@ -427,6 +531,12 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_ec2_instance() {
         // Arrange
+        let mut ec2_impl_vpc_mock = Ec2::default();
+        ec2_impl_vpc_mock
+            .expect_delete_vpc()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok(()));
+
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
@@ -444,6 +554,13 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            vpc: VPC {
+                client: ec2_impl_vpc_mock,
+                id: Some("vpc-12345".to_string()),
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/16".to_string(),
+                name: "test".to_string(),
+            },
             instance_profile: None,
         };
 
@@ -476,6 +593,13 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
+            vpc: VPC {
+                client: Ec2::default(),
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/16".to_string(),
+                name: "test".to_string(),
+            },
             instance_profile: None,
         };
 
@@ -673,6 +797,103 @@ mod tests {
 
         // Act
         let destroy_result = instance_role.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_vpc() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_create_vpc()
+            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
+            .return_once(|_, _| Ok("vpc-12345".to_string()));
+
+        let mut vpc = VPC {
+            client: ec2_impl_mock,
+            id: None,
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let create_result = vpc.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+        assert!(vpc.id == Some("vpc-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_vpc_error() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_create_vpc()
+            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut vpc = VPC {
+            client: ec2_impl_mock,
+            id: None,
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let create_result = vpc.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_vpc() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_delete_vpc()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut vpc = VPC {
+            client: ec2_impl_mock,
+            id: Some("vpc-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let destroy_result = vpc.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_vpc_error() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_delete_vpc()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut vpc = VPC {
+            client: ec2_impl_mock,
+            id: Some("vpc-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let destroy_result = vpc.destroy().await;
 
         // Assert
         assert!(destroy_result.is_err());

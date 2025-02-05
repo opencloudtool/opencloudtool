@@ -9,6 +9,7 @@ pub struct Ec2InstanceState {
     pub ami: String,
     pub instance_type: String,
     pub name: String,
+    pub vpc: VPCState,
     // TODO: Make instance_profile required
     pub instance_profile: Option<InstanceProfileState>,
 }
@@ -23,6 +24,7 @@ mod mocks {
         pub ami: String,
         pub instance_type: aws_sdk_ec2::types::InstanceType,
         pub name: String,
+        pub vpc: MockVPC,
         pub instance_profile: Option<MockInstanceProfile>,
     }
 
@@ -35,6 +37,7 @@ mod mocks {
             ami: String,
             instance_type: aws_sdk_ec2::types::InstanceType,
             name: String,
+            vpc: MockVPC,
             instance_profile: Option<MockInstanceProfile>,
         ) -> Self {
             Self {
@@ -45,6 +48,7 @@ mod mocks {
                 ami,
                 instance_type,
                 name,
+                vpc,
                 instance_profile,
             }
         }
@@ -83,15 +87,33 @@ mod mocks {
             }
         }
     }
+
+    pub struct MockVPC {
+        pub id: Option<String>,
+        pub region: String,
+        pub cidr_block: String,
+        pub name: String,
+    }
+
+    impl MockVPC {
+        pub async fn new(id: Option<String>, region: String, name: String) -> Self {
+            Self {
+                id,
+                region,
+                cidr_block: "test_cidr_block".to_string(),
+                name,
+            }
+        }
+    }
 }
 
 #[cfg(not(test))]
-use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole};
+use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole, VPC};
 
 #[cfg(test)]
 use mocks::{
     MockEc2Instance as Ec2Instance, MockInstanceProfile as InstanceProfile,
-    MockInstanceRole as InstanceRole,
+    MockInstanceRole as InstanceRole, MockVPC as VPC,
 };
 
 impl Ec2InstanceState {
@@ -110,6 +132,7 @@ impl Ec2InstanceState {
             ami: ec2_instance.ami.clone(),
             instance_type: ec2_instance.instance_type.clone().to_string(),
             name: ec2_instance.name.clone(),
+            vpc: VPCState::new(&ec2_instance.vpc),
             instance_profile: ec2_instance
                 .instance_profile
                 .as_ref()
@@ -123,6 +146,8 @@ impl Ec2InstanceState {
             None => return Err("Instance profile is not set".into()),
         };
 
+        let vpc = self.vpc.new_from_state().await;
+
         Ok(Ec2Instance::new(
             Some(self.id.clone()),
             Some(self.public_ip.clone()),
@@ -131,6 +156,7 @@ impl Ec2InstanceState {
             self.ami.clone(),
             aws_sdk_ec2::types::InstanceType::from(self.instance_type.as_str()),
             self.name.clone(),
+            vpc,
             Some(instance_profile),
         )
         .await)
@@ -190,6 +216,34 @@ impl InstanceRoleState {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct VPCState {
+    pub id: String,
+    pub region: String,
+    pub cidr_block: String,
+    pub name: String,
+}
+
+impl VPCState {
+    pub fn new(vpc: &VPC) -> Self {
+        Self {
+            id: vpc.id.clone().expect("VPC id not set"),
+            region: vpc.region.clone(),
+            cidr_block: vpc.cidr_block.clone(),
+            name: vpc.name.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> VPC {
+        VPC::new(
+            Some(self.id.clone()),
+            self.region.clone(),
+            self.name.clone(),
+        )
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +258,12 @@ mod tests {
             "ami".to_string(),
             aws_sdk_ec2::types::InstanceType::T2Micro,
             "name".to_string(),
+            VPC {
+                id: Some("id".to_string()),
+                region: "region".to_string(),
+                cidr_block: "cidr_block".to_string(),
+                name: "name".to_string(),
+            },
             None,
         )
         .await;
@@ -237,6 +297,12 @@ mod tests {
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
+            vpc: VPCState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test".to_string(),
+                name: "name".to_string(),
+            },
             instance_profile: Some(instance_profile_state),
         };
 
@@ -272,6 +338,12 @@ mod tests {
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
+            vpc: VPCState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test".to_string(),
+                name: "name".to_string(),
+            },
             instance_profile: None,
         };
 
@@ -371,5 +443,45 @@ mod tests {
             instance_role.policy_arns,
             vec!["test_policy_arn".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn test_vpc_state() {
+        // Arrange
+        let vpc = VPC::new(
+            Some("id".to_string()),
+            "region".to_string(),
+            "name".to_string(),
+        )
+        .await;
+
+        // Act
+        let vpc_state = VPCState::new(&vpc);
+
+        // Assert
+        assert_eq!(vpc_state.id, "id".to_string());
+        assert_eq!(vpc_state.region, "region".to_string());
+        assert_eq!(vpc_state.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(vpc_state.name, "name".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_vpc_state_new_from_state() {
+        // Arrange
+        let vpc_state = VPCState {
+            id: "id".to_string(),
+            region: "region".to_string(),
+            cidr_block: "test_cidr_block".to_string(),
+            name: "name".to_string(),
+        };
+
+        // Act
+        let vpc = vpc_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(vpc.id, Some("id".to_string()));
+        assert_eq!(vpc.region, "region".to_string());
+        assert_eq!(vpc.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(vpc.name, "name".to_string());
     }
 }
