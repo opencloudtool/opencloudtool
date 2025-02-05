@@ -6,9 +6,11 @@ use axum::{
     extract::State, http::StatusCode, response::IntoResponse, routing::get, routing::post, Json,
     Router,
 };
-use mockall::mock;
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
+
+#[cfg(test)]
+use mockall::mock;
 
 #[derive(Serialize, Deserialize)]
 struct RunContainerPayload {
@@ -165,6 +167,7 @@ impl ContainerEngine {
 // As long as ContainerEngine implemnts Clone, we mock it using
 // mockall::mock macro, more info here:
 // https://docs.rs/mockall/latest/mockall/macro.mock.html#examples
+#[cfg(test)]
 mock! {
     pub ContainerEngine {
         fn run(

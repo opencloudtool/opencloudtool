@@ -1,7 +1,7 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
-#[allow(unused_imports)]
+#[cfg(test)]
 use mockall::automock;
 
 /// AWS EC2 client implementation

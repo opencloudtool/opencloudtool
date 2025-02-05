@@ -6,11 +6,13 @@ edition = "2021"
 [dependencies]
 oct-orchestrator = { workspace = true }
 
-assert_cmd = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
-predicates = { workspace = true }
 env_logger = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 
 [lints]
 workspace = true
