@@ -197,12 +197,14 @@ pub struct VPC {
     pub region: String,
     pub cidr_block: String,
     pub name: String,
+
+    pub subnet: Subnet,
 }
 
 impl VPC {
     const CIDR_BLOCK: &str = "10.0.0.0/16";
 
-    pub async fn new(id: Option<String>, region: String, name: String) -> Self {
+    pub async fn new(id: Option<String>, region: String, name: String, subnet: Subnet) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -223,6 +225,7 @@ impl VPC {
             region,
             cidr_block: Self::CIDR_BLOCK.to_string(),
             name,
+            subnet,
         }
     }
 }
@@ -234,13 +237,18 @@ impl Resource for VPC {
             .create_vpc(self.cidr_block.clone(), self.name.clone())
             .await?;
 
-        // Extract vpc id
-        self.id = Some(vpc_id);
+        self.id = Some(vpc_id.clone());
+
+        self.subnet.vpc_id = Some(vpc_id);
+
+        self.subnet.create().await?;
 
         Ok(())
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.subnet.destroy().await?;
+
         match self.id.clone() {
             Some(vpc_id) => {
                 self.client.delete_vpc(vpc_id.clone()).await?;
@@ -250,7 +258,85 @@ impl Resource for VPC {
             }
         }
 
-        self.id = None;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Subnet {
+    client: Ec2,
+
+    // Know after creation
+    pub id: Option<String>,
+
+    pub region: String,
+    pub cidr_block: String,
+
+    // VPC id will be passed after vpc creation
+    pub vpc_id: Option<String>,
+    pub name: String,
+}
+
+impl Subnet {
+    pub async fn new(
+        id: Option<String>,
+        region: String,
+        cidr_block: String,
+        vpc_id: Option<String>,
+        name: String,
+    ) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        Self {
+            client: Ec2::new(ec2_client),
+            id,
+            region,
+            cidr_block,
+            vpc_id,
+            name,
+        }
+    }
+}
+
+impl Resource for Subnet {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let subnet_id = self
+            .client
+            .create_subnet(
+                self.vpc_id.clone().expect("vpc_id not set"),
+                self.cidr_block.clone(),
+                self.name.clone(),
+            )
+            .await?;
+
+        // Extract subnet id
+        self.id = Some(subnet_id);
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.id.clone() {
+            Some(subnet_id) => {
+                self.client.delete_subnet(subnet_id.clone()).await?;
+                self.id = None;
+            }
+            None => {
+                log::warn!("Subnet not found");
+            }
+        }
 
         Ok(())
     }
@@ -412,6 +498,16 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
@@ -454,10 +550,18 @@ mod tests {
             user_data_base64: "test".to_string(),
             vpc: VPC {
                 client: ec2_impl_vpc_mock,
-                id: Some("vpc-12345".to_string()),
+                id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
+                subnet: Subnet {
+                    client: ec2_impl_subnet_mock,
+                    id: None,
+                    region: "us-west-2".to_string(),
+                    cidr_block: "10.0.0.0/24".to_string(),
+                    vpc_id: None,
+                    name: "test".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -485,6 +589,16 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
@@ -509,10 +623,18 @@ mod tests {
             user_data_base64: "test".to_string(),
             vpc: VPC {
                 client: ec2_impl_vpc_mock,
-                id: Some("vpc-12345".to_string()),
+                id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
+                subnet: Subnet {
+                    client: ec2_impl_subnet_mock,
+                    id: None,
+                    region: "us-west-2".to_string(),
+                    cidr_block: "10.0.0.0/24".to_string(),
+                    vpc_id: None,
+                    name: "test".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -537,6 +659,15 @@ mod tests {
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Ok(()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
@@ -560,6 +691,14 @@ mod tests {
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
+                subnet: Subnet {
+                    client: ec2_impl_subnet_mock,
+                    id: None,
+                    region: "us-west-2".to_string(),
+                    cidr_block: "10.0.0.0/24".to_string(),
+                    vpc_id: None,
+                    name: "test".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -582,6 +721,16 @@ mod tests {
             .with(eq("id".to_string()))
             .return_once(|_| Ok(()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
             id: None,
@@ -599,6 +748,14 @@ mod tests {
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
+                subnet: Subnet {
+                    client: ec2_impl_subnet_mock,
+                    id: None,
+                    region: "us-west-2".to_string(),
+                    cidr_block: "10.0.0.0/24".to_string(),
+                    vpc_id: None,
+                    name: "test".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -806,10 +963,21 @@ mod tests {
     async fn test_create_vpc() {
         // Arrange
         let mut ec2_impl_mock = Ec2::default();
+
         ec2_impl_mock
             .expect_create_vpc()
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
+
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -817,6 +985,14 @@ mod tests {
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
+            subnet: Subnet {
+                client: ec2_impl_subnet_mock,
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/24".to_string(),
+                vpc_id: None,
+                name: "test".to_string(),
+            },
         };
 
         // Act
@@ -836,12 +1012,30 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Err("Error".into()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut vpc = VPC {
             client: ec2_impl_mock,
             id: None,
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
+            subnet: Subnet {
+                client: ec2_impl_subnet_mock,
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/24".to_string(),
+                vpc_id: None,
+                name: "test".to_string(),
+            },
         };
 
         // Act
@@ -860,12 +1054,30 @@ mod tests {
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Ok(()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut vpc = VPC {
             client: ec2_impl_mock,
             id: Some("vpc-12345".to_string()),
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
+            subnet: Subnet {
+                client: ec2_impl_subnet_mock,
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/24".to_string(),
+                vpc_id: None,
+                name: "test".to_string(),
+            },
         };
 
         // Act
@@ -884,16 +1096,143 @@ mod tests {
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Err("Error".into()));
 
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
         let mut vpc = VPC {
             client: ec2_impl_mock,
             id: Some("vpc-12345".to_string()),
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
+            subnet: Subnet {
+                client: ec2_impl_subnet_mock,
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/24".to_string(),
+                vpc_id: None,
+                name: "test".to_string(),
+            },
         };
 
         // Act
         let destroy_result = vpc.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_subnet() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+
+        let mut subnet = Subnet {
+            client: ec2_impl_mock,
+            id: None,
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/24".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let create_result = subnet.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+        assert!(subnet.id == Some("subnet-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_subnet_error() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _| Err("Error".into()));
+
+        let mut subnet = Subnet {
+            client: ec2_impl_mock,
+            id: None,
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/24".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let create_result = subnet.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_subnet() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_delete_subnet()
+            .with(eq("subnet-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut subnet = Subnet {
+            client: ec2_impl_mock,
+            id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/24".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let destroy_result = subnet.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_subnet_error() {
+        // Arrange
+        let mut ec2_impl_mock = Ec2::default();
+        ec2_impl_mock
+            .expect_delete_subnet()
+            .with(eq("subnet-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut subnet = Subnet {
+            client: ec2_impl_mock,
+            id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/24".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            name: "test".to_string(),
+        };
+
+        // Act
+        let destroy_result = subnet.destroy().await;
 
         // Assert
         assert!(destroy_result.is_err());
