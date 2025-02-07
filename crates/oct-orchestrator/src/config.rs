@@ -29,15 +29,14 @@ impl Config {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Project {
     pub name: String,
-    pub services: Vec<Service>,
+
+    pub services: HashMap<String, Service>,
 }
 
 /// Configuration for a service
 /// This configuration is managed by the user and used to deploy the service
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Service {
-    /// Name of the service
-    pub(crate) name: String,
     /// Image to use for the container
     pub(crate) image: String,
     /// Internal port exposed from the container
@@ -68,21 +67,19 @@ mod tests {
 [project]
 name = "example"
 
-[[project.services]]
-name = "app_1"
+[project.services.app_1]
 image = "nginx:latest"
 internal_port = 80
 external_port = 80
 cpus = 250
 memory = 64
 
-[project.services.envs]
+[project.services.app_1.envs]
 KEY1 = "VALUE1"
 KEY2 = """Multiline
 string"""
 
-[[project.services]]
-name = "app_2"
+[project.services.app_2]
 image = "nginx:latest"
 cpus = 250
 memory = 64
@@ -100,29 +97,33 @@ memory = 64
             Config {
                 project: Project {
                     name: "example".to_string(),
-                    services: vec![
-                        Service {
-                            name: "app_1".to_string(),
-                            image: "nginx:latest".to_string(),
-                            internal_port: Some(80),
-                            external_port: Some(80),
-                            cpus: 250,
-                            memory: 64,
-                            envs: HashMap::from([
-                                ("KEY1".to_string(), "VALUE1".to_string()),
-                                ("KEY2".to_string(), "Multiline\nstring".to_string()),
-                            ]),
-                        },
-                        Service {
-                            name: "app_2".to_string(),
-                            image: "nginx:latest".to_string(),
-                            internal_port: None,
-                            external_port: None,
-                            cpus: 250,
-                            memory: 64,
-                            envs: HashMap::new(),
-                        }
-                    ]
+                    services: HashMap::from([
+                        (
+                            "app_1".to_string(),
+                            Service {
+                                image: "nginx:latest".to_string(),
+                                internal_port: Some(80),
+                                external_port: Some(80),
+                                cpus: 250,
+                                memory: 64,
+                                envs: HashMap::from([
+                                    ("KEY1".to_string(), "VALUE1".to_string()),
+                                    ("KEY2".to_string(), "Multiline\nstring".to_string()),
+                                ]),
+                            }
+                        ),
+                        (
+                            "app_2".to_string(),
+                            Service {
+                                image: "nginx:latest".to_string(),
+                                internal_port: None,
+                                external_port: None,
+                                cpus: 250,
+                                memory: 64,
+                                envs: HashMap::new(),
+                            }
+                        ),
+                    ])
                 }
             }
         );

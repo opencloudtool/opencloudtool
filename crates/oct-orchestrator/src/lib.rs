@@ -84,12 +84,12 @@ impl Orchestrator {
 
         self.check_host_health(&oct_ctl_client).await?;
 
-        for service in config.project.services {
-            log::info!("Running container for service: {}", service.name);
+        for (name, service) in config.project.services {
+            log::info!("Running container for service: {}", name);
 
             let response = oct_ctl_client
                 .run_container(
-                    service.name.to_string(),
+                    name.clone(),
                     service.image.to_string(),
                     service.external_port,
                     service.internal_port,
@@ -102,17 +102,14 @@ impl Orchestrator {
             match response {
                 Ok(()) => match service.external_port {
                     Some(port) => {
-                        log::info!(
-                            "Service {} is available at http://{public_ip}:{port}",
-                            service.name
-                        );
+                        log::info!("Service {} is available at http://{public_ip}:{port}", name);
                     }
                     None => {
-                        log::info!("Service '{}' is running", service.name);
+                        log::info!("Service '{}' is running", name);
                     }
                 },
                 Err(err) => {
-                    log::error!("Failed to run '{}' service. Error: {}", service.name, err);
+                    log::error!("Failed to run '{}' service. Error: {}", name, err);
 
                     continue;
                 }
@@ -120,15 +117,11 @@ impl Orchestrator {
 
             // Add service to deployed services Vec
             let deployed_service = user_state::Service {
-                name: service.name.to_string(),
                 public_ip: public_ip.clone(),
             };
-            user_state.services.push(deployed_service);
+            user_state.services.insert(name.clone(), deployed_service);
 
-            log::info!(
-                "Service: {} - added to deployed services",
-                service.name.to_string()
-            );
+            log::info!("Service: {} - added to deployed services", name);
         }
 
         // Save services to user state file
@@ -156,22 +149,22 @@ impl Orchestrator {
             let user_state_json_data = fs::read_to_string(&self.user_state_file_path)?;
             let user_state = serde_json::from_str::<user_state::UserState>(&user_state_json_data)?;
 
-            for service in user_state.services {
+            for (name, service) in user_state.services {
                 // Remove container from instance
-                log::info!("Removing container for service: {}", service.name);
+                log::info!("Removing container for service: {}", name);
 
                 let oct_ctl_client = oct_ctl_sdk::Client::new(service.public_ip, None);
 
-                let response = oct_ctl_client.remove_container(service.name.clone()).await;
+                let response = oct_ctl_client.remove_container(name.clone()).await;
 
                 match response {
                     Ok(()) => {
-                        log::info!("Container removed for service: {}", service.name);
+                        log::info!("Container removed for service: {}", name);
                     }
                     Err(err) => {
                         log::error!(
                             "Failed to remove container for service: {}. Error: {}",
-                            service.name,
+                            name,
                             err
                         );
                     }
