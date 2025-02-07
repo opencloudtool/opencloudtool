@@ -10,7 +10,7 @@ pub(super) struct Ec2Impl {
     inner: aws_sdk_ec2::Client,
 }
 
-/// TODO: Add tests using static replay
+// TODO: Add tests using static replay
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl Ec2Impl {
@@ -18,7 +18,7 @@ impl Ec2Impl {
         Self { inner }
     }
 
-    // Create VPC
+    /// Create VPC
     pub(super) async fn create_vpc(
         &self,
         cidr_block: String,
@@ -55,6 +55,7 @@ impl Ec2Impl {
         Ok(vpc_id)
     }
 
+    /// Delete VPC
     pub(super) async fn delete_vpc(
         &self,
         vpc_id: String,
@@ -72,7 +73,64 @@ impl Ec2Impl {
         Ok(())
     }
 
-    // Retrieve metadata about specific EC2 instance
+    /// Create Subnet
+    pub(super) async fn create_subnet(
+        &self,
+        vpc_id: String,
+        cidr_block: String,
+        name: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating subnet");
+
+        let response = self
+            .inner
+            .create_subnet()
+            .vpc_id(vpc_id)
+            .cidr_block(cidr_block)
+            .tag_specifications(
+                aws_sdk_ec2::types::TagSpecification::builder()
+                    .resource_type(aws_sdk_ec2::types::ResourceType::Subnet)
+                    .tags(
+                        aws_sdk_ec2::types::Tag::builder()
+                            .key("Name")
+                            .value(name)
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
+            .await?;
+
+        let subnet_id = response
+            .subnet()
+            .and_then(|subnet| subnet.subnet_id())
+            .ok_or("Failed to retrieve subnet ID")?
+            .to_string();
+
+        log::info!("Created subnet: {subnet_id}");
+
+        Ok(subnet_id)
+    }
+
+    /// Delete Subnet
+    pub(super) async fn delete_subnet(
+        &self,
+        subnet_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting subnet");
+
+        self.inner
+            .delete_subnet()
+            .subnet_id(subnet_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted subnet: {subnet_id}");
+
+        Ok(())
+    }
+
+    /// Retrieve metadata about specific EC2 instance
     pub(super) async fn describe_instances(
         &self,
         instance_id: String,
@@ -149,7 +207,7 @@ pub(super) struct IAMImpl {
     inner: aws_sdk_iam::Client,
 }
 
-/// TODO: Add tests using static replay
+// TODO: Add tests using static replay
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl IAMImpl {

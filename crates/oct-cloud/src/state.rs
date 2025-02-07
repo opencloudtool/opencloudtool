@@ -93,27 +93,60 @@ mod mocks {
         pub region: String,
         pub cidr_block: String,
         pub name: String,
+        pub subnet: MockSubnet,
     }
 
     impl MockVPC {
-        pub async fn new(id: Option<String>, region: String, name: String) -> Self {
+        pub async fn new(
+            id: Option<String>,
+            region: String,
+            name: String,
+            subnet: MockSubnet,
+        ) -> Self {
             Self {
                 id,
                 region,
                 cidr_block: "test_cidr_block".to_string(),
                 name,
+                subnet,
+            }
+        }
+    }
+
+    pub struct MockSubnet {
+        pub id: Option<String>,
+        pub region: String,
+        pub cidr_block: String,
+        pub vpc_id: Option<String>,
+        pub name: String,
+    }
+
+    impl MockSubnet {
+        pub async fn new(
+            id: Option<String>,
+            region: String,
+            cidr_block: String,
+            vpc_id: Option<String>,
+            name: String,
+        ) -> Self {
+            Self {
+                id,
+                region,
+                cidr_block,
+                name,
+                vpc_id,
             }
         }
     }
 }
 
 #[cfg(not(test))]
-use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole, VPC};
+use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole, Subnet, VPC};
 
 #[cfg(test)]
 use mocks::{
     MockEc2Instance as Ec2Instance, MockInstanceProfile as InstanceProfile,
-    MockInstanceRole as InstanceRole, MockVPC as VPC,
+    MockInstanceRole as InstanceRole, MockSubnet as Subnet, MockVPC as VPC,
 };
 
 impl Ec2InstanceState {
@@ -222,6 +255,7 @@ pub struct VPCState {
     pub region: String,
     pub cidr_block: String,
     pub name: String,
+    pub subnet: SubnetState,
 }
 
 impl VPCState {
@@ -231,13 +265,49 @@ impl VPCState {
             region: vpc.region.clone(),
             cidr_block: vpc.cidr_block.clone(),
             name: vpc.name.clone(),
+            subnet: SubnetState::new(&vpc.subnet),
         }
     }
 
     pub async fn new_from_state(&self) -> VPC {
+        let subnet = self.subnet.new_from_state().await;
+
         VPC::new(
             Some(self.id.clone()),
             self.region.clone(),
+            self.name.clone(),
+            subnet,
+        )
+        .await
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SubnetState {
+    pub id: String,
+    pub region: String,
+    pub cidr_block: String,
+    pub vpc_id: String,
+    pub name: String,
+}
+
+impl SubnetState {
+    pub fn new(subnet: &Subnet) -> Self {
+        Self {
+            id: subnet.id.clone().expect("Subnet id not set"),
+            region: subnet.region.clone(),
+            cidr_block: subnet.cidr_block.clone(),
+            vpc_id: subnet.vpc_id.clone().expect("vpc id not set"),
+            name: subnet.name.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> Subnet {
+        Subnet::new(
+            Some(self.id.clone()),
+            self.region.clone(),
+            self.cidr_block.clone(),
+            Some(self.vpc_id.clone()),
             self.name.clone(),
         )
         .await
@@ -263,6 +333,13 @@ mod tests {
                 region: "region".to_string(),
                 cidr_block: "cidr_block".to_string(),
                 name: "name".to_string(),
+                subnet: Subnet {
+                    id: Some("id".to_string()),
+                    region: "region".to_string(),
+                    cidr_block: "cidr_block".to_string(),
+                    vpc_id: Some("vpc_id".to_string()),
+                    name: "name".to_string(),
+                },
             },
             None,
         )
@@ -302,6 +379,13 @@ mod tests {
                 region: "region".to_string(),
                 cidr_block: "test".to_string(),
                 name: "name".to_string(),
+                subnet: SubnetState {
+                    id: "id".to_string(),
+                    region: "region".to_string(),
+                    cidr_block: "test".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                },
             },
             instance_profile: Some(instance_profile_state),
         };
@@ -343,6 +427,13 @@ mod tests {
                 region: "region".to_string(),
                 cidr_block: "test".to_string(),
                 name: "name".to_string(),
+                subnet: SubnetState {
+                    id: "id".to_string(),
+                    region: "region".to_string(),
+                    cidr_block: "test".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -452,6 +543,13 @@ mod tests {
             Some("id".to_string()),
             "region".to_string(),
             "name".to_string(),
+            Subnet {
+                id: Some("id".to_string()),
+                region: "region".to_string(),
+                cidr_block: "test_cidr_block".to_string(),
+                vpc_id: Some("vpc_id".to_string()),
+                name: "name".to_string(),
+            },
         )
         .await;
 
@@ -473,6 +571,13 @@ mod tests {
             region: "region".to_string(),
             cidr_block: "test_cidr_block".to_string(),
             name: "name".to_string(),
+            subnet: SubnetState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test_cidr_block".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                name: "name".to_string(),
+            },
         };
 
         // Act
@@ -483,5 +588,50 @@ mod tests {
         assert_eq!(vpc.region, "region".to_string());
         assert_eq!(vpc.cidr_block, "test_cidr_block".to_string());
         assert_eq!(vpc.name, "name".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_subnet_state() {
+        // Arrange
+        let subnet = Subnet::new(
+            Some("id".to_string()),
+            "region".to_string(),
+            "test_cidr_block".to_string(),
+            Some("vpc_id".to_string()),
+            "test_name".to_string(),
+        )
+        .await;
+
+        // Act
+        let subnet_state = SubnetState::new(&subnet);
+
+        // Assert
+        assert_eq!(subnet_state.id, "id".to_string());
+        assert_eq!(subnet_state.region, "region".to_string());
+        assert_eq!(subnet_state.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(subnet_state.vpc_id, "vpc_id".to_string());
+        assert_eq!(subnet_state.name, "test_name".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_subnet_state_new_from_state() {
+        // Arrange
+        let subnet_state = SubnetState {
+            id: "id".to_string(),
+            region: "region".to_string(),
+            cidr_block: "test_cidr_block".to_string(),
+            vpc_id: "vpc_id".to_string(),
+            name: "test_name".to_string(),
+        };
+
+        // Act
+        let subnet = subnet_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(subnet.id, Some("id".to_string()));
+        assert_eq!(subnet.region, "region".to_string());
+        assert_eq!(subnet.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(subnet.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(subnet.name, "test_name".to_string());
     }
 }

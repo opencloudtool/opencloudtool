@@ -1,6 +1,6 @@
 use std::fs;
 
-use oct_cloud::aws::resource::{Ec2Instance, InstanceType, VPC};
+use oct_cloud::aws::resource::{Ec2Instance, InstanceType, Subnet, VPC};
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -35,7 +35,24 @@ impl Orchestrator {
                 user_state::UserState::default()
             };
 
-        let vpc = VPC::new(None, "us-west-2".to_string(), "ct-app-vpc".to_string()).await;
+        // Initialize Subnet
+        let subnet = Subnet::new(
+            None,
+            "us-west-2".to_string(),
+            "10.0.0.0/24".to_string(),
+            None,
+            "ct-app-subnet".to_string(),
+        )
+        .await;
+
+        // Initialize VPC
+        let vpc = VPC::new(
+            None,
+            "us-west-2".to_string(),
+            "ct-app-vpc".to_string(),
+            subnet,
+        )
+        .await;
 
         // Create EC2 instance
         let mut instance = Ec2Instance::new(
