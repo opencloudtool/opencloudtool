@@ -1,6 +1,8 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 
+use crate::aws::types::InstanceType;
+
 #[cfg(test)]
 use mockall::automock;
 
@@ -156,7 +158,7 @@ impl Ec2Impl {
     // TODO: Return Instance instead of response
     pub(super) async fn run_instances(
         &self,
-        instance_type: aws_sdk_ec2::types::InstanceType,
+        instance_type: InstanceType,
         ami: String,
         user_data_base64: String,
         instance_profile_name: Option<String>,
@@ -166,7 +168,7 @@ impl Ec2Impl {
         let mut request = self
             .inner
             .run_instances()
-            .instance_type(instance_type.clone())
+            .instance_type(instance_type.name.into())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
             .min_count(1)

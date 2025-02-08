@@ -1,6 +1,7 @@
 use std::fs;
 
-use oct_cloud::aws::resource::{Ec2Instance, InstanceType, Subnet, VPC};
+use oct_cloud::aws::resource::{Ec2Instance, Subnet, VPC};
+use oct_cloud::aws::types::InstanceType;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -61,7 +62,7 @@ impl Orchestrator {
             None,
             "us-west-2".to_string(),
             "ami-04dd23e62ed049936".to_string(),
-            InstanceType::T2Micro,
+            InstanceType::T2_MICRO,
             "oct-cli".to_string(),
             vpc,
             None,
