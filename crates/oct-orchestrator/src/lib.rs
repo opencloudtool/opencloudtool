@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 
 use oct_cloud::aws::resource::{Ec2Instance, Subnet, VPC};
@@ -28,109 +29,27 @@ impl Orchestrator {
         let config = config::Config::new(None)?;
 
         // Get user state file data
-        let mut user_state: user_state::UserState =
-            if std::path::Path::new(&self.user_state_file_path).exists() {
-                let existing_data = fs::read_to_string(&self.user_state_file_path)?;
-                serde_json::from_str::<user_state::UserState>(&existing_data)?
-            } else {
-                user_state::UserState::default()
-            };
+        let user_state = self.get_user_state()?;
 
-        // Initialize Subnet
-        let subnet = Subnet::new(
-            None,
-            "us-west-2".to_string(),
-            "10.0.0.0/24".to_string(),
-            None,
-            "ct-app-subnet".to_string(),
-        )
-        .await;
+        let (services_to_create, services_to_remove) =
+            Self::get_user_services_to_create_and_delete(&config, &user_state);
 
-        // Initialize VPC
-        let vpc = VPC::new(
-            None,
-            "us-west-2".to_string(),
-            "ct-app-vpc".to_string(),
-            subnet,
-        )
-        .await;
+        log::info!("Services to create: {services_to_create:?}");
+        log::info!("Services to remove: {services_to_remove:?}");
 
-        // Create EC2 instance
-        let mut instance = Ec2Instance::new(
-            None,
-            None,
-            None,
-            "us-west-2".to_string(),
-            "ami-04dd23e62ed049936".to_string(),
-            InstanceType::T2_MICRO,
-            "oct-cli".to_string(),
-            vpc,
-            None,
-        )
-        .await;
-
-        instance.create().await?;
-
-        let instance_id = instance.id.clone().ok_or("No instance id")?;
-        let public_ip = instance.public_ip.clone().ok_or("Public IP not found")?;
-
-        log::info!("Instance created: {}", instance_id);
-
-        // Save to state file
-        let instance_state = state::Ec2InstanceState::new(&instance);
-        let json_data = serde_json::to_string_pretty(&instance_state)?;
-        fs::write(&self.state_file_path, json_data)?;
+        let public_ip = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
 
         self.check_host_health(&oct_ctl_client).await?;
 
-        for (name, service) in config.project.services {
-            log::info!("Running container for service: {}", name);
-
-            let response = oct_ctl_client
-                .run_container(
-                    name.clone(),
-                    service.image.to_string(),
-                    service.external_port,
-                    service.internal_port,
-                    service.cpus,
-                    service.memory,
-                    service.envs,
-                )
-                .await;
-
-            match response {
-                Ok(()) => match service.external_port {
-                    Some(port) => {
-                        log::info!("Service {} is available at http://{public_ip}:{port}", name);
-                    }
-                    None => {
-                        log::info!("Service '{}' is running", name);
-                    }
-                },
-                Err(err) => {
-                    log::error!("Failed to run '{}' service. Error: {}", name, err);
-
-                    continue;
-                }
-            }
-
-            // Add service to deployed services Vec
-            let deployed_service = user_state::Service {
-                public_ip: public_ip.clone(),
-            };
-            user_state.services.insert(name.clone(), deployed_service);
-
-            log::info!("Service: {} - added to deployed services", name);
-        }
-
-        // Save services to user state file
-        fs::write(
-            &self.user_state_file_path,
-            serde_json::to_string_pretty(&user_state)?,
-        )?;
-        log::info!("Services saved to user state file");
+        self.deploy_user_services(
+            &config,
+            &oct_ctl_client,
+            &services_to_create,
+            &services_to_remove,
+        )
+        .await?;
 
         Ok(())
     }
@@ -190,6 +109,76 @@ impl Orchestrator {
         Ok(())
     }
 
+    fn get_user_state(&self) -> Result<user_state::UserState, Box<dyn std::error::Error>> {
+        let user_state: user_state::UserState =
+            if std::path::Path::new(&self.user_state_file_path).exists() {
+                let existing_data = fs::read_to_string(&self.user_state_file_path)?;
+                serde_json::from_str::<user_state::UserState>(&existing_data)?
+            } else {
+                user_state::UserState::default()
+            };
+
+        Ok(user_state)
+    }
+
+    /// Prepares L1 infrastructure (VM instances and base networking)
+    async fn prepare_infrastructure(&self) -> Result<String, Box<dyn std::error::Error>> {
+        // Trying to get existing state to return public IP
+        // The logic will be updated when we support multiple instances
+        if std::path::Path::new(&self.state_file_path).exists() {
+            let json_data = fs::read_to_string(&self.state_file_path)?;
+            let instance_state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
+
+            log::info!("Instance already exists: {}", instance_state.id);
+
+            return Ok(instance_state.public_ip);
+        }
+
+        let subnet = Subnet::new(
+            None,
+            "us-west-2".to_string(),
+            "10.0.0.0/24".to_string(),
+            None,
+            "ct-app-subnet".to_string(),
+        )
+        .await;
+
+        let vpc = VPC::new(
+            None,
+            "us-west-2".to_string(),
+            "ct-app-vpc".to_string(),
+            subnet,
+        )
+        .await;
+
+        let mut instance = Ec2Instance::new(
+            None,
+            None,
+            None,
+            "us-west-2".to_string(),
+            "ami-04dd23e62ed049936".to_string(),
+            InstanceType::T2_MICRO,
+            "oct-cli".to_string(),
+            vpc,
+            None,
+        )
+        .await;
+
+        instance.create().await?;
+
+        let instance_id = instance.id.clone().ok_or("No instance id")?;
+        let public_ip = instance.public_ip.clone().ok_or("Public IP not found")?;
+
+        log::info!("Instance created: {instance_id}");
+
+        // Save to state file
+        let instance_state = state::Ec2InstanceState::new(&instance);
+        let json_data = serde_json::to_string_pretty(&instance_state)?;
+        fs::write(&self.state_file_path, json_data)?;
+
+        Ok(public_ip)
+    }
+
     /// Waits for a host to be healthy
     async fn check_host_health(
         &self,
@@ -221,6 +210,130 @@ impl Orchestrator {
         }
 
         Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
+    }
+
+    /// Gets list of services to remove and to create
+    /// Preserves order of services from config
+    fn get_user_services_to_create_and_delete(
+        config: &config::Config,
+        user_state: &user_state::UserState,
+    ) -> (Vec<String>, Vec<String>) {
+        let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
+        let user_state_services: Vec<String> = user_state.services.keys().cloned().collect();
+
+        let services_to_create: Vec<String> = expected_services
+            .iter()
+            .filter(|service| !user_state_services.contains(*service))
+            .cloned()
+            .collect();
+
+        let services_to_remove: Vec<String> = user_state_services
+            .iter()
+            .filter(|service| !expected_services.contains(service))
+            .cloned()
+            .collect();
+
+        (services_to_create, services_to_remove)
+    }
+
+    /// Deploys and destroys user services
+    /// TODO: Use it in `destroy`. Needs some modifications to correctly handle state file removal
+    async fn deploy_user_services(
+        &self,
+        config: &config::Config,
+        oct_ctl_client: &oct_ctl_sdk::Client,
+        services_to_create: &[String],
+        services_to_remove: &[String],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for service_name in services_to_remove {
+            log::info!("Stopping container for service: {}", service_name);
+
+            let response = oct_ctl_client.remove_container(service_name.clone()).await;
+
+            if let Err(err) = response {
+                log::error!(
+                    "Failed to stop container for service '{}': {}",
+                    service_name,
+                    err
+                );
+            }
+        }
+
+        let mut deployed_services: HashMap<String, user_state::Service> = HashMap::new();
+        for service_name in services_to_create {
+            let service = config.project.services.get(service_name);
+
+            let Some(service) = service else {
+                log::error!("Service '{}' not found in config", service_name);
+
+                continue;
+            };
+
+            log::info!("Running service: {}", service_name);
+
+            let response = oct_ctl_client
+                .run_container(
+                    service_name.clone(),
+                    service.image.to_string(),
+                    service.external_port,
+                    service.internal_port,
+                    service.cpus,
+                    service.memory,
+                    service.envs.clone(),
+                )
+                .await;
+
+            match response {
+                Ok(()) => match service.external_port {
+                    Some(port) => {
+                        log::info!(
+                            "Service {} is available at http://{}:{port}",
+                            service_name,
+                            oct_ctl_client.public_ip
+                        );
+                    }
+                    None => {
+                        log::info!("Service '{}' is running", service_name);
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to run '{}' service. Error: {}", service_name, err);
+
+                    continue;
+                }
+            }
+
+            // Add service to deployed services Vec
+            let deployed_service = user_state::Service {
+                public_ip: oct_ctl_client.public_ip.clone(),
+            };
+
+            deployed_services.insert(service_name.clone(), deployed_service);
+
+            log::info!("Service: {} - added to deployed services", service_name);
+        }
+
+        // Updating user state file
+        let mut user_state = self.get_user_state()?;
+
+        // Remove services that were stopped
+        for service_name in services_to_remove {
+            let _ = user_state.services.remove(service_name);
+        }
+
+        // Add newly deployed services
+        for (service_name, service) in deployed_services {
+            let _ = user_state.services.insert(service_name, service);
+        }
+
+        // Write updated user state to file
+        fs::write(
+            &self.user_state_file_path,
+            serde_json::to_string_pretty(&user_state)?,
+        )?;
+        log::info!("Services saved to user state file");
+
+        Ok(())
     }
 }
 
