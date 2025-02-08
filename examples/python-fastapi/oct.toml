@@ -1,37 +1,34 @@
 [project]
 name = "python-fastapi"
 
-[[project.services]]
-name = "app_1"
+[project.services.app_1]
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 cpus = 250
 memory = 64
 
-[project.services.envs]
+[project.services.app_1.envs]
 APP_NAME = "app_1"
 
-[[project.services]]
-name = "app_2"
+[project.services.app_2]
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 cpus = 250
 memory = 64
 
-[project.services.envs]
+[project.services.app_2.envs]
 APP_NAME = "app_2"
 
 # Nginx needs to be started after the applications.
 # It is defined on the bottom because
 # the order matters in the current implementation
 # (services are started one by one in the order they are defined).
-[[project.services]]
-name = "nginx"
+[project.services.nginx]
 image = "ghcr.io/opencloudtool/nginx-with-conf:latest"
 internal_port = 80
 external_port = 80
 cpus = 250
 memory = 64
 
-[project.services.envs]
+[project.services.nginx.envs]
 NGINX_CONF = """
 events {
     worker_connections 1024;
