@@ -134,6 +134,8 @@ impl ContainerEngine {
 
         let mut run_container_args = vec![
             "run".to_string(),
+            "--restart".to_string(),
+            "always".to_string(),
             "-d".to_string(),
             "--name".to_string(),
             name.to_string(),
