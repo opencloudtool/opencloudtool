@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::aws::types::InstanceType;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ec2InstanceState {
     pub id: String,
@@ -16,13 +18,15 @@ pub struct Ec2InstanceState {
 
 #[cfg(test)]
 mod mocks {
+    use crate::aws::types::InstanceType;
+
     pub struct MockEc2Instance {
         pub id: Option<String>,
         pub public_ip: Option<String>,
         pub public_dns: Option<String>,
         pub region: String,
         pub ami: String,
-        pub instance_type: aws_sdk_ec2::types::InstanceType,
+        pub instance_type: InstanceType,
         pub name: String,
         pub vpc: MockVPC,
         pub instance_profile: Option<MockInstanceProfile>,
@@ -35,7 +39,7 @@ mod mocks {
             public_dns: Option<String>,
             region: String,
             ami: String,
-            instance_type: aws_sdk_ec2::types::InstanceType,
+            instance_type: InstanceType,
             name: String,
             vpc: MockVPC,
             instance_profile: Option<MockInstanceProfile>,
@@ -163,7 +167,7 @@ impl Ec2InstanceState {
                 .expect("Public dns is not set"),
             region: ec2_instance.region.clone(),
             ami: ec2_instance.ami.clone(),
-            instance_type: ec2_instance.instance_type.clone().to_string(),
+            instance_type: ec2_instance.instance_type.name.to_string(),
             name: ec2_instance.name.clone(),
             vpc: VPCState::new(&ec2_instance.vpc),
             instance_profile: ec2_instance
@@ -187,7 +191,7 @@ impl Ec2InstanceState {
             Some(self.public_dns.clone()),
             self.region.clone(),
             self.ami.clone(),
-            aws_sdk_ec2::types::InstanceType::from(self.instance_type.as_str()),
+            InstanceType::from(self.instance_type.as_str()),
             self.name.clone(),
             vpc,
             Some(instance_profile),
@@ -326,7 +330,7 @@ mod tests {
             Some("public_dns".to_string()),
             "region".to_string(),
             "ami".to_string(),
-            aws_sdk_ec2::types::InstanceType::T2Micro,
+            InstanceType::T2_MICRO,
             "name".to_string(),
             VPC {
                 id: Some("id".to_string()),
@@ -399,10 +403,7 @@ mod tests {
         assert_eq!(ec2_instance.public_dns, Some("public_dns".to_string()));
         assert_eq!(ec2_instance.region, "region".to_string());
         assert_eq!(ec2_instance.ami, "ami".to_string());
-        assert_eq!(
-            ec2_instance.instance_type,
-            aws_sdk_ec2::types::InstanceType::T2Micro
-        );
+        assert_eq!(ec2_instance.instance_type, InstanceType::T2_MICRO);
         assert_eq!(ec2_instance.name, "name".to_string());
         assert!(ec2_instance.instance_profile.is_some());
         assert_eq!(

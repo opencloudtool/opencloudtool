@@ -1,8 +1,7 @@
-pub use aws_sdk_ec2::types::InstanceType;
-
 use base64::{engine::general_purpose, Engine as _};
 
 use crate::aws::client::{Ec2, IAM};
+use crate::aws::types::InstanceType;
 use crate::resource::Resource;
 
 #[derive(Debug)]
@@ -54,7 +53,7 @@ impl Ec2Instance {
         public_dns: Option<String>,
         region: String,
         ami: String,
-        instance_type: aws_sdk_ec2::types::InstanceType,
+        instance_type: InstanceType,
         name: String,
         vpc: VPC,
         instance_profile: Option<InstanceProfile>,
@@ -512,7 +511,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq(InstanceType::T2_MICRO),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -544,7 +543,7 @@ mod tests {
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: InstanceType::T2_MICRO,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -575,7 +574,7 @@ mod tests {
         assert!(instance.public_dns == Some("example.com".to_string()));
         assert!(instance.region == "us-west-2");
         assert!(instance.ami == "ami-830c94e3");
-        assert!(instance.instance_type == aws_sdk_ec2::types::InstanceType::T2Micro);
+        assert!(instance.instance_type == InstanceType::T2_MICRO);
         assert!(instance.name == "test");
         assert!(instance.user_data == "test");
     }
@@ -603,7 +602,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(aws_sdk_ec2::types::InstanceType::T2Micro),
+                eq(InstanceType::T2_MICRO),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq(None),
@@ -617,7 +616,7 @@ mod tests {
             public_dns: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: InstanceType::T2_MICRO,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -681,7 +680,7 @@ mod tests {
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: InstanceType::T2_MICRO,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -738,7 +737,7 @@ mod tests {
             public_dns: Some("example.com".to_string()),
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: aws_sdk_ec2::types::InstanceType::T2Micro,
+            instance_type: InstanceType::T2_MICRO,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
