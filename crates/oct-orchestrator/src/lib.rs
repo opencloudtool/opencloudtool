@@ -31,7 +31,7 @@ impl Orchestrator {
         let config = config::Config::new(None)?;
 
         // Get user state file data
-        let user_state = self.get_user_state()?;
+        let user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
         let (services_to_create, services_to_remove) =
             Self::get_user_services_to_create_and_delete(&config, &user_state);
@@ -121,18 +121,6 @@ impl Orchestrator {
         log::info!("Instance removed from state file");
 
         Ok(())
-    }
-
-    fn get_user_state(&self) -> Result<user_state::UserState, Box<dyn std::error::Error>> {
-        let user_state: user_state::UserState =
-            if std::path::Path::new(&self.user_state_file_path).exists() {
-                let existing_data = fs::read_to_string(&self.user_state_file_path)?;
-                serde_json::from_str::<user_state::UserState>(&existing_data)?
-            } else {
-                user_state::UserState::default()
-            };
-
-        Ok(user_state)
     }
 
     /// Prepares L1 infrastructure (VM instances and base networking)
@@ -350,7 +338,7 @@ impl Orchestrator {
         }
 
         // Updating user state file
-        let mut user_state = self.get_user_state()?;
+        let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
         // Remove services that were stopped
         for service_name in services_to_remove {
@@ -363,10 +351,8 @@ impl Orchestrator {
         }
 
         // Write updated user state to file
-        fs::write(
-            &self.user_state_file_path,
-            serde_json::to_string_pretty(&user_state)?,
-        )?;
+        user_state.save(&self.user_state_file_path)?;
+
         log::info!("Services saved to user state file");
 
         Ok(())
