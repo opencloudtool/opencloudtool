@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// HTTP client to access `oct-ctl`'s API
 pub(crate) struct Client {
+    // TODO: Use reference instead
     pub(crate) public_ip: String,
     port: u16,
 }
@@ -28,10 +29,10 @@ struct RemoveContainerRequest {
 impl Client {
     const DEFAULT_PORT: u16 = 31888;
 
-    pub(crate) fn new(public_ip: String, port: Option<u16>) -> Self {
+    pub(crate) fn new(public_ip: String) -> Self {
         Self {
             public_ip,
-            port: port.unwrap_or(Self::DEFAULT_PORT),
+            port: Self::DEFAULT_PORT,
         }
     }
 
@@ -146,7 +147,10 @@ mod tests {
             .match_header("Accept", "application/json")
             .create();
 
-        let client = Client::new(ip, Some(port));
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
 
         // Act
         let response = client
@@ -178,7 +182,10 @@ mod tests {
             .match_header("Accept", "application/json")
             .create();
 
-        let client = Client::new(ip, Some(port));
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
 
         // Act
         let response = client
@@ -210,7 +217,10 @@ mod tests {
             .match_header("Accept", "application/json")
             .create();
 
-        let client = Client::new(ip, Some(port));
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
 
         // Act
         let response = client.remove_container("test".to_string()).await;
@@ -232,7 +242,10 @@ mod tests {
             .match_header("Accept", "application/json")
             .create();
 
-        let client = Client::new(ip, Some(port));
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
 
         // Act
         let response = client.remove_container("test".to_string()).await;

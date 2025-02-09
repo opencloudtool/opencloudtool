@@ -36,18 +36,30 @@ impl Orchestrator {
         let (services_to_create, services_to_remove) =
             Self::get_user_services_to_create_and_delete(&config, &user_state);
 
-        log::info!("Services to create: {services_to_create:?}");
-        log::info!("Services to remove: {services_to_remove:?}");
+        log::info!("Services to create: {services_to_create:?}"); // Give more capacity
+        log::info!("Services to remove: {services_to_remove:?}"); // Reduce capacity
 
-        let public_ip = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
+        let instances = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
 
-        let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone(), None);
+        for instance in &instances {
+            let Some(public_ip) = instance.public_ip.clone() else {
+                log::error!("Instance {:?} has no public IP", instance.id);
 
-        self.check_host_health(&oct_ctl_client).await?;
+                continue;
+            };
 
+            let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
+
+            let host_health = self.check_host_health(&oct_ctl_client).await;
+            if host_health.is_err() {
+                log::error!("Failed to check '{}' host health", public_ip);
+            }
+        }
+
+        // All instances are healthy and ready to serve user services
         self.deploy_user_services(
             &config,
-            &oct_ctl_client,
+            &instances,
             &services_to_create,
             &services_to_remove,
         )
@@ -75,7 +87,7 @@ impl Orchestrator {
                 // Remove container from instance
                 log::info!("Removing container for service: {}", name);
 
-                let oct_ctl_client = oct_ctl_sdk::Client::new(service.public_ip, None);
+                let oct_ctl_client = oct_ctl_sdk::Client::new(service.public_ip);
 
                 let response = oct_ctl_client.remove_container(name.clone()).await;
 
@@ -124,7 +136,7 @@ impl Orchestrator {
     }
 
     /// Prepares L1 infrastructure (VM instances and base networking)
-    async fn prepare_infrastructure(&self) -> Result<String, Box<dyn std::error::Error>> {
+    async fn prepare_infrastructure(&self) -> Result<Vec<Ec2Instance>, Box<dyn std::error::Error>> {
         // Trying to get existing state to return public IP
         // The logic will be updated when we support multiple instances
         if std::path::Path::new(&self.state_file_path).exists() {
@@ -133,7 +145,7 @@ impl Orchestrator {
 
             log::info!("Instance already exists: {}", instance_state.id);
 
-            return Ok(instance_state.public_ip);
+            return Ok(vec![instance_state.new_from_state().await?]);
         }
 
         let security_group = SecurityGroup::new(
@@ -188,7 +200,6 @@ impl Orchestrator {
         instance.create().await?;
 
         let instance_id = instance.id.clone().ok_or("No instance id")?;
-        let public_ip = instance.public_ip.clone().ok_or("Public IP not found")?;
 
         log::info!("Instance created: {instance_id}");
 
@@ -197,7 +208,7 @@ impl Orchestrator {
         let json_data = serde_json::to_string_pretty(&instance_state)?;
         fs::write(&self.state_file_path, json_data)?;
 
-        Ok(public_ip)
+        Ok(vec![instance])
     }
 
     /// Waits for a host to be healthy
@@ -262,10 +273,14 @@ impl Orchestrator {
     async fn deploy_user_services(
         &self,
         config: &config::Config,
-        oct_ctl_client: &oct_ctl_sdk::Client,
+        instances: &[Ec2Instance],
         services_to_create: &[String],
         services_to_remove: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let instance = instances.first().ok_or("No instances available")?;
+        let oct_ctl_client =
+            oct_ctl_sdk::Client::new(instance.public_ip.as_ref().ok_or("No public IP")?.clone());
+
         for service_name in services_to_remove {
             log::info!("Stopping container for service: {}", service_name);
 
