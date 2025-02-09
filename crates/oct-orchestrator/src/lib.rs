@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
 
-use oct_cloud::aws::resource::{Ec2Instance, Subnet, VPC};
+use oct_cloud::aws::resource::{
+    Ec2Instance, InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
+};
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
@@ -134,6 +136,22 @@ impl Orchestrator {
             return Ok(instance_state.public_ip);
         }
 
+        let security_group = SecurityGroup::new(
+            None,
+            "ct-app-security-group".to_string(),
+            None,
+            "ct-app-security-group".to_string(),
+            22,
+            "tcp".to_string(),
+            "us-west-2".to_string(),
+        )
+        .await;
+
+        let route_table = RouteTable::new(None, None, None, "us-west-2".to_string()).await;
+
+        let internet_gateway =
+            InternetGateway::new(None, None, None, None, "us-west-2".to_string()).await;
+
         let subnet = Subnet::new(
             None,
             "us-west-2".to_string(),
@@ -148,6 +166,9 @@ impl Orchestrator {
             "us-west-2".to_string(),
             "ct-app-vpc".to_string(),
             subnet,
+            Some(internet_gateway),
+            route_table,
+            security_group,
         )
         .await;
 

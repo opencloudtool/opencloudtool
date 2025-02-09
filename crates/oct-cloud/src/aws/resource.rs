@@ -198,12 +198,29 @@ pub struct VPC {
     pub name: String,
 
     pub subnet: Subnet,
+
+    // Not all VPCs will have an Internet Gateway
+    pub internet_gateway: Option<InternetGateway>,
+
+    pub route_table: RouteTable,
+
+    pub security_group: SecurityGroup,
 }
 
 impl VPC {
     const CIDR_BLOCK: &str = "10.0.0.0/16";
 
-    pub async fn new(id: Option<String>, region: String, name: String, subnet: Subnet) -> Self {
+    pub async fn new(
+        id: Option<String>,
+        region: String,
+        name: String,
+        subnet: Subnet,
+
+        internet_gateway: Option<InternetGateway>,
+
+        route_table: RouteTable,
+        security_group: SecurityGroup,
+    ) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -225,6 +242,9 @@ impl VPC {
             cidr_block: Self::CIDR_BLOCK.to_string(),
             name,
             subnet,
+            internet_gateway,
+            route_table,
+            security_group,
         }
     }
 }
@@ -238,16 +258,52 @@ impl Resource for VPC {
 
         self.id = Some(vpc_id.clone());
 
-        self.subnet.vpc_id = Some(vpc_id);
-
+        // Create Subnet
+        self.subnet.vpc_id = Some(vpc_id.clone());
         self.subnet.create().await?;
+
+        // Create Route Table
+        self.route_table.vpc_id = Some(vpc_id.clone());
+        self.route_table.subnet_id = Some(self.subnet.id.clone().expect("subnet_id not set"));
+        self.route_table.create().await?;
+
+        // Create Security Group
+        self.security_group.vpc_id = Some(vpc_id.clone());
+        self.security_group.create().await?;
+
+        // Create Internet Gateway
+        match &mut self.internet_gateway {
+            Some(internet_gateway) => {
+                internet_gateway.vpc_id = Some(vpc_id.clone());
+                internet_gateway.route_table_id =
+                    Some(self.route_table.id.clone().expect("route_table_id not set"));
+                internet_gateway.subnet_id =
+                    Some(self.subnet.id.clone().expect("subnet_id not set"));
+                internet_gateway.create().await?;
+            }
+            None => log::info!("No Internet Gateway created, using a private VPC."),
+        }
 
         Ok(())
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Delete Route Table
+        self.route_table.destroy().await?;
+
+        // Delete Internet Gateway
+        match &mut self.internet_gateway {
+            Some(internet_gateway) => internet_gateway.destroy().await?,
+            None => log::info!("No Internet Gateway was created, skipping deletion."),
+        }
+
+        // Delete security group
+        self.security_group.destroy().await?;
+
+        // Delete Subnet
         self.subnet.destroy().await?;
 
+        // Delete VPC
         match self.id.clone() {
             Some(vpc_id) => {
                 self.client.delete_vpc(vpc_id.clone()).await?;
@@ -341,6 +397,275 @@ impl Resource for Subnet {
     }
 }
 
+#[derive(Debug)]
+pub struct InternetGateway {
+    client: Ec2,
+
+    pub id: Option<String>,
+
+    pub vpc_id: Option<String>,
+    pub route_table_id: Option<String>,
+    pub subnet_id: Option<String>,
+
+    pub region: String,
+}
+
+impl InternetGateway {
+    pub async fn new(
+        id: Option<String>,
+        vpc_id: Option<String>,
+        route_table_id: Option<String>,
+        subnet_id: Option<String>,
+        region: String,
+    ) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        Self {
+            client: Ec2::new(ec2_client),
+            id,
+            vpc_id,
+            route_table_id,
+            subnet_id,
+            region,
+        }
+    }
+}
+
+impl Resource for InternetGateway {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let internet_gateway_id = self
+            .client
+            .create_internet_gateway(self.vpc_id.clone().expect("vpc_id not set"))
+            .await?;
+
+        self.id = Some(internet_gateway_id.clone());
+
+        // Add public route to Route Table
+        self.client
+            .add_public_route(
+                self.route_table_id.clone().expect("route_table_id not set"),
+                internet_gateway_id.clone(),
+            )
+            .await?;
+
+        // Enable auto-assignment of public IP addresses for subnet
+        self.client
+            .enable_auto_assign_ip_addresses_for_subnet(
+                self.subnet_id.clone().expect("subnet_id not set"),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.id.clone() {
+            Some(internet_gateway_id) => {
+                self.client
+                    .delete_internet_gateway(
+                        internet_gateway_id.clone(),
+                        self.vpc_id.clone().expect("vpc_id not set"),
+                    )
+                    .await?;
+                self.id = None;
+            }
+            None => {
+                log::warn!("Internet gateway not found");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct RouteTable {
+    client: Ec2,
+
+    pub id: Option<String>,
+
+    pub vpc_id: Option<String>,
+    pub subnet_id: Option<String>,
+
+    pub region: String,
+}
+
+impl RouteTable {
+    pub async fn new(
+        id: Option<String>,
+        vpc_id: Option<String>,
+        subnet_id: Option<String>,
+        region: String,
+    ) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        Self {
+            client: Ec2::new(ec2_client),
+            id,
+            vpc_id,
+            subnet_id,
+            region,
+        }
+    }
+}
+
+impl Resource for RouteTable {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let route_table_id = self
+            .client
+            .create_route_table(self.vpc_id.clone().expect("vpc_id not set"))
+            .await?;
+
+        self.id = Some(route_table_id.clone());
+
+        self.client
+            .associate_route_table_with_subnet(
+                route_table_id.clone(),
+                self.subnet_id.clone().expect("subnet_id not set"),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.id.clone() {
+            Some(route_table_id) => {
+                self.client
+                    .disassociate_route_table_with_subnet(
+                        route_table_id.clone(),
+                        self.subnet_id.clone().expect("subnet_id not set"),
+                    )
+                    .await?;
+                self.client
+                    .delete_route_table(route_table_id.clone())
+                    .await?;
+                self.id = None;
+            }
+            None => {
+                log::warn!("Route table not found");
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct SecurityGroup {
+    client: Ec2,
+
+    pub id: Option<String>,
+
+    pub name: String,
+    pub vpc_id: Option<String>,
+    pub description: String,
+    pub port: i32,
+    pub protocol: String,
+    pub region: String,
+}
+
+impl SecurityGroup {
+    pub async fn new(
+        id: Option<String>,
+        name: String,
+        vpc_id: Option<String>,
+        description: String,
+        port: i32,
+        protocol: String,
+        region: String,
+    ) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ec2_client = aws_sdk_ec2::Client::new(&config);
+
+        Self {
+            client: Ec2::new(ec2_client),
+            id,
+            name,
+            vpc_id,
+            description,
+            port,
+            protocol,
+            region,
+        }
+    }
+}
+
+impl Resource for SecurityGroup {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let security_group_id = self
+            .client
+            .create_security_group(
+                self.vpc_id.clone().expect("vpc_id not set"),
+                self.name.clone(),
+                self.description.clone(),
+            )
+            .await?;
+
+        self.id = Some(security_group_id.clone());
+
+        self.client
+            .allow_inbound_traffic_for_security_group(
+                security_group_id.clone(),
+                self.protocol.clone(),
+                self.port,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        match self.id.clone() {
+            Some(security_group_id) => {
+                self.client
+                    .delete_security_group(security_group_id.clone())
+                    .await?;
+                self.id = None;
+            }
+            None => {
+                log::warn!("Security group not found");
+            }
+        }
+
+        Ok(())
+    }
+}
 #[derive(Debug)]
 pub struct InstanceProfile {
     client: IAM,
@@ -497,6 +822,32 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
 
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("ct-app-security-group".to_string()),
+                eq("ct-app-security-group".to_string()),
+            )
+            .return_once(|_, _, _| Ok("sg-12345".to_string()));
+
+        ec2_impl_security_group_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
+            .return_once(|_, _, _| Ok(()));
+
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("rtb-12345".to_string()));
+
+        ec2_impl_route_table_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
         let mut ec2_impl_subnet_mock = Ec2::default();
         ec2_impl_subnet_mock
             .expect_create_subnet()
@@ -561,6 +912,24 @@ mod tests {
                     vpc_id: None,
                     name: "test".to_string(),
                 },
+                internet_gateway: None,
+                route_table: RouteTable {
+                    client: ec2_impl_route_table_mock,
+                    id: None,
+                    vpc_id: None,
+                    subnet_id: None,
+                    region: "us-west-2".to_string(),
+                },
+                security_group: SecurityGroup {
+                    client: ec2_impl_security_group_mock,
+                    id: None,
+                    name: "ct-app-security-group".to_string(),
+                    vpc_id: None,
+                    description: "ct-app-security-group".to_string(),
+                    port: 22,
+                    protocol: "tcp".to_string(),
+                    region: "us-west-2".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -587,6 +956,32 @@ mod tests {
             .expect_create_vpc()
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
+
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("ct-app-security-group".to_string()),
+                eq("ct-app-security-group".to_string()),
+            )
+            .return_once(|_, _, _| Ok("sg-12345".to_string()));
+
+        ec2_impl_security_group_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
+            .return_once(|_, _, _| Ok(()));
+
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("rtb-12345".to_string()));
+
+        ec2_impl_route_table_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
 
         let mut ec2_impl_subnet_mock = Ec2::default();
         ec2_impl_subnet_mock
@@ -634,6 +1029,24 @@ mod tests {
                     vpc_id: None,
                     name: "test".to_string(),
                 },
+                internet_gateway: None,
+                route_table: RouteTable {
+                    client: ec2_impl_route_table_mock,
+                    id: None,
+                    vpc_id: None,
+                    subnet_id: None,
+                    region: "us-west-2".to_string(),
+                },
+                security_group: SecurityGroup {
+                    client: ec2_impl_security_group_mock,
+                    id: None,
+                    name: "ct-app-security-group".to_string(),
+                    vpc_id: None,
+                    description: "ct-app-security-group".to_string(),
+                    port: 22,
+                    protocol: "tcp".to_string(),
+                    region: "us-west-2".to_string(),
+                },
             },
             instance_profile: None,
         };
@@ -657,6 +1070,32 @@ mod tests {
             .expect_delete_vpc()
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Ok(()));
+
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("test".to_string()),
+                eq("test_description".to_string()),
+            )
+            .return_once(|_, _, _| Ok("sg-12345".to_string()));
+
+        ec2_impl_security_group_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
+            .return_once(|_, _, _| Ok(()));
+
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("rtb-12345".to_string()));
+
+        ec2_impl_route_table_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
 
         let mut ec2_impl_subnet_mock = Ec2::default();
         ec2_impl_subnet_mock
@@ -686,7 +1125,7 @@ mod tests {
             user_data_base64: "test".to_string(),
             vpc: VPC {
                 client: ec2_impl_vpc_mock,
-                id: Some("vpc-12345".to_string()),
+                id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
@@ -697,6 +1136,24 @@ mod tests {
                     cidr_block: "10.0.0.0/24".to_string(),
                     vpc_id: None,
                     name: "test".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTable {
+                    client: ec2_impl_route_table_mock,
+                    id: None,
+                    vpc_id: None,
+                    subnet_id: None,
+                    region: "us-west-2".to_string(),
+                },
+                security_group: SecurityGroup {
+                    client: ec2_impl_security_group_mock,
+                    id: None,
+                    name: "ct-app-security-group".to_string(),
+                    vpc_id: None,
+                    description: "ct-app-security-group".to_string(),
+                    port: 22,
+                    protocol: "tcp".to_string(),
+                    region: "us-west-2".to_string(),
                 },
             },
             instance_profile: None,
@@ -748,12 +1205,30 @@ mod tests {
                 cidr_block: "10.0.0.0/16".to_string(),
                 name: "test".to_string(),
                 subnet: Subnet {
-                    client: ec2_impl_subnet_mock,
+                    client: Ec2::default(),
                     id: None,
                     region: "us-west-2".to_string(),
                     cidr_block: "10.0.0.0/24".to_string(),
                     vpc_id: None,
                     name: "test".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTable {
+                    client: Ec2::default(),
+                    id: None,
+                    vpc_id: None,
+                    subnet_id: None,
+                    region: "us-west-2".to_string(),
+                },
+                security_group: SecurityGroup {
+                    client: Ec2::default(),
+                    id: None,
+                    name: "ct-app-security-group".to_string(),
+                    vpc_id: None,
+                    description: "ct-app-security-group".to_string(),
+                    port: 22,
+                    protocol: "tcp".to_string(),
+                    region: "us-west-2".to_string(),
                 },
             },
             instance_profile: None,
@@ -968,6 +1443,32 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Ok("vpc-12345".to_string()));
 
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("ct-app-security-group".to_string()),
+                eq("ct-app-security-group".to_string()),
+            )
+            .return_once(|_, _, _| Ok("sg-12345".to_string()));
+
+        ec2_impl_security_group_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
+            .return_once(|_, _, _| Ok(()));
+
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("rtb-12345".to_string()));
+
+        ec2_impl_route_table_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
         let mut ec2_impl_subnet_mock = Ec2::default();
         ec2_impl_subnet_mock
             .expect_create_subnet()
@@ -991,6 +1492,24 @@ mod tests {
                 cidr_block: "10.0.0.0/24".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTable {
+                client: ec2_impl_route_table_mock,
+                id: None,
+                vpc_id: None,
+                subnet_id: None,
+                region: "us-west-2".to_string(),
+            },
+            security_group: SecurityGroup {
+                client: ec2_impl_security_group_mock,
+                id: None,
+                name: "ct-app-security-group".to_string(),
+                vpc_id: None,
+                description: "ct-app-security-group".to_string(),
+                port: 22,
+                protocol: "tcp".to_string(),
+                region: "us-west-2".to_string(),
             },
         };
 
@@ -1028,12 +1547,30 @@ mod tests {
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
             subnet: Subnet {
-                client: ec2_impl_subnet_mock,
+                client: Ec2::default(),
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTable {
+                client: Ec2::default(),
+                id: None,
+                vpc_id: None,
+                subnet_id: None,
+                region: "us-west-2".to_string(),
+            },
+            security_group: SecurityGroup {
+                client: Ec2::default(),
+                id: None,
+                name: "ct-app-security-group".to_string(),
+                vpc_id: None,
+                description: "ct-app-security-group".to_string(),
+                port: 22,
+                protocol: "tcp".to_string(),
+                region: "us-west-2".to_string(),
             },
         };
 
@@ -1070,12 +1607,30 @@ mod tests {
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
             subnet: Subnet {
-                client: ec2_impl_subnet_mock,
+                client: Ec2::default(),
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTable {
+                client: Ec2::default(),
+                id: None,
+                vpc_id: None,
+                subnet_id: None,
+                region: "us-west-2".to_string(),
+            },
+            security_group: SecurityGroup {
+                client: Ec2::default(),
+                id: None,
+                name: "ct-app-security-group".to_string(),
+                vpc_id: None,
+                description: "ct-app-security-group".to_string(),
+                port: 22,
+                protocol: "tcp".to_string(),
+                region: "us-west-2".to_string(),
             },
         };
 
@@ -1112,12 +1667,30 @@ mod tests {
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
             subnet: Subnet {
-                client: ec2_impl_subnet_mock,
+                client: Ec2::default(),
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTable {
+                client: Ec2::default(),
+                id: None,
+                vpc_id: None,
+                subnet_id: None,
+                region: "us-west-2".to_string(),
+            },
+            security_group: SecurityGroup {
+                client: Ec2::default(),
+                id: None,
+                name: "ct-app-security-group".to_string(),
+                vpc_id: None,
+                description: "ct-app-security-group".to_string(),
+                port: 22,
+                protocol: "tcp".to_string(),
+                region: "us-west-2".to_string(),
             },
         };
 

@@ -98,6 +98,9 @@ mod mocks {
         pub cidr_block: String,
         pub name: String,
         pub subnet: MockSubnet,
+        pub internet_gateway: Option<MockInternetGateway>,
+        pub route_table: MockRouteTable,
+        pub security_group: MockSecurityGroup,
     }
 
     impl MockVPC {
@@ -106,6 +109,9 @@ mod mocks {
             region: String,
             name: String,
             subnet: MockSubnet,
+            internet_gateway: Option<MockInternetGateway>,
+            route_table: MockRouteTable,
+            security_group: MockSecurityGroup,
         ) -> Self {
             Self {
                 id,
@@ -113,6 +119,9 @@ mod mocks {
                 cidr_block: "test_cidr_block".to_string(),
                 name,
                 subnet,
+                internet_gateway,
+                route_table,
+                security_group,
             }
         }
     }
@@ -142,15 +151,101 @@ mod mocks {
             }
         }
     }
+
+    pub struct MockInternetGateway {
+        pub id: Option<String>,
+        pub vpc_id: Option<String>,
+        pub route_table_id: Option<String>,
+        pub subnet_id: Option<String>,
+        pub region: String,
+    }
+
+    impl MockInternetGateway {
+        pub async fn new(
+            id: Option<String>,
+            vpc_id: Option<String>,
+            route_table_id: Option<String>,
+            subnet_id: Option<String>,
+            region: String,
+        ) -> Self {
+            Self {
+                id,
+                vpc_id,
+                route_table_id,
+                subnet_id,
+                region,
+            }
+        }
+    }
+
+    pub struct MockRouteTable {
+        pub id: Option<String>,
+        pub vpc_id: Option<String>,
+        pub subnet_id: Option<String>,
+        pub region: String,
+    }
+
+    impl MockRouteTable {
+        pub async fn new(
+            id: Option<String>,
+            vpc_id: Option<String>,
+            subnet_id: Option<String>,
+            region: String,
+        ) -> Self {
+            Self {
+                id,
+                vpc_id,
+                subnet_id,
+                region,
+            }
+        }
+    }
+
+    pub struct MockSecurityGroup {
+        pub id: Option<String>,
+        pub name: String,
+        pub vpc_id: Option<String>,
+        pub description: String,
+        pub port: i32,
+        pub protocol: String,
+        pub region: String,
+    }
+
+    impl MockSecurityGroup {
+        pub async fn new(
+            id: Option<String>,
+            name: String,
+            vpc_id: Option<String>,
+            description: String,
+            port: i32,
+            protocol: String,
+            region: String,
+        ) -> Self {
+            Self {
+                id,
+                name,
+                vpc_id,
+                description,
+                port,
+                protocol,
+                region,
+            }
+        }
+    }
 }
 
 #[cfg(not(test))]
-use crate::aws::resource::{Ec2Instance, InstanceProfile, InstanceRole, Subnet, VPC};
+use crate::aws::resource::{
+    Ec2Instance, InstanceProfile, InstanceRole, InternetGateway, RouteTable, SecurityGroup, Subnet,
+    VPC,
+};
 
 #[cfg(test)]
 use mocks::{
     MockEc2Instance as Ec2Instance, MockInstanceProfile as InstanceProfile,
-    MockInstanceRole as InstanceRole, MockSubnet as Subnet, MockVPC as VPC,
+    MockInstanceRole as InstanceRole, MockInternetGateway as InternetGateway,
+    MockRouteTable as RouteTable, MockSecurityGroup as SecurityGroup, MockSubnet as Subnet,
+    MockVPC as VPC,
 };
 
 impl Ec2InstanceState {
@@ -260,6 +355,9 @@ pub struct VPCState {
     pub cidr_block: String,
     pub name: String,
     pub subnet: SubnetState,
+    pub internet_gateway: Option<InternetGatewayState>,
+    pub route_table: RouteTableState,
+    pub security_group: SecurityGroupState,
 }
 
 impl VPCState {
@@ -270,17 +368,26 @@ impl VPCState {
             cidr_block: vpc.cidr_block.clone(),
             name: vpc.name.clone(),
             subnet: SubnetState::new(&vpc.subnet),
+            internet_gateway: vpc.internet_gateway.as_ref().map(InternetGatewayState::new),
+            route_table: RouteTableState::new(&vpc.route_table),
+            security_group: SecurityGroupState::new(&vpc.security_group),
         }
     }
 
     pub async fn new_from_state(&self) -> VPC {
-        let subnet = self.subnet.new_from_state().await;
+        let internet_gateway = match &self.internet_gateway {
+            Some(ig) => Some(ig.new_from_state().await),
+            None => None,
+        };
 
         VPC::new(
             Some(self.id.clone()),
             self.region.clone(),
             self.name.clone(),
-            subnet,
+            self.subnet.new_from_state().await,
+            internet_gateway,
+            self.route_table.new_from_state().await,
+            self.security_group.new_from_state().await,
         )
         .await
     }
@@ -318,6 +425,108 @@ impl SubnetState {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InternetGatewayState {
+    pub id: String,
+    pub vpc_id: String,
+    pub route_table_id: String,
+    pub subnet_id: String,
+    pub region: String,
+}
+
+impl InternetGatewayState {
+    pub fn new(gateway: &InternetGateway) -> Self {
+        Self {
+            id: gateway.id.clone().expect("Internet Gateway id not set"),
+            vpc_id: gateway.vpc_id.clone().expect("VPC id not set"),
+            route_table_id: gateway
+                .route_table_id
+                .clone()
+                .expect("Route Table id not set"),
+            subnet_id: gateway.subnet_id.clone().expect("Subnet id not set"),
+            region: gateway.region.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> InternetGateway {
+        InternetGateway::new(
+            Some(self.id.clone()),
+            Some(self.vpc_id.clone()),
+            Some(self.route_table_id.clone()),
+            Some(self.subnet_id.clone()),
+            self.region.clone(),
+        )
+        .await
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SecurityGroupState {
+    pub id: String,
+    pub vpc_id: String,
+    pub name: String,
+    pub description: String,
+    pub port: i32,
+    pub protocol: String,
+    pub region: String,
+}
+
+impl SecurityGroupState {
+    pub fn new(group: &SecurityGroup) -> Self {
+        Self {
+            id: group.id.clone().expect("Security Group id not set"),
+            vpc_id: group.vpc_id.clone().expect("VPC id not set"),
+            name: group.name.clone(),
+            description: group.description.clone(),
+            port: group.port,
+            protocol: group.protocol.clone(),
+            region: group.region.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> SecurityGroup {
+        SecurityGroup::new(
+            Some(self.id.clone()),
+            self.name.clone(),
+            Some(self.vpc_id.clone()),
+            self.description.clone(),
+            self.port,
+            self.protocol.clone(),
+            self.region.clone(),
+        )
+        .await
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RouteTableState {
+    pub id: String,
+    pub vpc_id: String,
+    pub subnet_id: String,
+    pub region: String,
+}
+
+impl RouteTableState {
+    pub fn new(route_table: &RouteTable) -> Self {
+        Self {
+            id: route_table.id.clone().expect("Route Table id not set"),
+            vpc_id: route_table.vpc_id.clone().expect("VPC id not set"),
+            subnet_id: route_table.subnet_id.clone().expect("Subnet id not set"),
+            region: route_table.region.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> RouteTable {
+        RouteTable::new(
+            Some(self.id.clone()),
+            Some(self.vpc_id.clone()),
+            Some(self.subnet_id.clone()),
+            self.region.clone(),
+        )
+        .await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +552,22 @@ mod tests {
                     cidr_block: "cidr_block".to_string(),
                     vpc_id: Some("vpc_id".to_string()),
                     name: "name".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTable {
+                    id: Some("id".to_string()),
+                    vpc_id: Some("vpc_id".to_string()),
+                    subnet_id: Some("subnet_id".to_string()),
+                    region: "region".to_string(),
+                },
+                security_group: SecurityGroup {
+                    id: Some("id".to_string()),
+                    vpc_id: Some("vpc_id".to_string()),
+                    name: "name".to_string(),
+                    description: "description".to_string(),
+                    port: 80,
+                    protocol: "TCP".to_string(),
+                    region: "region".to_string(),
                 },
             },
             None,
@@ -390,6 +615,22 @@ mod tests {
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
                 },
+                internet_gateway: None,
+                route_table: RouteTableState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    subnet_id: "subnet_id".to_string(),
+                    region: "region".to_string(),
+                },
+                security_group: SecurityGroupState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                    description: "description".to_string(),
+                    port: 80,
+                    protocol: "TCP".to_string(),
+                    region: "region".to_string(),
+                },
             },
             instance_profile: Some(instance_profile_state),
         };
@@ -434,6 +675,22 @@ mod tests {
                     cidr_block: "test".to_string(),
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTableState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    subnet_id: "subnet_id".to_string(),
+                    region: "region".to_string(),
+                },
+                security_group: SecurityGroupState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                    description: "description".to_string(),
+                    port: 80,
+                    protocol: "TCP".to_string(),
+                    region: "region".to_string(),
                 },
             },
             instance_profile: None,
@@ -551,6 +808,22 @@ mod tests {
                 vpc_id: Some("vpc_id".to_string()),
                 name: "name".to_string(),
             },
+            None,
+            RouteTable {
+                id: Some("id".to_string()),
+                vpc_id: Some("vpc_id".to_string()),
+                subnet_id: Some("subnet_id".to_string()),
+                region: "region".to_string(),
+            },
+            SecurityGroup {
+                id: Some("id".to_string()),
+                vpc_id: Some("vpc_id".to_string()),
+                name: "name".to_string(),
+                description: "description".to_string(),
+                port: 80,
+                protocol: "TCP".to_string(),
+                region: "region".to_string(),
+            },
         )
         .await;
 
@@ -578,6 +851,22 @@ mod tests {
                 cidr_block: "test_cidr_block".to_string(),
                 vpc_id: "vpc_id".to_string(),
                 name: "name".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTableState {
+                id: "id".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                subnet_id: "subnet_id".to_string(),
+                region: "region".to_string(),
+            },
+            security_group: SecurityGroupState {
+                id: "id".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                name: "name".to_string(),
+                description: "description".to_string(),
+                port: 80,
+                protocol: "TCP".to_string(),
+                region: "region".to_string(),
             },
         };
 
