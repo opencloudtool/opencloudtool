@@ -263,6 +263,7 @@ impl Resource for VPC {
         self.subnet.create().await?;
 
         // Create Route Table
+        // FYI, there is a default route table created for a VPC
         self.route_table.vpc_id = Some(vpc_id.clone());
         self.route_table.subnet_id = Some(self.subnet.id.clone().expect("subnet_id not set"));
         self.route_table.create().await?;
