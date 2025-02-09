@@ -5,9 +5,9 @@ pub struct InstanceType {
     pub name: &'static str,
 
     /// The number of CPUs for the instance type.
-    pub cpus: usize,
+    pub cpus: u32,
     /// The amount of memory (in MB) for the instance type.
-    pub memory: usize,
+    pub memory: u64,
 }
 
 impl InstanceType {
