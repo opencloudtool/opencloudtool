@@ -1,5 +1,6 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
+use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
 
 use crate::aws::types::InstanceType;
 
@@ -75,6 +76,80 @@ impl Ec2Impl {
         Ok(())
     }
 
+    /// Create Security Group
+    pub(super) async fn create_security_group(
+        &self,
+        vpc_id: String,
+        name: String,
+        description: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating security group");
+
+        let response = self
+            .inner
+            .create_security_group()
+            .vpc_id(vpc_id)
+            .group_name(name)
+            .description(description)
+            .send()
+            .await?;
+
+        let security_group_id = response
+            .group_id()
+            .ok_or("Failed to retrieve security group ID")?
+            .to_string();
+
+        log::info!("Created security group: {security_group_id}");
+
+        Ok(security_group_id)
+    }
+
+    /// Delete Security Group
+    pub(super) async fn delete_security_group(
+        &self,
+        security_group_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting security group");
+
+        self.inner
+            .delete_security_group()
+            .group_id(security_group_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted security group: {security_group_id}");
+
+        Ok(())
+    }
+
+    /// Allow inbound traffic for security group
+    pub(super) async fn allow_inbound_traffic_for_security_group(
+        &self,
+        security_group_id: String,
+        protocol: String,
+        port: i32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Allowing inbound traffic for security group");
+
+        self.inner
+            .authorize_security_group_ingress()
+            .group_id(security_group_id.clone())
+            .ip_permissions(
+                IpPermission::builder()
+                    .ip_protocol(protocol)
+                    .from_port(port)
+                    .to_port(port)
+                    .ip_ranges(IpRange::builder().cidr_ip("0.0.0.0/0").build())
+                    .build(),
+            )
+            .send()
+            .await?;
+
+        log::info!("Allowed inbound traffic for security group: {security_group_id}");
+
+        Ok(())
+    }
+
     /// Create Subnet
     pub(super) async fn create_subnet(
         &self,
@@ -128,6 +203,230 @@ impl Ec2Impl {
             .await?;
 
         log::info!("Deleted subnet: {subnet_id}");
+
+        Ok(())
+    }
+
+    /// Create Internet Gateway
+    pub(super) async fn create_internet_gateway(
+        &self,
+        vpc_id: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating Internet Gateway");
+
+        let response = self.inner.create_internet_gateway().send().await?;
+        let internet_gateway_id = response
+            .internet_gateway()
+            .and_then(|igw| igw.internet_gateway_id())
+            .ok_or("Failed to retrieve Internet Gateway ID")?
+            .to_string();
+
+        log::info!("Created Internet Gateway: {internet_gateway_id}");
+
+        log::info!("Attaching Internet Gateway {internet_gateway_id} to VPC");
+        self.inner
+            .attach_internet_gateway()
+            .internet_gateway_id(internet_gateway_id.clone())
+            .vpc_id(vpc_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Attached Internet Gateway {internet_gateway_id} to VPC");
+
+        Ok(internet_gateway_id)
+    }
+
+    /// Delete Internet Gateway
+    pub(super) async fn delete_internet_gateway(
+        &self,
+        internet_gateway_id: String,
+        vpc_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Detaching Internet Gateway {internet_gateway_id} from VPC");
+
+        self.inner
+            .detach_internet_gateway()
+            .internet_gateway_id(internet_gateway_id.clone())
+            .vpc_id(vpc_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Detached Internet Gateway {internet_gateway_id} from VPC");
+
+        log::info!("Deleting Internet Gateway");
+        self.inner
+            .delete_internet_gateway()
+            .internet_gateway_id(internet_gateway_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted Internet Gateway {internet_gateway_id} from VPC");
+
+        Ok(())
+    }
+
+    /// Create Route Table
+    pub(super) async fn create_route_table(
+        &self,
+        vpc_id: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating Route Table");
+
+        let response = self
+            .inner
+            .create_route_table()
+            .vpc_id(vpc_id.clone())
+            .send()
+            .await?;
+        let route_table_id = response
+            .route_table()
+            .and_then(|rt| rt.route_table_id())
+            .ok_or("Failed to retrieve Route Table ID")?
+            .to_string();
+
+        log::info!("Created Route Table: {route_table_id}");
+
+        Ok(route_table_id)
+    }
+
+    /// Delete Route Table
+    pub(super) async fn delete_route_table(
+        &self,
+        route_table_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting Route Table {route_table_id}");
+
+        self.inner
+            .delete_route_table()
+            .route_table_id(route_table_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted Route Table {route_table_id}");
+
+        Ok(())
+    }
+
+    /// Add public route to Route Table
+    pub(super) async fn add_public_route(
+        &self,
+        route_table_id: String,
+        igw_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Adding public route to Route Table {route_table_id}");
+        self.inner
+            .create_route()
+            .route_table_id(route_table_id.clone())
+            .gateway_id(igw_id.clone())
+            .destination_cidr_block("0.0.0.0/0")
+            .send()
+            .await?;
+
+        log::info!("Added public route to Route Table {route_table_id}");
+
+        Ok(())
+    }
+
+    /// Associate Route Table with Subnet
+    pub(super) async fn associate_route_table_with_subnet(
+        &self,
+        route_table_id: String,
+        subnet_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Associating Route Table {route_table_id} with Subnet {subnet_id}");
+
+        self.inner
+            .associate_route_table()
+            .route_table_id(route_table_id.clone())
+            .subnet_id(subnet_id.clone())
+            .send()
+            .await?;
+
+        log::info!("Associated Route Table {route_table_id} with Subnet {subnet_id}");
+
+        Ok(())
+    }
+
+    /// Disassociate Route Table with Subnet
+    pub(super) async fn disassociate_route_table_with_subnet(
+        &self,
+        route_table_id: String,
+        subnet_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Disassociating Route Table {route_table_id} with Subnet {subnet_id}");
+
+        let response = self
+            .inner
+            .describe_route_tables()
+            .route_table_ids(route_table_id.clone())
+            .send()
+            .await?;
+
+        // Extract association IDs
+        let associations: Vec<String> = response
+            .route_tables()
+            .iter()
+            .flat_map(|rt| rt.associations().iter())
+            .filter_map(|assoc| assoc.route_table_association_id().map(str::to_string))
+            .collect();
+
+        if associations.is_empty() {
+            log::warn!("No associations found for Route Table {route_table_id}");
+
+            return Ok(());
+        }
+
+        // Disassociate each found Route Table Association
+        for association_id in associations {
+            log::info!("Disassociating Route Table {route_table_id} from {association_id}");
+            self.inner
+                .disassociate_route_table()
+                .association_id(association_id.clone())
+                .send()
+                .await?;
+        }
+
+        for route_table in response.route_tables() {
+            for route in route_table.routes() {
+                if let Some(destination) = route.destination_cidr_block() {
+                    if destination == "local" || destination.starts_with("10.0.0.") {
+                        log::info!(
+                            "Skipping local route {destination} in Route Table {route_table_id}"
+                        );
+                        continue;
+                    }
+
+                    log::info!("Deleting route {destination} from Route Table {route_table_id}");
+                    self.inner
+                        .delete_route()
+                        .route_table_id(route_table_id.clone())
+                        .destination_cidr_block(destination)
+                        .send()
+                        .await?;
+                }
+            }
+        }
+
+        log::info!("Disassociated Route Table {route_table_id} with Subnet {subnet_id}");
+
+        Ok(())
+    }
+
+    /// Enable auto-assignment of public IP addresses for subnet
+    pub(super) async fn enable_auto_assign_ip_addresses_for_subnet(
+        &self,
+        subnet_id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Enabling auto-assignment of public IP addresses for Subnet {subnet_id}");
+
+        self.inner
+            .modify_subnet_attribute()
+            .subnet_id(subnet_id.clone())
+            .map_public_ip_on_launch(AttributeBooleanValue::builder().value(true).build())
+            .send()
+            .await?;
+
+        log::info!("Enabled auto-assignment of public IP addresses for Subnet {subnet_id}");
 
         Ok(())
     }
