@@ -153,6 +153,8 @@ impl Orchestrator {
             "ct-app-security-group".to_string(),
             None,
             "ct-app-security-group".to_string(),
+            // TODO: Add support of multiple ports
+            // TODO: Expose only the ports needed by the application
             22,
             "tcp".to_string(),
             "us-west-2".to_string(),
