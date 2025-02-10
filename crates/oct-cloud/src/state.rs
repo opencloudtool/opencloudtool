@@ -107,6 +107,7 @@ mod mocks {
         pub async fn new(
             id: Option<String>,
             region: String,
+            cidr_block: String,
             name: String,
             subnet: MockSubnet,
             internet_gateway: Option<MockInternetGateway>,
@@ -116,7 +117,7 @@ mod mocks {
             Self {
                 id,
                 region,
-                cidr_block: "test_cidr_block".to_string(),
+                cidr_block,
                 name,
                 subnet,
                 internet_gateway,
@@ -383,6 +384,7 @@ impl VPCState {
         VPC::new(
             Some(self.id.clone()),
             self.region.clone(),
+            self.cidr_block.clone(),
             self.name.clone(),
             self.subnet.new_from_state().await,
             internet_gateway,
@@ -800,6 +802,7 @@ mod tests {
         let vpc = VPC::new(
             Some("id".to_string()),
             "region".to_string(),
+            "test_cidr_block".to_string(),
             "name".to_string(),
             Subnet {
                 id: Some("id".to_string()),
@@ -923,5 +926,150 @@ mod tests {
         assert_eq!(subnet.cidr_block, "test_cidr_block".to_string());
         assert_eq!(subnet.vpc_id, Some("vpc_id".to_string()));
         assert_eq!(subnet.name, "test_name".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_security_group_state() {
+        // Arrange
+        let security_group = SecurityGroup::new(
+            Some("id".to_string()),
+            "name".to_string(),
+            Some("vpc_id".to_string()),
+            "description".to_string(),
+            80,
+            "TCP".to_string(),
+            "region".to_string(),
+        )
+        .await;
+
+        // Act
+        let security_group_state = SecurityGroupState::new(&security_group);
+
+        // Assert
+        assert_eq!(security_group_state.id, "id".to_string());
+        assert_eq!(security_group_state.name, "name".to_string());
+        assert_eq!(security_group_state.vpc_id, "vpc_id".to_string());
+        assert_eq!(security_group_state.description, "description".to_string());
+        assert_eq!(security_group_state.port, 80);
+        assert_eq!(security_group_state.protocol, "TCP".to_string());
+        assert_eq!(security_group_state.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_security_group_state_new_from_state() {
+        // Arrange
+        let security_group_state = SecurityGroupState {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            vpc_id: "vpc_id".to_string(),
+            description: "description".to_string(),
+            port: 80,
+            protocol: "TCP".to_string(),
+            region: "region".to_string(),
+        };
+
+        // Act
+        let security_group = security_group_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(security_group.id, Some("id".to_string()));
+        assert_eq!(security_group.name, "name".to_string());
+        assert_eq!(security_group.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(security_group.description, "description".to_string());
+        assert_eq!(security_group.port, 80);
+        assert_eq!(security_group.protocol, "TCP".to_string());
+        assert_eq!(security_group.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_route_table_state() {
+        // Arrange
+        let route_table = RouteTable::new(
+            Some("id".to_string()),
+            Some("vpc_id".to_string()),
+            Some("subnet_id".to_string()),
+            "region".to_string(),
+        )
+        .await;
+
+        // Act
+        let route_table_state = RouteTableState::new(&route_table);
+
+        // Assert
+        assert_eq!(route_table_state.id, "id".to_string());
+        assert_eq!(route_table_state.vpc_id, "vpc_id".to_string());
+        assert_eq!(route_table_state.subnet_id, "subnet_id".to_string());
+        assert_eq!(route_table_state.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_route_table_state_new_from_state() {
+        // Arrange
+        let route_table_state = RouteTableState {
+            id: "id".to_string(),
+            vpc_id: "vpc_id".to_string(),
+            subnet_id: "subnet_id".to_string(),
+            region: "region".to_string(),
+        };
+
+        // Act
+        let route_table = route_table_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(route_table.id, Some("id".to_string()));
+        assert_eq!(route_table.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(route_table.subnet_id, Some("subnet_id".to_string()));
+        assert_eq!(route_table.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_state() {
+        // Arrange
+        let internet_gateway = InternetGateway::new(
+            Some("id".to_string()),
+            Some("vpc_id".to_string()),
+            Some("route_table_id".to_string()),
+            Some("subnet_id".to_string()),
+            "region".to_string(),
+        )
+        .await;
+
+        // Act
+        let internet_gateway_state = InternetGatewayState::new(&internet_gateway);
+
+        // Assert
+        assert_eq!(internet_gateway_state.id, "id".to_string());
+        assert_eq!(internet_gateway_state.vpc_id, "vpc_id".to_string());
+        assert_eq!(
+            internet_gateway_state.route_table_id,
+            "route_table_id".to_string()
+        );
+        assert_eq!(internet_gateway_state.subnet_id, "subnet_id".to_string());
+        assert_eq!(internet_gateway_state.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_state_new_from_state() {
+        // Arrange
+        let internet_gateway_state = InternetGatewayState {
+            id: "id".to_string(),
+            vpc_id: "vpc_id".to_string(),
+            route_table_id: "route_table_id".to_string(),
+            subnet_id: "subnet_id".to_string(),
+            region: "region".to_string(),
+        };
+
+        // Act
+        let internet_gateway = internet_gateway_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(internet_gateway.id, Some("id".to_string()));
+        assert_eq!(internet_gateway.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(
+            internet_gateway.route_table_id,
+            Some("route_table_id".to_string())
+        );
+        assert_eq!(internet_gateway.subnet_id, Some("subnet_id".to_string()));
+        assert_eq!(internet_gateway.region, "region".to_string());
     }
 }

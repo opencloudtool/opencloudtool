@@ -208,11 +208,10 @@ pub struct VPC {
 }
 
 impl VPC {
-    const CIDR_BLOCK: &str = "10.0.0.0/16";
-
     pub async fn new(
         id: Option<String>,
         region: String,
+        cidr_block: String,
         name: String,
         subnet: Subnet,
 
@@ -239,7 +238,7 @@ impl VPC {
             client: Ec2::new(ec2_client),
             id,
             region,
-            cidr_block: Self::CIDR_BLOCK.to_string(),
+            cidr_block,
             name,
             subnet,
             internet_gateway,
