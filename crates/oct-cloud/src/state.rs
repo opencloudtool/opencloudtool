@@ -841,7 +841,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_vpc_state_new_from_state() {
+    async fn test_vpc_state_new_from_state_no_internet_gateway() {
         // Arrange
         let vpc_state = VPCState {
             id: "id".to_string(),
@@ -881,6 +881,91 @@ mod tests {
         assert_eq!(vpc.region, "region".to_string());
         assert_eq!(vpc.cidr_block, "test_cidr_block".to_string());
         assert_eq!(vpc.name, "name".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_vpc_state_new_from_state_internet_gateway() {
+        // Arrange
+        let vpc_state = VPCState {
+            id: "id".to_string(),
+            region: "region".to_string(),
+            cidr_block: "test_cidr_block".to_string(),
+            name: "name".to_string(),
+            subnet: SubnetState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test_cidr_block".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                name: "name".to_string(),
+            },
+            internet_gateway: Some(InternetGatewayState {
+                id: "id".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                route_table_id: "route_table_id".to_string(),
+                subnet_id: "subnet_id".to_string(),
+                region: "region".to_string(),
+            }),
+            route_table: RouteTableState {
+                id: "id".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                subnet_id: "subnet_id".to_string(),
+                region: "region".to_string(),
+            },
+            security_group: SecurityGroupState {
+                id: "id".to_string(),
+                vpc_id: "vpc_id".to_string(),
+                name: "name".to_string(),
+                description: "description".to_string(),
+                port: 80,
+                protocol: "TCP".to_string(),
+                region: "region".to_string(),
+            },
+        };
+
+        // Act
+        let vpc = vpc_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(vpc.id, Some("id".to_string()));
+        assert_eq!(vpc.region, "region".to_string());
+        assert_eq!(vpc.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(vpc.name, "name".to_string());
+        assert_eq!(vpc.subnet.id, Some("id".to_string()));
+        assert_eq!(vpc.subnet.region, "region".to_string());
+        assert_eq!(vpc.subnet.cidr_block, "test_cidr_block".to_string());
+        assert_eq!(vpc.subnet.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(vpc.subnet.name, "name".to_string());
+        assert_eq!(
+            vpc.internet_gateway.as_ref().unwrap().id,
+            Some("id".to_string())
+        );
+        assert_eq!(
+            vpc.internet_gateway.as_ref().unwrap().vpc_id,
+            Some("vpc_id".to_string())
+        );
+        assert_eq!(
+            vpc.internet_gateway.as_ref().unwrap().route_table_id,
+            Some("route_table_id".to_string())
+        );
+        assert_eq!(
+            vpc.internet_gateway.as_ref().unwrap().subnet_id,
+            Some("subnet_id".to_string())
+        );
+        assert_eq!(
+            vpc.internet_gateway.as_ref().unwrap().region,
+            "region".to_string()
+        );
+        assert_eq!(vpc.route_table.id, Some("id".to_string()));
+        assert_eq!(vpc.route_table.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(vpc.route_table.subnet_id, Some("subnet_id".to_string()));
+        assert_eq!(vpc.route_table.region, "region".to_string());
+        assert_eq!(vpc.security_group.id, Some("id".to_string()));
+        assert_eq!(vpc.security_group.vpc_id, Some("vpc_id".to_string()));
+        assert_eq!(vpc.security_group.name, "name".to_string());
+        assert_eq!(vpc.security_group.description, "description".to_string());
+        assert_eq!(vpc.security_group.port, 80);
+        assert_eq!(vpc.security_group.protocol, "TCP".to_string());
+        assert_eq!(vpc.security_group.region, "region".to_string());
     }
 
     #[tokio::test]
