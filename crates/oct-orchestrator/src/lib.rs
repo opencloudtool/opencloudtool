@@ -77,40 +77,33 @@ impl Orchestrator {
         // Create EC2 instance from state
         let mut instance = state.new_from_state().await?;
 
-        // Check if user state file exists
-        if std::path::Path::new(&self.user_state_file_path).exists() {
-            // Load services from user state file
-            let user_state_json_data = fs::read_to_string(&self.user_state_file_path)?;
-            let user_state = serde_json::from_str::<user_state::UserState>(&user_state_json_data)?;
+        let user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
-            for (instance_ip, instance) in user_state.instances {
-                for (service_name, _service) in instance.services {
-                    // Remove container from instance
-                    log::info!("Removing container for service: {}", service_name);
+        for (instance_ip, instance) in user_state.instances {
+            for (service_name, _service) in instance.services {
+                // Remove container from instance
+                log::info!("Removing container for service: {}", service_name);
 
-                    let oct_ctl_client = oct_ctl_sdk::Client::new(instance_ip.clone());
+                let oct_ctl_client = oct_ctl_sdk::Client::new(instance_ip.clone());
 
-                    let response = oct_ctl_client.remove_container(service_name.clone()).await;
+                let response = oct_ctl_client.remove_container(service_name.clone()).await;
 
-                    match response {
-                        Ok(()) => {
-                            log::info!("Container removed for service: {}", service_name);
-                        }
-                        Err(err) => {
-                            log::error!(
-                                "Failed to remove container for service: {}. Error: {}",
-                                service_name,
-                                err
-                            );
-                        }
+                match response {
+                    Ok(()) => {
+                        log::info!("Container removed for service: {}", service_name);
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Failed to remove container for service: {}. Error: {}",
+                            service_name,
+                            err
+                        );
                     }
                 }
             }
-            // Remove services from user state file
-            let _ = fs::remove_file(&self.user_state_file_path);
-        } else {
-            log::warn!("User state file not found or no containers are running");
         }
+
+        let _ = fs::remove_file(&self.user_state_file_path);
 
         // Destroy EC2 instance
         instance.destroy().await?;
