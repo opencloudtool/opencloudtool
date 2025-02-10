@@ -166,6 +166,7 @@ impl Orchestrator {
         let vpc = VPC::new(
             None,
             "us-west-2".to_string(),
+            "10.0.0.0/16".to_string(),
             "ct-app-vpc".to_string(),
             subnet,
             Some(internet_gateway),
