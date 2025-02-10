@@ -39,6 +39,16 @@ pub(crate) struct Instance {
     pub(crate) services: HashMap<String, Service>,
 }
 
+impl Instance {
+    /// Gets cpus and memory available on instance
+    pub(crate) fn get_available_resources(&self) -> (u32, u64) {
+        let available_cpus = self.cpus - self.services.values().map(|s| s.cpus).sum::<u32>();
+        let available_memory = self.memory - self.services.values().map(|s| s.memory).sum::<u64>();
+
+        (available_cpus, available_memory)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
 pub(crate) struct Service {
     /// CPUs required by service
@@ -170,5 +180,31 @@ mod tests {
   }
 }"#
         );
+    }
+
+    #[test]
+    fn test_instance_get_available_resources() {
+        let instance = Instance {
+            cpus: 1000,
+            memory: 1024,
+            services: HashMap::from([
+                (
+                    "test".to_string(),
+                    Service {
+                        cpus: 500,
+                        memory: 512,
+                    },
+                ),
+                (
+                    "test2".to_string(),
+                    Service {
+                        cpus: 250,
+                        memory: 256,
+                    },
+                ),
+            ]),
+        };
+
+        assert_eq!(instance.get_available_resources(), (250, 256));
     }
 }

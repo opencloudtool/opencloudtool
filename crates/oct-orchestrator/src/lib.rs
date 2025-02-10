@@ -10,6 +10,7 @@ use oct_cloud::state;
 
 mod config;
 mod oct_ctl_sdk;
+mod scheduler;
 mod user_state;
 
 /// Deploys and destroys user services and manages underlying cloud resources
@@ -31,13 +32,13 @@ impl Orchestrator {
         let config = config::Config::new(None)?;
 
         // Get user state file data
-        let user_state = user_state::UserState::new(&self.user_state_file_path)?;
+        let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
         let (services_to_create, services_to_remove) =
             Self::get_user_services_to_create_and_delete(&config, &user_state);
 
-        log::info!("Services to create: {services_to_create:?}"); // Give more capacity
-        log::info!("Services to remove: {services_to_remove:?}"); // Reduce capacity
+        log::info!("Services to create: {services_to_create:?}");
+        log::info!("Services to remove: {services_to_remove:?}");
 
         let instances = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
 
@@ -53,13 +54,29 @@ impl Orchestrator {
             let host_health = self.check_host_health(&oct_ctl_client).await;
             if host_health.is_err() {
                 log::error!("Failed to check '{}' host health", public_ip);
+
+                continue;
+            }
+
+            // Add missing instances to state
+            // TODO: Handle removing instances
+            if !user_state.instances.contains_key(&public_ip) {
+                user_state.instances.insert(
+                    public_ip.clone(),
+                    user_state::Instance {
+                        cpus: instance.instance_type.cpus,
+                        memory: instance.instance_type.memory,
+
+                        services: HashMap::new(),
+                    },
+                );
             }
         }
 
         // All instances are healthy and ready to serve user services
         self.deploy_user_services(
             &config,
-            &instances,
+            &mut user_state,
             &services_to_create,
             &services_to_remove,
         )
@@ -271,108 +288,29 @@ impl Orchestrator {
     async fn deploy_user_services(
         &self,
         config: &config::Config,
-        instances: &[Ec2Instance],
+        user_state: &mut user_state::UserState,
         services_to_create: &[String],
         services_to_remove: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let instance = instances.first().ok_or("No instances available")?;
-        let public_ip = instance.public_ip.as_ref().ok_or("No public IP")?.clone();
-        let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
+        let mut scheduler = scheduler::Scheduler::new(user_state);
 
         for service_name in services_to_remove {
-            log::info!("Stopping container for service: {}", service_name);
+            log::info!("Stopping container for service: {service_name}");
 
-            let response = oct_ctl_client.remove_container(service_name.clone()).await;
-
-            if let Err(err) = response {
-                log::error!(
-                    "Failed to stop container for service '{}': {}",
-                    service_name,
-                    err
-                );
-            }
+            let _ = scheduler.stop(service_name).await;
         }
 
-        let mut deployed_services: HashMap<String, user_state::Service> = HashMap::new();
         for service_name in services_to_create {
             let service = config.project.services.get(service_name);
-
             let Some(service) = service else {
-                log::error!("Service '{}' not found in config", service_name);
+                log::error!("Service '{service_name}' not found in config");
 
                 continue;
             };
 
-            log::info!("Running service: {}", service_name);
+            log::info!("Running service: {service_name}");
 
-            let response = oct_ctl_client
-                .run_container(
-                    service_name.clone(),
-                    service.image.to_string(),
-                    service.external_port,
-                    service.internal_port,
-                    service.cpus,
-                    service.memory,
-                    service.envs.clone(),
-                )
-                .await;
-
-            match response {
-                Ok(()) => match service.external_port {
-                    Some(port) => {
-                        log::info!(
-                            "Service {} is available at http://{}:{port}",
-                            service_name,
-                            oct_ctl_client.public_ip
-                        );
-                    }
-                    None => {
-                        log::info!("Service '{}' is running", service_name);
-                    }
-                },
-                Err(err) => {
-                    log::error!("Failed to run '{}' service. Error: {}", service_name, err);
-
-                    continue;
-                }
-            }
-
-            // Add service to deployed services Vec
-            let deployed_service = user_state::Service {
-                cpus: service.cpus,
-                memory: service.memory,
-            };
-
-            deployed_services.insert(service_name.clone(), deployed_service);
-
-            log::info!("Service: {} - added to deployed services", service_name);
-        }
-
-        // Updating user state file
-        let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
-
-        // Remove services that were stopped
-        for service_name in services_to_remove {
-            let _ = user_state
-                .instances
-                .get_mut(&public_ip)
-                .ok_or("Failed to get instance to remove services")?
-                .services
-                .remove(service_name);
-        }
-
-        // Add newly deployed services
-        for (service_name, service) in deployed_services {
-            let _ = user_state
-                .instances
-                .entry(public_ip.clone())
-                .or_insert(user_state::Instance {
-                    cpus: instance.instance_type.cpus,
-                    memory: instance.instance_type.memory,
-                    services: HashMap::new(),
-                })
-                .services
-                .insert(service_name, service);
+            let _ = scheduler.run(service_name, service).await;
         }
 
         // Write updated user state to file
