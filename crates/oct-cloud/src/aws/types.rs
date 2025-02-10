@@ -15,7 +15,7 @@ impl InstanceType {
     pub const T2_MICRO: Self = Self {
         name: "t2.micro",
 
-        cpus: 1,
+        cpus: 1000,
         memory: 1024,
     };
 }
