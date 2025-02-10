@@ -3,14 +3,10 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct Service {
-    pub public_ip: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
 pub(crate) struct UserState {
-    pub services: HashMap<String, Service>,
+    /// Key - public IP, Value - instance
+    pub(crate) instances: HashMap<String, Instance>,
 }
 
 impl UserState {
@@ -32,6 +28,25 @@ impl UserState {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Instance {
+    /// CPUs available on instance
+    pub(crate) cpus: u32,
+    /// Memory available on instance
+    pub(crate) memory: u64,
+
+    /// Services running on instance
+    pub(crate) services: HashMap<String, Service>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
+pub(crate) struct Service {
+    /// CPUs required by service
+    pub(crate) cpus: u32,
+    /// Memory required by service
+    pub(crate) memory: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Write;
@@ -41,39 +56,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_user_state() {
-        let user_state = UserState {
-            services: HashMap::from([
-                (
-                    "test".to_string(),
-                    Service {
-                        public_ip: "test".to_string(),
-                    },
-                ),
-                (
-                    "test2".to_string(),
-                    Service {
-                        public_ip: "test2".to_string(),
-                    },
-                ),
-            ]),
-        };
-        assert_eq!(user_state.services.len(), 2);
-        assert_eq!(user_state.services["test"].public_ip, "test");
-        assert_eq!(user_state.services["test2"].public_ip, "test2");
-    }
-
-    #[test]
     fn test_user_state_new_exists() {
         // Arrange
         let state_file_content = r#"
 {
-    "services": {
-        "test": {
-            "public_ip": "test"
-        },
-        "test2": {
-            "public_ip": "test2"
+    "instances": {
+        "89.0.142.86": {
+            "cpus": 1000,
+            "memory": 1024,
+            "services": {
+                "test": {
+                    "cpus": 1000,
+                    "memory": 1024
+                },
+                "test2": {
+                    "cpus": 1000,
+                    "memory": 1024
+                }
+            }
         }
     }
 }
@@ -85,9 +85,34 @@ mod tests {
         let user_state = UserState::new(file.path().to_str().unwrap()).unwrap();
 
         // Assert
-        assert_eq!(user_state.services.len(), 2);
-        assert_eq!(user_state.services["test"].public_ip, "test");
-        assert_eq!(user_state.services["test2"].public_ip, "test2");
+        assert_eq!(
+            user_state,
+            UserState {
+                instances: HashMap::from([(
+                    "89.0.142.86".to_string(),
+                    Instance {
+                        cpus: 1000,
+                        memory: 1024,
+                        services: HashMap::from([
+                            (
+                                "test".to_string(),
+                                Service {
+                                    cpus: 1000,
+                                    memory: 1024,
+                                },
+                            ),
+                            (
+                                "test2".to_string(),
+                                Service {
+                                    cpus: 1000,
+                                    memory: 1024,
+                                },
+                            ),
+                        ])
+                    },
+                )])
+            }
+        );
     }
 
     #[test]
@@ -96,17 +121,25 @@ mod tests {
         let user_state = UserState::new("NO_FILE").unwrap();
 
         // Assert
-        assert_eq!(user_state.services.len(), 0);
+        assert_eq!(user_state.instances.len(), 0);
     }
 
     #[test]
     fn test_user_state_save() {
         // Arrange
         let user_state = UserState {
-            services: HashMap::from([(
+            instances: HashMap::from([(
                 "test".to_string(),
-                Service {
-                    public_ip: "test".to_string(),
+                Instance {
+                    cpus: 1000,
+                    memory: 1024,
+                    services: HashMap::from([(
+                        "test".to_string(),
+                        Service {
+                            cpus: 1000,
+                            memory: 1024,
+                        },
+                    )]),
                 },
             )]),
         };
@@ -123,9 +156,16 @@ mod tests {
         assert_eq!(
             file_content,
             r#"{
-  "services": {
+  "instances": {
     "test": {
-      "public_ip": "test"
+      "cpus": 1000,
+      "memory": 1024,
+      "services": {
+        "test": {
+          "cpus": 1000,
+          "memory": 1024
+        }
+      }
     }
   }
 }"#

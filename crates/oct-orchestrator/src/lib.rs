@@ -83,24 +83,26 @@ impl Orchestrator {
             let user_state_json_data = fs::read_to_string(&self.user_state_file_path)?;
             let user_state = serde_json::from_str::<user_state::UserState>(&user_state_json_data)?;
 
-            for (name, service) in user_state.services {
-                // Remove container from instance
-                log::info!("Removing container for service: {}", name);
+            for (instance_ip, instance) in user_state.instances {
+                for (service_name, _service) in instance.services {
+                    // Remove container from instance
+                    log::info!("Removing container for service: {}", service_name);
 
-                let oct_ctl_client = oct_ctl_sdk::Client::new(service.public_ip);
+                    let oct_ctl_client = oct_ctl_sdk::Client::new(instance_ip.clone());
 
-                let response = oct_ctl_client.remove_container(name.clone()).await;
+                    let response = oct_ctl_client.remove_container(service_name.clone()).await;
 
-                match response {
-                    Ok(()) => {
-                        log::info!("Container removed for service: {}", name);
-                    }
-                    Err(err) => {
-                        log::error!(
-                            "Failed to remove container for service: {}. Error: {}",
-                            name,
-                            err
-                        );
+                    match response {
+                        Ok(()) => {
+                            log::info!("Container removed for service: {}", service_name);
+                        }
+                        Err(err) => {
+                            log::error!(
+                                "Failed to remove container for service: {}. Error: {}",
+                                service_name,
+                                err
+                            );
+                        }
                     }
                 }
             }
@@ -242,7 +244,12 @@ impl Orchestrator {
         user_state: &user_state::UserState,
     ) -> (Vec<String>, Vec<String>) {
         let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
-        let user_state_services: Vec<String> = user_state.services.keys().cloned().collect();
+        let user_state_services: Vec<String> = user_state
+            .instances
+            .values()
+            .flat_map(|instance| instance.services.keys())
+            .cloned()
+            .collect();
 
         let services_to_create: Vec<String> = expected_services
             .iter()
@@ -269,8 +276,8 @@ impl Orchestrator {
         services_to_remove: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
         let instance = instances.first().ok_or("No instances available")?;
-        let oct_ctl_client =
-            oct_ctl_sdk::Client::new(instance.public_ip.as_ref().ok_or("No public IP")?.clone());
+        let public_ip = instance.public_ip.as_ref().ok_or("No public IP")?.clone();
+        let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
 
         for service_name in services_to_remove {
             log::info!("Stopping container for service: {}", service_name);
@@ -332,7 +339,8 @@ impl Orchestrator {
 
             // Add service to deployed services Vec
             let deployed_service = user_state::Service {
-                public_ip: oct_ctl_client.public_ip.clone(),
+                cpus: service.cpus,
+                memory: service.memory,
             };
 
             deployed_services.insert(service_name.clone(), deployed_service);
@@ -345,12 +353,26 @@ impl Orchestrator {
 
         // Remove services that were stopped
         for service_name in services_to_remove {
-            let _ = user_state.services.remove(service_name);
+            let _ = user_state
+                .instances
+                .get_mut(&public_ip)
+                .ok_or("Failed to get instance to remove services")?
+                .services
+                .remove(service_name);
         }
 
         // Add newly deployed services
         for (service_name, service) in deployed_services {
-            let _ = user_state.services.insert(service_name, service);
+            let _ = user_state
+                .instances
+                .entry(public_ip.clone())
+                .or_insert(user_state::Instance {
+                    cpus: instance.instance_type.cpus,
+                    memory: instance.instance_type.memory,
+                    services: HashMap::new(),
+                })
+                .services
+                .insert(service_name, service);
         }
 
         // Write updated user state to file
