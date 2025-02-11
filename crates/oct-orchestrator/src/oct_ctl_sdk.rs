@@ -126,13 +126,9 @@ mod tests {
     async fn setup_server() -> (String, u16, mockito::ServerGuard) {
         let server = mockito::Server::new_async().await;
 
-        let (ip, port) = if let std::net::SocketAddr::V4(addr) = server.socket_address() {
-            (addr.ip().to_string(), addr.port())
-        } else {
-            panic!("Server address is not IPv4")
-        };
+        let addr = server.socket_address();
 
-        (ip, port, server)
+        (addr.ip().to_string(), addr.port(), server)
     }
 
     #[tokio::test]
