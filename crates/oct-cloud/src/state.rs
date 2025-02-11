@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize};
 use crate::aws::types::InstanceType;
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct State {
+    pub vpc: VPCState,
+
+    pub instances: Vec<Ec2InstanceState>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Ec2InstanceState {
     pub id: String,
     pub public_ip: String,
@@ -11,7 +18,6 @@ pub struct Ec2InstanceState {
     pub ami: String,
     pub instance_type: String,
     pub name: String,
-    pub vpc: VPCState,
     // TODO: Make instance_profile required
     pub instance_profile: Option<InstanceProfileState>,
 }
@@ -28,7 +34,6 @@ mod mocks {
         pub ami: String,
         pub instance_type: InstanceType,
         pub name: String,
-        pub vpc: MockVPC,
         pub instance_profile: Option<MockInstanceProfile>,
     }
 
@@ -41,7 +46,6 @@ mod mocks {
             ami: String,
             instance_type: InstanceType,
             name: String,
-            vpc: MockVPC,
             instance_profile: Option<MockInstanceProfile>,
         ) -> Self {
             Self {
@@ -52,7 +56,6 @@ mod mocks {
                 ami,
                 instance_type,
                 name,
-                vpc,
                 instance_profile,
             }
         }
@@ -265,7 +268,6 @@ impl Ec2InstanceState {
             ami: ec2_instance.ami.clone(),
             instance_type: ec2_instance.instance_type.name.to_string(),
             name: ec2_instance.name.clone(),
-            vpc: VPCState::new(&ec2_instance.vpc),
             instance_profile: ec2_instance
                 .instance_profile
                 .as_ref()
@@ -279,8 +281,6 @@ impl Ec2InstanceState {
             None => return Err("Instance profile is not set".into()),
         };
 
-        let vpc = self.vpc.new_from_state().await;
-
         Ok(Ec2Instance::new(
             Some(self.id.clone()),
             Some(self.public_ip.clone()),
@@ -289,7 +289,6 @@ impl Ec2InstanceState {
             self.ami.clone(),
             InstanceType::from(self.instance_type.as_str()),
             self.name.clone(),
-            vpc,
             Some(instance_profile),
         )
         .await)
@@ -534,6 +533,56 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn test_state() {
+        // Arrange
+        let state = State {
+            vpc: VPCState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test_cidr_block".to_string(),
+                name: "name".to_string(),
+                subnet: SubnetState {
+                    id: "id".to_string(),
+                    region: "region".to_string(),
+                    cidr_block: "test_cidr_block".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTableState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    subnet_id: "subnet_id".to_string(),
+                    region: "region".to_string(),
+                },
+                security_group: SecurityGroupState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                    description: "description".to_string(),
+                    port: 80,
+                    protocol: "TCP".to_string(),
+                    region: "region".to_string(),
+                },
+            },
+            instances: vec![Ec2InstanceState {
+                id: "id".to_string(),
+                public_ip: "public_ip".to_string(),
+                public_dns: "public_dns".to_string(),
+                region: "region".to_string(),
+                ami: "ami".to_string(),
+                instance_type: "t2.micro".to_string(),
+                name: "name".to_string(),
+                instance_profile: None,
+            }],
+        };
+
+        // Assert
+        assert_eq!(state.vpc.id, "id".to_string());
+        assert_eq!(state.instances.len(), 1);
+    }
+
+    #[tokio::test]
     async fn test_ec2_instance_state() {
         let ec2_instance = Ec2Instance::new(
             Some("id".to_string()),
@@ -543,35 +592,6 @@ mod tests {
             "ami".to_string(),
             InstanceType::T2_MICRO,
             "name".to_string(),
-            VPC {
-                id: Some("id".to_string()),
-                region: "region".to_string(),
-                cidr_block: "cidr_block".to_string(),
-                name: "name".to_string(),
-                subnet: Subnet {
-                    id: Some("id".to_string()),
-                    region: "region".to_string(),
-                    cidr_block: "cidr_block".to_string(),
-                    vpc_id: Some("vpc_id".to_string()),
-                    name: "name".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTable {
-                    id: Some("id".to_string()),
-                    vpc_id: Some("vpc_id".to_string()),
-                    subnet_id: Some("subnet_id".to_string()),
-                    region: "region".to_string(),
-                },
-                security_group: SecurityGroup {
-                    id: Some("id".to_string()),
-                    vpc_id: Some("vpc_id".to_string()),
-                    name: "name".to_string(),
-                    description: "description".to_string(),
-                    port: 80,
-                    protocol: "TCP".to_string(),
-                    region: "region".to_string(),
-                },
-            },
             None,
         )
         .await;
@@ -605,35 +625,6 @@ mod tests {
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
-            vpc: VPCState {
-                id: "id".to_string(),
-                region: "region".to_string(),
-                cidr_block: "test".to_string(),
-                name: "name".to_string(),
-                subnet: SubnetState {
-                    id: "id".to_string(),
-                    region: "region".to_string(),
-                    cidr_block: "test".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    name: "name".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTableState {
-                    id: "id".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    subnet_id: "subnet_id".to_string(),
-                    region: "region".to_string(),
-                },
-                security_group: SecurityGroupState {
-                    id: "id".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    name: "name".to_string(),
-                    description: "description".to_string(),
-                    port: 80,
-                    protocol: "TCP".to_string(),
-                    region: "region".to_string(),
-                },
-            },
             instance_profile: Some(instance_profile_state),
         };
 
@@ -666,35 +657,6 @@ mod tests {
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
-            vpc: VPCState {
-                id: "id".to_string(),
-                region: "region".to_string(),
-                cidr_block: "test".to_string(),
-                name: "name".to_string(),
-                subnet: SubnetState {
-                    id: "id".to_string(),
-                    region: "region".to_string(),
-                    cidr_block: "test".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    name: "name".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTableState {
-                    id: "id".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    subnet_id: "subnet_id".to_string(),
-                    region: "region".to_string(),
-                },
-                security_group: SecurityGroupState {
-                    id: "id".to_string(),
-                    vpc_id: "vpc_id".to_string(),
-                    name: "name".to_string(),
-                    description: "description".to_string(),
-                    port: 80,
-                    protocol: "TCP".to_string(),
-                    region: "region".to_string(),
-                },
-            },
             instance_profile: None,
         };
 
