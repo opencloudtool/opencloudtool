@@ -20,6 +20,8 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
+    const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
+
     pub fn new(state_file_path: String, user_state_file_path: String) -> Self {
         Orchestrator {
             state_file_path,
@@ -40,7 +42,12 @@ impl Orchestrator {
         log::info!("Services to create: {services_to_create:?}");
         log::info!("Services to remove: {services_to_remove:?}");
 
-        let state = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
+        let number_of_instances =
+            Self::get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
+
+        log::info!("Number of instances required: {number_of_instances}");
+
+        let state = self.prepare_infrastructure(number_of_instances).await?; // TODO(#189): pass info about required resources
 
         let mut instances = Vec::<Ec2Instance>::new();
 
@@ -154,7 +161,10 @@ impl Orchestrator {
     }
 
     /// Prepares L1 infrastructure (VM instances and base networking)
-    async fn prepare_infrastructure(&self) -> Result<state::State, Box<dyn std::error::Error>> {
+    async fn prepare_infrastructure(
+        &self,
+        number_of_instances: u32,
+    ) -> Result<state::State, Box<dyn std::error::Error>> {
         // Trying to get existing state to return public IP
         // The logic will be updated when we support multiple instances
         if std::path::Path::new(&self.state_file_path).exists() {
@@ -205,28 +215,36 @@ impl Orchestrator {
 
         vpc.create().await?;
 
-        let mut instance = Ec2Instance::new(
-            None,
-            None,
-            None,
-            "us-west-2".to_string(),
-            "ami-04dd23e62ed049936".to_string(),
-            InstanceType::T2_MICRO,
-            "oct-cli".to_string(),
-            None,
-        )
-        .await;
+        let mut created_instances = Vec::<Ec2Instance>::new();
+        for _ in 0..number_of_instances {
+            let mut instance = Ec2Instance::new(
+                None,
+                None,
+                None,
+                "us-west-2".to_string(),
+                "ami-04dd23e62ed049936".to_string(),
+                Self::INSTANCE_TYPE,
+                "oct-cli".to_string(),
+                None,
+            )
+            .await;
 
-        instance.create().await?;
+            instance.create().await?;
 
-        let instance_id = instance.id.clone().ok_or("No instance id")?;
+            let instance_id = instance.id.clone().ok_or("No instance id")?;
 
-        log::info!("Instance created: {instance_id}");
+            log::info!("Instance created: {instance_id}");
+
+            created_instances.push(instance);
+        }
 
         // Add instance to state
         let state = state::State {
             vpc: state::VPCState::new(&vpc),
-            instances: vec![state::Ec2InstanceState::new(&instance)],
+            instances: created_instances
+                .into_iter()
+                .map(|instance| state::Ec2InstanceState::new(&instance))
+                .collect(),
         };
 
         fs::write(&self.state_file_path, serde_json::to_string_pretty(&state)?)?;
@@ -294,6 +312,36 @@ impl Orchestrator {
             .collect();
 
         (services_to_create, services_to_remove)
+    }
+
+    /// Calculates the number of instances needed to run the services
+    /// For now we expect that an individual service required resources will not exceed
+    /// a single EC2 instance capacity
+    fn get_number_of_needed_instances(
+        config: &config::Config,
+        instance_type: &InstanceType,
+    ) -> u32 {
+        let total_services_cpus = config
+            .project
+            .services
+            .values()
+            .map(|service| service.cpus)
+            .sum::<u32>();
+
+        let total_services_memory = config
+            .project
+            .services
+            .values()
+            .map(|service| service.memory)
+            .sum::<u64>();
+
+        let needed_instances_count_by_cpus = total_services_cpus.div_ceil(instance_type.cpus);
+        let needed_instances_count_by_memory = total_services_memory.div_ceil(instance_type.memory);
+
+        std::cmp::max(
+            needed_instances_count_by_cpus,
+            u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
+        )
     }
 
     /// Deploys and destroys user services
