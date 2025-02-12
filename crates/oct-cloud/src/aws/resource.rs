@@ -23,7 +23,6 @@ pub struct Ec2Instance {
     pub name: String,
     pub user_data: String,
     pub user_data_base64: String,
-    pub vpc: VPC,
 
     // TODO: Make it required
     pub instance_profile: Option<InstanceProfile>,
@@ -55,7 +54,6 @@ impl Ec2Instance {
         ami: String,
         instance_type: InstanceType,
         name: String,
-        vpc: VPC,
         instance_profile: Option<InstanceProfile>,
     ) -> Self {
         let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
@@ -93,7 +91,6 @@ impl Ec2Instance {
             name,
             user_data: Self::USER_DATA.to_string(),
             user_data_base64,
-            vpc,
             instance_profile: Some(instance_profile),
         }
     }
@@ -103,9 +100,6 @@ impl Resource for Ec2Instance {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         const MAX_ATTEMPTS: usize = 10;
         const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
-
-        // Create VPC
-        self.vpc.create().await?;
 
         // Create IAM role for EC2 instance
         match &mut self.instance_profile {
@@ -175,9 +169,6 @@ impl Resource for Ec2Instance {
         self.id = None;
         self.public_ip = None;
         self.public_dns = None;
-
-        // Destroy VPC
-        self.vpc.destroy().await?;
 
         match &mut self.instance_profile {
             Some(instance_profile) => instance_profile.destroy().await,
@@ -898,39 +889,6 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            vpc: VPC {
-                client: ec2_impl_vpc_mock,
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/16".to_string(),
-                name: "test".to_string(),
-                subnet: Subnet {
-                    client: ec2_impl_subnet_mock,
-                    id: None,
-                    region: "us-west-2".to_string(),
-                    cidr_block: "10.0.0.0/24".to_string(),
-                    vpc_id: None,
-                    name: "test".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTable {
-                    client: ec2_impl_route_table_mock,
-                    id: None,
-                    vpc_id: None,
-                    subnet_id: None,
-                    region: "us-west-2".to_string(),
-                },
-                security_group: SecurityGroup {
-                    client: ec2_impl_security_group_mock,
-                    id: None,
-                    name: "ct-app-security-group".to_string(),
-                    vpc_id: None,
-                    description: "ct-app-security-group".to_string(),
-                    port: 22,
-                    protocol: "tcp".to_string(),
-                    region: "us-west-2".to_string(),
-                },
-            },
             instance_profile: None,
         };
 
@@ -1015,39 +973,6 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            vpc: VPC {
-                client: ec2_impl_vpc_mock,
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/16".to_string(),
-                name: "test".to_string(),
-                subnet: Subnet {
-                    client: ec2_impl_subnet_mock,
-                    id: None,
-                    region: "us-west-2".to_string(),
-                    cidr_block: "10.0.0.0/24".to_string(),
-                    vpc_id: None,
-                    name: "test".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTable {
-                    client: ec2_impl_route_table_mock,
-                    id: None,
-                    vpc_id: None,
-                    subnet_id: None,
-                    region: "us-west-2".to_string(),
-                },
-                security_group: SecurityGroup {
-                    client: ec2_impl_security_group_mock,
-                    id: None,
-                    name: "ct-app-security-group".to_string(),
-                    vpc_id: None,
-                    description: "ct-app-security-group".to_string(),
-                    port: 22,
-                    protocol: "tcp".to_string(),
-                    region: "us-west-2".to_string(),
-                },
-            },
             instance_profile: None,
         };
 
@@ -1123,39 +1048,6 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            vpc: VPC {
-                client: ec2_impl_vpc_mock,
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/16".to_string(),
-                name: "test".to_string(),
-                subnet: Subnet {
-                    client: ec2_impl_subnet_mock,
-                    id: None,
-                    region: "us-west-2".to_string(),
-                    cidr_block: "10.0.0.0/24".to_string(),
-                    vpc_id: None,
-                    name: "test".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTable {
-                    client: ec2_impl_route_table_mock,
-                    id: None,
-                    vpc_id: None,
-                    subnet_id: None,
-                    region: "us-west-2".to_string(),
-                },
-                security_group: SecurityGroup {
-                    client: ec2_impl_security_group_mock,
-                    id: None,
-                    name: "ct-app-security-group".to_string(),
-                    vpc_id: None,
-                    description: "ct-app-security-group".to_string(),
-                    port: 22,
-                    protocol: "tcp".to_string(),
-                    region: "us-west-2".to_string(),
-                },
-            },
             instance_profile: None,
         };
 
@@ -1198,39 +1090,6 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            vpc: VPC {
-                client: Ec2::default(),
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/16".to_string(),
-                name: "test".to_string(),
-                subnet: Subnet {
-                    client: Ec2::default(),
-                    id: None,
-                    region: "us-west-2".to_string(),
-                    cidr_block: "10.0.0.0/24".to_string(),
-                    vpc_id: None,
-                    name: "test".to_string(),
-                },
-                internet_gateway: None,
-                route_table: RouteTable {
-                    client: Ec2::default(),
-                    id: None,
-                    vpc_id: None,
-                    subnet_id: None,
-                    region: "us-west-2".to_string(),
-                },
-                security_group: SecurityGroup {
-                    client: Ec2::default(),
-                    id: None,
-                    name: "ct-app-security-group".to_string(),
-                    vpc_id: None,
-                    description: "ct-app-security-group".to_string(),
-                    port: 22,
-                    protocol: "tcp".to_string(),
-                    region: "us-west-2".to_string(),
-                },
-            },
             instance_profile: None,
         };
 

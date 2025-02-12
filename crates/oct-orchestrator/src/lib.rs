@@ -40,7 +40,13 @@ impl Orchestrator {
         log::info!("Services to create: {services_to_create:?}");
         log::info!("Services to remove: {services_to_remove:?}");
 
-        let instances = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
+        let state = self.prepare_infrastructure().await?; // TODO(#189): pass info about required resources
+
+        let mut instances = Vec::<Ec2Instance>::new();
+
+        for instance in state.instances {
+            instances.push(instance.new_from_state().await?);
+        }
 
         for instance in &instances {
             let Some(public_ip) = instance.public_ip.clone() else {
@@ -89,10 +95,17 @@ impl Orchestrator {
         // Load instance from state file
         let json_data =
             fs::read_to_string(&self.state_file_path).expect("Unable to read state file");
-        let state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
+        let state: state::State = serde_json::from_str(&json_data)?;
 
-        // Create EC2 instance from state
-        let mut instance = state.new_from_state().await?;
+        // Create EC2 instances from state
+        let mut instances = Vec::<Ec2Instance>::new();
+
+        for instance in state.instances {
+            instances.push(instance.new_from_state().await?);
+        }
+
+        // Create VPC from state
+        let mut vpc = state.vpc.new_from_state().await;
 
         let user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
@@ -123,7 +136,12 @@ impl Orchestrator {
         let _ = fs::remove_file(&self.user_state_file_path);
 
         // Destroy EC2 instance
-        instance.destroy().await?;
+        for mut instance in instances {
+            instance.destroy().await?;
+        }
+
+        // Destroy VPC
+        vpc.destroy().await?;
 
         log::info!("Instance destroyed");
 
@@ -136,16 +154,14 @@ impl Orchestrator {
     }
 
     /// Prepares L1 infrastructure (VM instances and base networking)
-    async fn prepare_infrastructure(&self) -> Result<Vec<Ec2Instance>, Box<dyn std::error::Error>> {
+    async fn prepare_infrastructure(&self) -> Result<state::State, Box<dyn std::error::Error>> {
         // Trying to get existing state to return public IP
         // The logic will be updated when we support multiple instances
         if std::path::Path::new(&self.state_file_path).exists() {
             let json_data = fs::read_to_string(&self.state_file_path)?;
-            let instance_state: state::Ec2InstanceState = serde_json::from_str(&json_data)?;
+            let state: state::State = serde_json::from_str(&json_data)?;
 
-            log::info!("Instance already exists: {}", instance_state.id);
-
-            return Ok(vec![instance_state.new_from_state().await?]);
+            return Ok(state);
         }
 
         let security_group = SecurityGroup::new(
@@ -175,7 +191,7 @@ impl Orchestrator {
         )
         .await;
 
-        let vpc = VPC::new(
+        let mut vpc = VPC::new(
             None,
             "us-west-2".to_string(),
             "10.0.0.0/16".to_string(),
@@ -187,6 +203,8 @@ impl Orchestrator {
         )
         .await;
 
+        vpc.create().await?;
+
         let mut instance = Ec2Instance::new(
             None,
             None,
@@ -195,7 +213,6 @@ impl Orchestrator {
             "ami-04dd23e62ed049936".to_string(),
             InstanceType::T2_MICRO,
             "oct-cli".to_string(),
-            vpc,
             None,
         )
         .await;
@@ -206,12 +223,15 @@ impl Orchestrator {
 
         log::info!("Instance created: {instance_id}");
 
-        // Save to state file
-        let instance_state = state::Ec2InstanceState::new(&instance);
-        let json_data = serde_json::to_string_pretty(&instance_state)?;
-        fs::write(&self.state_file_path, json_data)?;
+        // Add instance to state
+        let state = state::State {
+            vpc: state::VPCState::new(&vpc),
+            instances: vec![state::Ec2InstanceState::new(&instance)],
+        };
 
-        Ok(vec![instance])
+        fs::write(&self.state_file_path, serde_json::to_string_pretty(&state)?)?;
+
+        Ok(state)
     }
 
     /// Waits for a host to be healthy
