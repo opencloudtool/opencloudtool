@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
 use oct_cloud::aws::resource::{
     Ec2Instance, InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
@@ -99,10 +100,13 @@ impl Orchestrator {
     }
 
     pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // Load instance from state file
-        let json_data =
-            fs::read_to_string(&self.state_file_path).expect("Unable to read state file");
-        let state: state::State = serde_json::from_str(&json_data)?;
+        if !Path::new(&self.state_file_path).exists() {
+            log::info!("Nothing to destroy");
+
+            return Ok(());
+        }
+
+        let state = state::State::new(&self.state_file_path)?;
 
         // Create EC2 instances from state
         let mut instances = Vec::<Ec2Instance>::new();
@@ -165,14 +169,8 @@ impl Orchestrator {
         &self,
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
-        // Trying to get existing state to return public IP
-        // The logic will be updated when we support multiple instances
-        if std::path::Path::new(&self.state_file_path).exists() {
-            let json_data = fs::read_to_string(&self.state_file_path)?;
-            let state: state::State = serde_json::from_str(&json_data)?;
-
-            return Ok(state);
-        }
+        // Get state file
+        let mut state = state::State::new(&self.state_file_path)?;
 
         let security_group = SecurityGroup::new(
             None,
@@ -239,15 +237,13 @@ impl Orchestrator {
         }
 
         // Add instance to state
-        let state = state::State {
-            vpc: state::VPCState::new(&vpc),
-            instances: created_instances
-                .into_iter()
-                .map(|instance| state::Ec2InstanceState::new(&instance))
-                .collect(),
-        };
+        state.vpc = state::VPCState::new(&vpc);
+        state.instances = created_instances
+            .into_iter()
+            .map(|instance| state::Ec2InstanceState::new(&instance))
+            .collect();
 
-        fs::write(&self.state_file_path, serde_json::to_string_pretty(&state)?)?;
+        state.save(&self.state_file_path)?;
 
         Ok(state)
     }

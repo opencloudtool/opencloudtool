@@ -1,15 +1,35 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
 
 use crate::aws::types::InstanceType;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct State {
     pub vpc: VPCState,
 
     pub instances: Vec<Ec2InstanceState>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl State {
+    /// Load state from file or create a new one
+    pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        if std::path::Path::new(file_path).exists() {
+            let existing_data = fs::read_to_string(file_path)?;
+            Ok(serde_json::from_str::<State>(&existing_data)?)
+        } else {
+            Ok(State::default())
+        }
+    }
+
+    /// Save state to file
+    pub fn save(&self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        fs::write(file_path, serde_json::to_string_pretty(self)?)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Ec2InstanceState {
     pub id: String,
     pub public_ip: String,
@@ -295,7 +315,7 @@ impl Ec2InstanceState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstanceProfileState {
     pub name: String,
     pub region: String,
@@ -325,7 +345,7 @@ impl InstanceProfileState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct InstanceRoleState {
     pub name: String,
     pub region: String,
@@ -348,7 +368,7 @@ impl InstanceRoleState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct VPCState {
     pub id: String,
     pub region: String,
@@ -394,7 +414,7 @@ impl VPCState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct SubnetState {
     pub id: String,
     pub region: String,
@@ -426,7 +446,7 @@ impl SubnetState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct InternetGatewayState {
     pub id: String,
     pub vpc_id: String,
@@ -461,7 +481,7 @@ impl InternetGatewayState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct SecurityGroupState {
     pub id: String,
     pub vpc_id: String,
@@ -499,7 +519,7 @@ impl SecurityGroupState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct RouteTableState {
     pub id: String,
     pub vpc_id: String,
@@ -530,6 +550,9 @@ impl RouteTableState {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+    use tempfile;
+
     use super::*;
 
     #[tokio::test]
@@ -800,6 +823,216 @@ mod tests {
         assert_eq!(vpc_state.region, "region".to_string());
         assert_eq!(vpc_state.cidr_block, "test_cidr_block".to_string());
         assert_eq!(vpc_state.name, "name".to_string());
+    }
+
+    #[test]
+    fn test_state_new_exists() {
+        // Arrange
+        let state_file_content = r#"
+{
+    "vpc": {    
+        "id": "id",
+        "region": "region",
+        "cidr_block": "test_cidr_block",
+        "name": "name",
+        "subnet": {
+            "id": "id",
+            "region": "region",
+            "cidr_block": "test_cidr_block",
+            "vpc_id": "vpc_id",
+            "name": "name"
+        },
+        "internet_gateway": null,
+        "route_table": {
+            "id": "id",
+            "vpc_id": "vpc_id",
+            "subnet_id": "subnet_id",
+            "region": "region"
+        },
+        "security_group": {
+            "id": "id",
+            "vpc_id": "vpc_id",
+            "name": "name",
+            "description": "description",
+            "port": 80,
+            "protocol": "TCP",
+            "region": "region"
+        }
+    },
+    "instances": [
+    {
+        "id": "id",
+        "public_ip": "public_ip",
+        "public_dns": "public_dns",
+        "region": "region",
+        "ami": "ami",
+        "instance_type": "t2.micro",
+        "name": "name",
+        "instance_profile": null
+    }]
+}"#;
+
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(state_file_content.as_bytes()).unwrap();
+
+        // Act
+        let state = State::new(file.path().to_str().unwrap()).unwrap();
+
+        // Assert
+        assert_eq!(
+            state,
+            State {
+                vpc: VPCState {
+                    id: "id".to_string(),
+                    region: "region".to_string(),
+                    cidr_block: "test_cidr_block".to_string(),
+                    name: "name".to_string(),
+                    subnet: SubnetState {
+                        id: "id".to_string(),
+                        region: "region".to_string(),
+                        cidr_block: "test_cidr_block".to_string(),
+                        vpc_id: "vpc_id".to_string(),
+                        name: "name".to_string(),
+                    },
+                    internet_gateway: None,
+                    route_table: RouteTableState {
+                        id: "id".to_string(),
+                        vpc_id: "vpc_id".to_string(),
+                        subnet_id: "subnet_id".to_string(),
+                        region: "region".to_string(),
+                    },
+                    security_group: SecurityGroupState {
+                        id: "id".to_string(),
+                        vpc_id: "vpc_id".to_string(),
+                        name: "name".to_string(),
+                        description: "description".to_string(),
+                        port: 80,
+                        protocol: "TCP".to_string(),
+                        region: "region".to_string(),
+                    },
+                },
+                instances: vec![Ec2InstanceState {
+                    id: "id".to_string(),
+                    public_ip: "public_ip".to_string(),
+                    public_dns: "public_dns".to_string(),
+                    region: "region".to_string(),
+                    ami: "ami".to_string(),
+                    instance_type: "t2.micro".to_string(),
+                    name: "name".to_string(),
+                    instance_profile: None,
+                }],
+            }
+        )
+    }
+
+    #[test]
+    fn test_state_new_not_exists() {
+        // Act
+        let state = State::new("NO_FILE").unwrap();
+
+        // Assert
+        assert_eq!(state.instances.len(), 0);
+    }
+
+    #[test]
+    fn test_state_save() {
+        // Arrange
+        let state = State {
+            vpc: VPCState {
+                id: "id".to_string(),
+                region: "region".to_string(),
+                cidr_block: "test_cidr_block".to_string(),
+                name: "name".to_string(),
+                subnet: SubnetState {
+                    id: "id".to_string(),
+                    region: "region".to_string(),
+                    cidr_block: "test_cidr_block".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                },
+                internet_gateway: None,
+                route_table: RouteTableState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    subnet_id: "subnet_id".to_string(),
+                    region: "region".to_string(),
+                },
+                security_group: SecurityGroupState {
+                    id: "id".to_string(),
+                    vpc_id: "vpc_id".to_string(),
+                    name: "name".to_string(),
+                    description: "description".to_string(),
+                    port: 80,
+                    protocol: "TCP".to_string(),
+                    region: "region".to_string(),
+                },
+            },
+            instances: vec![Ec2InstanceState {
+                id: "id".to_string(),
+                public_ip: "public_ip".to_string(),
+                public_dns: "public_dns".to_string(),
+                region: "region".to_string(),
+                ami: "ami".to_string(),
+                instance_type: "t2.micro".to_string(),
+                name: "name".to_string(),
+                instance_profile: None,
+            }],
+        };
+
+        let state_file = tempfile::NamedTempFile::new().unwrap();
+
+        // Act
+        state.save(state_file.path().to_str().unwrap()).unwrap();
+
+        // Assert
+        let file_content = fs::read_to_string(state_file.path()).unwrap();
+
+        assert_eq!(
+            file_content,
+            r#"{
+  "vpc": {
+    "id": "id",
+    "region": "region",
+    "cidr_block": "test_cidr_block",
+    "name": "name",
+    "subnet": {
+      "id": "id",
+      "region": "region",
+      "cidr_block": "test_cidr_block",
+      "vpc_id": "vpc_id",
+      "name": "name"
+    },
+    "internet_gateway": null,
+    "route_table": {
+      "id": "id",
+      "vpc_id": "vpc_id",
+      "subnet_id": "subnet_id",
+      "region": "region"
+    },
+    "security_group": {
+      "id": "id",
+      "vpc_id": "vpc_id",
+      "name": "name",
+      "description": "description",
+      "port": 80,
+      "protocol": "TCP",
+      "region": "region"
+    }
+  },
+  "instances": [
+    {
+      "id": "id",
+      "public_ip": "public_ip",
+      "public_dns": "public_dns",
+      "region": "region",
+      "ami": "ami",
+      "instance_type": "t2.micro",
+      "name": "name",
+      "instance_profile": null
+    }
+  ]
+}"#
+        );
     }
 
     #[tokio::test]
