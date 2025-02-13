@@ -460,28 +460,25 @@ impl Ec2Impl {
         instance_type: InstanceType,
         ami: String,
         user_data_base64: String,
-        instance_profile_name: Option<String>,
+        instance_profile_name: String,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
-        let mut request = self
+        let response = self
             .inner
             .run_instances()
             .instance_type(instance_type.name.into())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
-            .min_count(1)
-            .max_count(1);
-
-        if let Some(instance_profile_name) = instance_profile_name {
-            request = request.iam_instance_profile(
+            .iam_instance_profile(
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
                     .name(instance_profile_name)
                     .build(),
-            );
-        }
-
-        let response = request.send().await?;
+            )
+            .min_count(1)
+            .max_count(1)
+            .send()
+            .await?;
 
         log::info!("Created EC2 instance");
 

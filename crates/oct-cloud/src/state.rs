@@ -7,6 +7,8 @@ use crate::aws::types::InstanceType;
 pub struct State {
     pub vpc: VPCState,
 
+    pub instance_profile: InstanceProfileState,
+
     pub instances: Vec<Ec2InstanceState>,
 }
 
@@ -38,8 +40,7 @@ pub struct Ec2InstanceState {
     pub ami: String,
     pub instance_type: String,
     pub name: String,
-    // TODO: Make instance_profile required
-    pub instance_profile: Option<InstanceProfileState>,
+    pub instance_profile_name: String,
 }
 
 #[cfg(test)]
@@ -54,7 +55,7 @@ mod mocks {
         pub ami: String,
         pub instance_type: InstanceType,
         pub name: String,
-        pub instance_profile: Option<MockInstanceProfile>,
+        pub instance_profile_name: String,
     }
 
     impl MockEc2Instance {
@@ -66,7 +67,7 @@ mod mocks {
             ami: String,
             instance_type: InstanceType,
             name: String,
-            instance_profile: Option<MockInstanceProfile>,
+            instance_profile_name: String,
         ) -> Self {
             Self {
                 id,
@@ -76,7 +77,7 @@ mod mocks {
                 ami,
                 instance_type,
                 name,
-                instance_profile,
+                instance_profile_name,
             }
         }
     }
@@ -88,9 +89,13 @@ mod mocks {
     }
 
     impl MockInstanceProfile {
-        pub async fn new(region: String, instance_roles: Vec<MockInstanceRole>) -> Self {
+        pub async fn new(
+            name: String,
+            region: String,
+            instance_roles: Vec<MockInstanceRole>,
+        ) -> Self {
             Self {
-                name: "test_name".to_string(),
+                name,
                 region,
                 instance_roles,
             }
@@ -105,9 +110,9 @@ mod mocks {
     }
 
     impl MockInstanceRole {
-        pub async fn new(region: String) -> Self {
+        pub async fn new(name: String, region: String) -> Self {
             Self {
-                name: "test_name".to_string(),
+                name,
                 region,
                 assume_role_policy: "test_assume_role_policy".to_string(),
                 policy_arns: vec!["test_policy_arn".to_string()],
@@ -288,19 +293,11 @@ impl Ec2InstanceState {
             ami: ec2_instance.ami.clone(),
             instance_type: ec2_instance.instance_type.name.to_string(),
             name: ec2_instance.name.clone(),
-            instance_profile: ec2_instance
-                .instance_profile
-                .as_ref()
-                .map(InstanceProfileState::new),
+            instance_profile_name: ec2_instance.instance_profile_name.clone(),
         }
     }
 
     pub async fn new_from_state(&self) -> Result<Ec2Instance, Box<dyn std::error::Error>> {
-        let instance_profile = match &self.instance_profile {
-            Some(profile) => profile.new_from_state().await,
-            None => return Err("Instance profile is not set".into()),
-        };
-
         Ok(Ec2Instance::new(
             Some(self.id.clone()),
             Some(self.public_ip.clone()),
@@ -309,13 +306,13 @@ impl Ec2InstanceState {
             self.ami.clone(),
             InstanceType::from(self.instance_type.as_str()),
             self.name.clone(),
-            Some(instance_profile),
+            self.instance_profile_name.clone(),
         )
         .await)
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstanceProfileState {
     pub name: String,
     pub region: String,
@@ -341,7 +338,7 @@ impl InstanceProfileState {
             roles.push(role.new_from_state().await);
         }
 
-        InstanceProfile::new(self.region.clone(), roles).await
+        InstanceProfile::new(self.name.clone(), self.region.clone(), roles).await
     }
 }
 
@@ -364,7 +361,7 @@ impl InstanceRoleState {
     }
 
     pub async fn new_from_state(&self) -> InstanceRole {
-        InstanceRole::new(self.region.clone()).await
+        InstanceRole::new(self.name.clone(), self.region.clone()).await
     }
 }
 
@@ -588,6 +585,16 @@ mod tests {
                     region: "region".to_string(),
                 },
             },
+            instance_profile: InstanceProfileState {
+                name: "instance_profile_name".to_string(),
+                region: "region".to_string(),
+                instance_roles: vec![InstanceRoleState {
+                    name: "instance_role_name".to_string(),
+                    region: "region".to_string(),
+                    assume_role_policy: "assume_role_policy".to_string(),
+                    policy_arns: vec!["policy_arns".to_string()],
+                }],
+            },
             instances: vec![Ec2InstanceState {
                 id: "id".to_string(),
                 public_ip: "public_ip".to_string(),
@@ -596,7 +603,7 @@ mod tests {
                 ami: "ami".to_string(),
                 instance_type: "t2.micro".to_string(),
                 name: "name".to_string(),
-                instance_profile: None,
+                instance_profile_name: "instance_profile_name".to_string(),
             }],
         };
 
@@ -615,7 +622,7 @@ mod tests {
             "ami".to_string(),
             InstanceType::T2_MICRO,
             "name".to_string(),
-            None,
+            "instance_profile_name".to_string(),
         )
         .await;
 
@@ -633,13 +640,6 @@ mod tests {
     #[tokio::test]
     async fn test_ec2_instance_state_new_from_state() {
         // Arrange
-        let mock_instance_role = InstanceRole::new("region".to_string()).await;
-
-        let mock_instance_profile =
-            InstanceProfile::new("region".to_string(), vec![mock_instance_role]).await;
-
-        let instance_profile_state = InstanceProfileState::new(&mock_instance_profile);
-
         let ec2_instance_state = Ec2InstanceState {
             id: "id".to_string(),
             public_ip: "public_ip".to_string(),
@@ -648,7 +648,7 @@ mod tests {
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
-            instance_profile: Some(instance_profile_state),
+            instance_profile_name: "instance_profile_name".to_string(),
         };
 
         // Act
@@ -662,45 +662,24 @@ mod tests {
         assert_eq!(ec2_instance.ami, "ami".to_string());
         assert_eq!(ec2_instance.instance_type, InstanceType::T2_MICRO);
         assert_eq!(ec2_instance.name, "name".to_string());
-        assert!(ec2_instance.instance_profile.is_some());
         assert_eq!(
-            ec2_instance.instance_profile.unwrap().instance_roles.len(),
-            1
+            ec2_instance.instance_profile_name,
+            "instance_profile_name".to_string()
         );
-    }
-
-    #[tokio::test]
-    async fn test_ec2_instance_state_new_from_state_no_instance_profile() {
-        // Arrange
-        let ec2_instance_state = Ec2InstanceState {
-            id: "id".to_string(),
-            public_ip: "public_ip".to_string(),
-            public_dns: "public_dns".to_string(),
-            region: "region".to_string(),
-            ami: "ami".to_string(),
-            instance_type: "t2.micro".to_string(),
-            name: "name".to_string(),
-            instance_profile: None,
-        };
-
-        // Act
-        let ec2_instance = ec2_instance_state.new_from_state().await;
-
-        // Assert
-        assert!(ec2_instance.is_err());
     }
 
     #[tokio::test]
     async fn test_instance_profile_state() {
         let instance_profile = InstanceProfile::new(
+            "test_instance_profile".to_string(),
             "test_region".to_string(),
-            vec![InstanceRole::new("test_region".to_string()).await],
+            vec![InstanceRole::new("test_role".to_string(), "test_region".to_string()).await],
         )
         .await;
 
         let instance_profile_state = InstanceProfileState::new(&instance_profile);
 
-        assert_eq!(instance_profile_state.name, "test_name");
+        assert_eq!(instance_profile_state.name, "test_instance_profile");
         assert_eq!(instance_profile_state.region, "test_region");
         assert_eq!(instance_profile_state.instance_roles.len(), 1);
     }
@@ -742,11 +721,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_instance_role_state() {
-        let instance_role = InstanceRole::new("test_region".to_string()).await;
+        let instance_role =
+            InstanceRole::new("test_role".to_string(), "test_region".to_string()).await;
 
         let instance_role_state = InstanceRoleState::new(&instance_role);
 
-        assert_eq!(instance_role_state.name, "test_name");
+        assert_eq!(instance_role_state.name, "test_role");
         assert_eq!(instance_role_state.region, "test_region");
         assert_eq!(
             instance_role_state.assume_role_policy,
@@ -859,6 +839,20 @@ mod tests {
             "region": "region"
         }
     },
+    "instance_profile": {
+        "name": "instance_profile_name",
+        "region": "region",
+        "instance_roles": [
+        {
+            "name": "instance_role_name",
+            "region": "region",
+            "assume_role_policy": "assume_role_policy",
+            "policy_arns": [
+                "policy_arn"
+            ]
+        }
+        ]
+    },
     "instances": [
     {
         "id": "id",
@@ -868,7 +862,7 @@ mod tests {
         "ami": "ami",
         "instance_type": "t2.micro",
         "name": "name",
-        "instance_profile": null
+        "instance_profile_name": "instance_profile_name"
     }]
 }"#;
 
@@ -911,6 +905,16 @@ mod tests {
                         region: "region".to_string(),
                     },
                 },
+                instance_profile: InstanceProfileState {
+                    name: "instance_profile_name".to_string(),
+                    region: "region".to_string(),
+                    instance_roles: vec![InstanceRoleState {
+                        name: "instance_role_name".to_string(),
+                        region: "region".to_string(),
+                        assume_role_policy: "assume_role_policy".to_string(),
+                        policy_arns: vec!["policy_arn".to_string()],
+                    }],
+                },
                 instances: vec![Ec2InstanceState {
                     id: "id".to_string(),
                     public_ip: "public_ip".to_string(),
@@ -919,7 +923,7 @@ mod tests {
                     ami: "ami".to_string(),
                     instance_type: "t2.micro".to_string(),
                     name: "name".to_string(),
-                    instance_profile: None,
+                    instance_profile_name: "instance_profile_name".to_string(),
                 }],
             }
         )
@@ -967,6 +971,16 @@ mod tests {
                     region: "region".to_string(),
                 },
             },
+            instance_profile: InstanceProfileState {
+                name: "instance_profile_name".to_string(),
+                region: "region".to_string(),
+                instance_roles: vec![InstanceRoleState {
+                    name: "instance_role_name".to_string(),
+                    region: "region".to_string(),
+                    assume_role_policy: "assume_role_policy".to_string(),
+                    policy_arns: vec!["policy_arn".to_string()],
+                }],
+            },
             instances: vec![Ec2InstanceState {
                 id: "id".to_string(),
                 public_ip: "public_ip".to_string(),
@@ -975,7 +989,7 @@ mod tests {
                 ami: "ami".to_string(),
                 instance_type: "t2.micro".to_string(),
                 name: "name".to_string(),
-                instance_profile: None,
+                instance_profile_name: "instance_profile_name".to_string(),
             }],
         };
 
@@ -1019,6 +1033,20 @@ mod tests {
       "region": "region"
     }
   },
+  "instance_profile": {
+    "name": "instance_profile_name",
+    "region": "region",
+    "instance_roles": [
+      {
+        "name": "instance_role_name",
+        "region": "region",
+        "assume_role_policy": "assume_role_policy",
+        "policy_arns": [
+          "policy_arn"
+        ]
+      }
+    ]
+  },
   "instances": [
     {
       "id": "id",
@@ -1028,7 +1056,7 @@ mod tests {
       "ami": "ami",
       "instance_type": "t2.micro",
       "name": "name",
-      "instance_profile": null
+      "instance_profile_name": "instance_profile_name"
     }
   ]
 }"#
