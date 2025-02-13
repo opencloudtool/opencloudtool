@@ -1,9 +1,59 @@
 use base64::{engine::general_purpose, Engine as _};
 
-use crate::aws::client::{Ec2, IAM};
+use crate::aws::client::{Ec2, ECR, IAM};
 use crate::aws::types::InstanceType;
 use crate::resource::Resource;
 
+#[derive(Debug)]
+pub struct EcrRepository {
+    client: ECR,
+
+    // Known after creation
+    pub id: Option<String>,
+
+    pub name: String,
+
+    pub region: String,
+}
+
+impl EcrRepository {
+    pub async fn new(id: Option<String>, name: String, region: String) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let ecr_client = aws_sdk_ecr::Client::new(&config);
+
+        Self {
+            client: ECR::new(ecr_client),
+            id,
+            name,
+            region,
+        }
+    }
+}
+
+impl Resource for EcrRepository {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let repository_id = self.client.create_repository(self.name.clone()).await?;
+
+        self.id = Some(repository_id);
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        todo!()
+    }
+}
 #[derive(Debug)]
 pub struct Ec2Instance {
     client: Ec2,
