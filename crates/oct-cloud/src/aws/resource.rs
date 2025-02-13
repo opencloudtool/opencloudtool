@@ -556,9 +556,8 @@ pub struct SecurityGroup {
     pub name: String,
     pub vpc_id: Option<String>,
     pub description: String,
-    pub port: i32,
-    pub protocol: String,
     pub region: String,
+    pub inbound_rules: Vec<InboundRule>,
 }
 
 impl SecurityGroup {
@@ -567,9 +566,8 @@ impl SecurityGroup {
         name: String,
         vpc_id: Option<String>,
         description: String,
-        port: i32,
-        protocol: String,
         region: String,
+        inbound_rules: Vec<InboundRule>,
     ) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
@@ -591,9 +589,8 @@ impl SecurityGroup {
             name,
             vpc_id,
             description,
-            port,
-            protocol,
             region,
+            inbound_rules,
         }
     }
 }
@@ -611,13 +608,16 @@ impl Resource for SecurityGroup {
 
         self.id = Some(security_group_id.clone());
 
-        self.client
-            .allow_inbound_traffic_for_security_group(
-                security_group_id.clone(),
-                self.protocol.clone(),
-                self.port,
-            )
-            .await?;
+        for rule in &self.inbound_rules {
+            self.client
+                .allow_inbound_traffic_for_security_group(
+                    security_group_id.clone(),
+                    rule.protocol.clone(),
+                    rule.port,
+                    rule.cidr_block.clone(),
+                )
+                .await?;
+        }
 
         Ok(())
     }
@@ -638,6 +638,24 @@ impl Resource for SecurityGroup {
         Ok(())
     }
 }
+
+#[derive(Debug)]
+pub struct InboundRule {
+    pub protocol: String,
+    pub port: i32,
+    pub cidr_block: String,
+}
+
+impl InboundRule {
+    pub fn new(protocol: String, port: i32, cidr_block: String) -> Self {
+        Self {
+            protocol,
+            port,
+            cidr_block,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct InstanceProfile {
     client: IAM,
@@ -803,8 +821,13 @@ mod tests {
 
         ec2_impl_security_group_mock
             .expect_allow_inbound_traffic_for_security_group()
-            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
-            .return_once(|_, _, _| Ok(()));
+            .with(
+                eq("sg-12345".to_string()),
+                eq("tcp".to_string()),
+                eq(22),
+                eq("10.0.0.0/16".to_string()),
+            )
+            .return_once(|_, _, _, _| Ok(()));
 
         let mut ec2_impl_route_table_mock = Ec2::default();
         ec2_impl_route_table_mock
@@ -907,8 +930,13 @@ mod tests {
 
         ec2_impl_security_group_mock
             .expect_allow_inbound_traffic_for_security_group()
-            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
-            .return_once(|_, _, _| Ok(()));
+            .with(
+                eq("sg-12345".to_string()),
+                eq("tcp".to_string()),
+                eq(22),
+                eq("10.0.0.0/16".to_string()),
+            )
+            .return_once(|_, _, _, _| Ok(()));
 
         let mut ec2_impl_route_table_mock = Ec2::default();
         ec2_impl_route_table_mock
@@ -988,8 +1016,13 @@ mod tests {
 
         ec2_impl_security_group_mock
             .expect_allow_inbound_traffic_for_security_group()
-            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
-            .return_once(|_, _, _| Ok(()));
+            .with(
+                eq("sg-12345".to_string()),
+                eq("tcp".to_string()),
+                eq(22),
+                eq("10.0.0.0/16".to_string()),
+            )
+            .return_once(|_, _, _, _| Ok(()));
 
         let mut ec2_impl_route_table_mock = Ec2::default();
         ec2_impl_route_table_mock
@@ -1294,8 +1327,13 @@ mod tests {
 
         ec2_impl_security_group_mock
             .expect_allow_inbound_traffic_for_security_group()
-            .with(eq("sg-12345".to_string()), eq("tcp".to_string()), eq(22))
-            .return_once(|_, _, _| Ok(()));
+            .with(
+                eq("sg-12345".to_string()),
+                eq("tcp".to_string()),
+                eq(22),
+                eq("10.0.0.0/16".to_string()),
+            )
+            .return_once(|_, _, _, _| Ok(()));
 
         let mut ec2_impl_route_table_mock = Ec2::default();
         ec2_impl_route_table_mock
@@ -1346,9 +1384,8 @@ mod tests {
                 name: "ct-app-security-group".to_string(),
                 vpc_id: None,
                 description: "ct-app-security-group".to_string(),
-                port: 22,
-                protocol: "tcp".to_string(),
                 region: "us-west-2".to_string(),
+                inbound_rules: vec![],
             },
         };
 
@@ -1407,9 +1444,8 @@ mod tests {
                 name: "ct-app-security-group".to_string(),
                 vpc_id: None,
                 description: "ct-app-security-group".to_string(),
-                port: 22,
-                protocol: "tcp".to_string(),
                 region: "us-west-2".to_string(),
+                inbound_rules: vec![],
             },
         };
 
@@ -1467,9 +1503,8 @@ mod tests {
                 name: "ct-app-security-group".to_string(),
                 vpc_id: None,
                 description: "ct-app-security-group".to_string(),
-                port: 22,
-                protocol: "tcp".to_string(),
                 region: "us-west-2".to_string(),
+                inbound_rules: vec![],
             },
         };
 
@@ -1527,9 +1562,8 @@ mod tests {
                 name: "ct-app-security-group".to_string(),
                 vpc_id: None,
                 description: "ct-app-security-group".to_string(),
-                port: 22,
-                protocol: "tcp".to_string(),
                 region: "us-west-2".to_string(),
+                inbound_rules: vec![],
             },
         };
 

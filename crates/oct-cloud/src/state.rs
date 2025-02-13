@@ -237,9 +237,8 @@ mod mocks {
         pub name: String,
         pub vpc_id: Option<String>,
         pub description: String,
-        pub port: i32,
-        pub protocol: String,
         pub region: String,
+        pub inbound_rules: Vec<MockInboundRule>,
     }
 
     impl MockSecurityGroup {
@@ -248,18 +247,33 @@ mod mocks {
             name: String,
             vpc_id: Option<String>,
             description: String,
-            port: i32,
-            protocol: String,
             region: String,
+            inbound_rules: Vec<MockInboundRule>,
         ) -> Self {
             Self {
                 id,
                 name,
                 vpc_id,
                 description,
-                port,
-                protocol,
                 region,
+                inbound_rules,
+            }
+        }
+    }
+
+    #[derive(Clone)]
+    pub struct MockInboundRule {
+        pub protocol: String,
+        pub port: i32,
+        pub cidr_block: String,
+    }
+
+    impl MockInboundRule {
+        pub fn new(protocol: String, port: i32, cidr_block: String) -> Self {
+            Self {
+                protocol,
+                port,
+                cidr_block,
             }
         }
     }
@@ -267,16 +281,16 @@ mod mocks {
 
 #[cfg(not(test))]
 use crate::aws::resource::{
-    Ec2Instance, InstanceProfile, InstanceRole, InternetGateway, RouteTable, SecurityGroup, Subnet,
-    VPC,
+    Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
+    SecurityGroup, Subnet, VPC,
 };
 
 #[cfg(test)]
 use mocks::{
-    MockEc2Instance as Ec2Instance, MockInstanceProfile as InstanceProfile,
-    MockInstanceRole as InstanceRole, MockInternetGateway as InternetGateway,
-    MockRouteTable as RouteTable, MockSecurityGroup as SecurityGroup, MockSubnet as Subnet,
-    MockVPC as VPC,
+    MockEc2Instance as Ec2Instance, MockInboundRule as InboundRule,
+    MockInstanceProfile as InstanceProfile, MockInstanceRole as InstanceRole,
+    MockInternetGateway as InternetGateway, MockRouteTable as RouteTable,
+    MockSecurityGroup as SecurityGroup, MockSubnet as Subnet, MockVPC as VPC,
 };
 
 impl Ec2InstanceState {
@@ -486,9 +500,8 @@ pub struct SecurityGroupState {
     pub vpc_id: String,
     pub name: String,
     pub description: String,
-    pub port: i32,
-    pub protocol: String,
     pub region: String,
+    pub inbound_rules: Vec<InboundRuleState>,
 }
 
 impl SecurityGroupState {
@@ -498,23 +511,52 @@ impl SecurityGroupState {
             vpc_id: group.vpc_id.clone().expect("VPC id not set"),
             name: group.name.clone(),
             description: group.description.clone(),
-            port: group.port,
-            protocol: group.protocol.clone(),
             region: group.region.clone(),
+            inbound_rules: group
+                .inbound_rules
+                .iter()
+                .map(InboundRuleState::new)
+                .collect(),
         }
     }
 
     pub async fn new_from_state(&self) -> SecurityGroup {
+        let inbound_rules = self
+            .inbound_rules
+            .iter()
+            .map(InboundRuleState::new_from_state)
+            .collect();
+
         SecurityGroup::new(
             Some(self.id.clone()),
             self.name.clone(),
             Some(self.vpc_id.clone()),
             self.description.clone(),
-            self.port,
-            self.protocol.clone(),
             self.region.clone(),
+            inbound_rules,
         )
         .await
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct InboundRuleState {
+    pub protocol: String,
+    pub port: i32,
+    pub cidr_block: String,
+}
+
+impl InboundRuleState {
+    pub fn new(rule: &InboundRule) -> Self {
+        Self {
+            protocol: rule.protocol.clone(),
+            port: rule.port,
+            cidr_block: rule.cidr_block.clone(),
+        }
+    }
+
+    pub fn new_from_state(&self) -> InboundRule {
+        InboundRule::new(self.protocol.clone(), self.port, self.cidr_block.clone())
     }
 }
 
@@ -582,9 +624,8 @@ mod tests {
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
                     description: "description".to_string(),
-                    port: 80,
-                    protocol: "TCP".to_string(),
                     region: "region".to_string(),
+                    inbound_rules: vec![],
                 },
             },
             instance_profile: InstanceProfileState {
@@ -790,9 +831,12 @@ mod tests {
                 vpc_id: Some("vpc_id".to_string()),
                 name: "name".to_string(),
                 description: "description".to_string(),
-                port: 80,
-                protocol: "TCP".to_string(),
                 region: "region".to_string(),
+                inbound_rules: vec![InboundRule {
+                    protocol: "tcp".to_string(),
+                    port: 0,
+                    cidr_block: "cidr_block".to_string(),
+                }],
             },
         )
         .await;
@@ -836,9 +880,14 @@ mod tests {
             "vpc_id": "vpc_id",
             "name": "name",
             "description": "description",
-            "port": 80,
-            "protocol": "TCP",
-            "region": "region"
+            "region": "region",
+            "inbound_rules": [
+            {
+                "protocol": "tcp",
+                "port": 0,
+                "cidr_block": "cidr_block"
+            }
+            ]
         }
     },
     "instance_profile": {
@@ -903,9 +952,12 @@ mod tests {
                         vpc_id: "vpc_id".to_string(),
                         name: "name".to_string(),
                         description: "description".to_string(),
-                        port: 80,
-                        protocol: "TCP".to_string(),
                         region: "region".to_string(),
+                        inbound_rules: vec![InboundRuleState {
+                            protocol: "tcp".to_string(),
+                            port: 0,
+                            cidr_block: "cidr_block".to_string(),
+                        }],
                     },
                 },
                 instance_profile: InstanceProfileState {
@@ -970,9 +1022,12 @@ mod tests {
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
                     description: "description".to_string(),
-                    port: 80,
-                    protocol: "TCP".to_string(),
                     region: "region".to_string(),
+                    inbound_rules: vec![InboundRuleState {
+                        protocol: "tcp".to_string(),
+                        port: 0,
+                        cidr_block: "cidr_block".to_string(),
+                    }],
                 },
             },
             instance_profile: InstanceProfileState {
@@ -1032,9 +1087,14 @@ mod tests {
       "vpc_id": "vpc_id",
       "name": "name",
       "description": "description",
-      "port": 80,
-      "protocol": "TCP",
-      "region": "region"
+      "region": "region",
+      "inbound_rules": [
+        {
+          "protocol": "tcp",
+          "port": 0,
+          "cidr_block": "cidr_block"
+        }
+      ]
     }
   },
   "instance_profile": {
@@ -1094,9 +1154,8 @@ mod tests {
                 vpc_id: "vpc_id".to_string(),
                 name: "name".to_string(),
                 description: "description".to_string(),
-                port: 80,
-                protocol: "TCP".to_string(),
                 region: "region".to_string(),
+                inbound_rules: vec![],
             },
         };
 
@@ -1143,9 +1202,8 @@ mod tests {
                 vpc_id: "vpc_id".to_string(),
                 name: "name".to_string(),
                 description: "description".to_string(),
-                port: 80,
-                protocol: "TCP".to_string(),
                 region: "region".to_string(),
+                inbound_rules: vec![],
             },
         };
 
@@ -1190,9 +1248,8 @@ mod tests {
         assert_eq!(vpc.security_group.vpc_id, Some("vpc_id".to_string()));
         assert_eq!(vpc.security_group.name, "name".to_string());
         assert_eq!(vpc.security_group.description, "description".to_string());
-        assert_eq!(vpc.security_group.port, 80);
-        assert_eq!(vpc.security_group.protocol, "TCP".to_string());
         assert_eq!(vpc.security_group.region, "region".to_string());
+        assert_eq!(vpc.security_group.inbound_rules.len(), 0);
     }
 
     #[tokio::test]
@@ -1248,9 +1305,8 @@ mod tests {
             "name".to_string(),
             Some("vpc_id".to_string()),
             "description".to_string(),
-            80,
-            "TCP".to_string(),
             "region".to_string(),
+            vec![],
         )
         .await;
 
@@ -1262,9 +1318,8 @@ mod tests {
         assert_eq!(security_group_state.name, "name".to_string());
         assert_eq!(security_group_state.vpc_id, "vpc_id".to_string());
         assert_eq!(security_group_state.description, "description".to_string());
-        assert_eq!(security_group_state.port, 80);
-        assert_eq!(security_group_state.protocol, "TCP".to_string());
         assert_eq!(security_group_state.region, "region".to_string());
+        assert_eq!(security_group_state.inbound_rules.len(), 0);
     }
 
     #[tokio::test]
@@ -1275,9 +1330,8 @@ mod tests {
             name: "name".to_string(),
             vpc_id: "vpc_id".to_string(),
             description: "description".to_string(),
-            port: 80,
-            protocol: "TCP".to_string(),
             region: "region".to_string(),
+            inbound_rules: vec![],
         };
 
         // Act
@@ -1288,9 +1342,44 @@ mod tests {
         assert_eq!(security_group.name, "name".to_string());
         assert_eq!(security_group.vpc_id, Some("vpc_id".to_string()));
         assert_eq!(security_group.description, "description".to_string());
-        assert_eq!(security_group.port, 80);
-        assert_eq!(security_group.protocol, "TCP".to_string());
         assert_eq!(security_group.region, "region".to_string());
+        assert_eq!(security_group.inbound_rules.len(), 0);
+    }
+
+    #[test]
+    fn test_inbound_rule_state() {
+        // Arrange
+        let inbound_rule = InboundRule {
+            protocol: "tcp".to_string(),
+            port: 22,
+            cidr_block: "0.0.0.0/0".to_string(),
+        };
+
+        // Act
+        let inbound_rule_state = InboundRuleState::new(&inbound_rule);
+
+        // Assert
+        assert_eq!(inbound_rule_state.protocol, "tcp".to_string());
+        assert_eq!(inbound_rule_state.port, 22);
+        assert_eq!(inbound_rule_state.cidr_block, "0.0.0.0/0".to_string());
+    }
+
+    #[test]
+    fn test_inbound_rule_new_from_state() {
+        // Arrange
+        let inbound_rule = InboundRuleState {
+            protocol: "tcp".to_string(),
+            port: 22,
+            cidr_block: "0.0.0.0/0".to_string(),
+        };
+
+        // Act
+        let inbound_rule = inbound_rule.new_from_state();
+
+        // Assert
+        assert_eq!(inbound_rule.protocol, "tcp".to_string());
+        assert_eq!(inbound_rule.port, 22);
+        assert_eq!(inbound_rule.cidr_block, "0.0.0.0/0".to_string());
     }
 
     #[tokio::test]
