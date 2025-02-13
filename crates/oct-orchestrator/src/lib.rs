@@ -3,7 +3,8 @@ use std::fs;
 use std::path::Path;
 
 use oct_cloud::aws::resource::{
-    Ec2Instance, InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
+    Ec2Instance, InstanceProfile, InstanceRole, InternetGateway, RouteTable, SecurityGroup, Subnet,
+    VPC,
 };
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::resource::Resource;
@@ -106,18 +107,7 @@ impl Orchestrator {
             return Ok(());
         }
 
-        let state = state::State::new(&self.state_file_path)?;
-
-        // Create EC2 instances from state
-        let mut instances = Vec::<Ec2Instance>::new();
-
-        for instance in state.instances {
-            instances.push(instance.new_from_state().await?);
-        }
-
-        // Create VPC from state
-        let mut vpc = state.vpc.new_from_state().await;
-
+        // Destroy user services
         let user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
         for (instance_ip, instance) in user_state.instances {
@@ -146,20 +136,30 @@ impl Orchestrator {
 
         let _ = fs::remove_file(&self.user_state_file_path);
 
-        // Destroy EC2 instance
-        for mut instance in instances {
+        // Destroy infrastructure
+        let state = state::State::new(&self.state_file_path)?;
+
+        for instance_state in state.instances {
+            let mut instance = instance_state.new_from_state().await?;
             instance.destroy().await?;
         }
 
-        // Destroy VPC
+        log::info!("Instances destroyed");
+
+        let mut vpc = state.vpc.new_from_state().await;
         vpc.destroy().await?;
 
-        log::info!("Instance destroyed");
+        log::info!("VPC destroyed");
 
-        // Remove instance from state file
+        let mut instance_profile = state.instance_profile.new_from_state().await;
+        instance_profile.destroy().await?;
+
+        log::info!("Instance profile destroyed");
+
+        // Remove infrastructure state file
         fs::remove_file(&self.state_file_path).expect("Unable to remove file");
 
-        log::info!("Instance removed from state file");
+        log::info!("Infrastructure state file removed");
 
         Ok(())
     }
@@ -213,6 +213,15 @@ impl Orchestrator {
 
         vpc.create().await?;
 
+        let mut instance_profile = InstanceProfile::new(
+            "oct-instance-profile".to_string(),
+            "us-west-2".to_string(),
+            vec![InstanceRole::new("oct-instance-role".to_string(), "us-west-2".to_string()).await],
+        )
+        .await;
+
+        instance_profile.create().await?;
+
         let mut created_instances = Vec::<Ec2Instance>::new();
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
@@ -223,7 +232,7 @@ impl Orchestrator {
                 "ami-04dd23e62ed049936".to_string(),
                 Self::INSTANCE_TYPE,
                 "oct-cli".to_string(),
-                None,
+                instance_profile.name.clone(),
             )
             .await;
 
@@ -236,8 +245,9 @@ impl Orchestrator {
             created_instances.push(instance);
         }
 
-        // Add instance to state
+        // Add high-level resources to state
         state.vpc = state::VPCState::new(&vpc);
+        state.instance_profile = state::InstanceProfileState::new(&instance_profile);
         state.instances = created_instances
             .into_iter()
             .map(|instance| state::Ec2InstanceState::new(&instance))

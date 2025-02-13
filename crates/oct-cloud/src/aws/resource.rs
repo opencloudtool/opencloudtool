@@ -24,10 +24,8 @@ pub struct Ec2Instance {
     pub user_data: String,
     pub user_data_base64: String,
 
-    // TODO: Make it required
-    pub instance_profile: Option<InstanceProfile>,
+    pub instance_profile_name: String,
 }
-
 impl Ec2Instance {
     const USER_DATA: &str = r#"#!/bin/bash
     set -e
@@ -54,7 +52,7 @@ impl Ec2Instance {
         ami: String,
         instance_type: InstanceType,
         name: String,
-        instance_profile: Option<InstanceProfile>,
+        instance_profile_name: String,
     ) -> Self {
         let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
 
@@ -72,14 +70,6 @@ impl Ec2Instance {
 
         let ec2_client = aws_sdk_ec2::Client::new(&config);
 
-        let instance_profile = match instance_profile {
-            Some(profile) => profile,
-            None => {
-                let instance_role = InstanceRole::new(region.clone()).await;
-                InstanceProfile::new(region.clone(), vec![instance_role]).await
-            }
-        };
-
         Self {
             client: Ec2::new(ec2_client),
             id,
@@ -91,7 +81,7 @@ impl Ec2Instance {
             name,
             user_data: Self::USER_DATA.to_string(),
             user_data_base64,
-            instance_profile: Some(instance_profile),
+            instance_profile_name,
         }
     }
 }
@@ -101,12 +91,6 @@ impl Resource for Ec2Instance {
         const MAX_ATTEMPTS: usize = 10;
         const SLEEP_DURATION: std::time::Duration = std::time::Duration::from_secs(5);
 
-        // Create IAM role for EC2 instance
-        match &mut self.instance_profile {
-            Some(instance_profile) => instance_profile.create().await,
-            None => Ok(()),
-        }?;
-
         // Launch EC2 instance
         let response = self
             .client
@@ -114,7 +98,7 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
-                self.instance_profile.as_ref().map(|p| p.name.clone()),
+                self.instance_profile_name.clone(),
             )
             .await?;
 
@@ -170,10 +154,7 @@ impl Resource for Ec2Instance {
         self.public_ip = None;
         self.public_dns = None;
 
-        match &mut self.instance_profile {
-            Some(instance_profile) => instance_profile.destroy().await,
-            None => Ok(()),
-        }
+        Ok(())
     }
 }
 
@@ -669,9 +650,7 @@ pub struct InstanceProfile {
 }
 
 impl InstanceProfile {
-    const NAME: &str = "ct-app-ecr-role";
-
-    pub async fn new(region: String, instance_roles: Vec<InstanceRole>) -> Self {
+    pub async fn new(name: String, region: String, instance_roles: Vec<InstanceRole>) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -688,7 +667,7 @@ impl InstanceProfile {
 
         Self {
             client: IAM::new(iam_client),
-            name: Self::NAME.to_string(),
+            name,
             region,
             instance_roles,
         }
@@ -739,7 +718,6 @@ pub struct InstanceRole {
 }
 
 impl InstanceRole {
-    const NAME: &str = "ct-app-ecr-role";
     const POLICY_ARN: &str = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly";
     const ASSUME_ROLE_POLICY: &str = r#"{
         "Version": "2012-10-17",
@@ -754,7 +732,7 @@ impl InstanceRole {
         ]
     }"#;
 
-    pub async fn new(region: String) -> Self {
+    pub async fn new(name: String, region: String) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -771,7 +749,7 @@ impl InstanceRole {
 
         Self {
             client: IAM::new(iam_client),
-            name: Self::NAME.to_string(),
+            name,
             region,
             assume_role_policy: Self::ASSUME_ROLE_POLICY.to_string(),
             policy_arns: vec![Self::POLICY_ARN.to_string()],
@@ -856,7 +834,7 @@ mod tests {
                 eq(InstanceType::T2_MICRO),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq(None),
+                eq("instance_profile".to_string()),
             )
             .return_once(|_, _, _, _| {
                 Ok(RunInstancesOutput::builder()
@@ -889,21 +867,23 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            instance_profile: None,
+            instance_profile_name: "instance_profile".to_string(),
         };
 
         // Act
         instance.create().await.unwrap();
 
         // Assert
-        assert!(instance.id == Some("id".to_string()));
-        assert!(instance.public_ip == Some("1.1.1.1".to_string()));
-        assert!(instance.public_dns == Some("example.com".to_string()));
-        assert!(instance.region == "us-west-2");
-        assert!(instance.ami == "ami-830c94e3");
-        assert!(instance.instance_type == InstanceType::T2_MICRO);
-        assert!(instance.name == "test");
-        assert!(instance.user_data == "test");
+        assert_eq!(instance.id, Some("id".to_string()));
+        assert_eq!(instance.public_ip, Some("1.1.1.1".to_string()));
+        assert_eq!(instance.public_dns, Some("example.com".to_string()));
+        assert_eq!(instance.region, "us-west-2");
+        assert_eq!(instance.ami, "ami-830c94e3");
+        assert_eq!(instance.instance_type, InstanceType::T2_MICRO);
+        assert_eq!(instance.name, "test");
+        assert_eq!(instance.user_data, "test");
+        assert_eq!(instance.user_data_base64, "test");
+        assert_eq!(instance.instance_profile_name, "instance_profile");
     }
 
     #[tokio::test]
@@ -958,7 +938,7 @@ mod tests {
                 eq(InstanceType::T2_MICRO),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq(None),
+                eq("instance_profile".to_string()),
             )
             .return_once(|_, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
@@ -973,7 +953,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            instance_profile: None,
+            instance_profile_name: "instance_profile".to_string(),
         };
 
         // Act
@@ -982,9 +962,9 @@ mod tests {
         // Assert
         assert!(creation_result.is_err());
 
-        assert!(instance.id == None);
-        assert!(instance.public_ip == None);
-        assert!(instance.public_dns == None);
+        assert_eq!(instance.id, None);
+        assert_eq!(instance.public_ip, None);
+        assert_eq!(instance.public_dns, None);
     }
 
     #[tokio::test]
@@ -1048,16 +1028,16 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            instance_profile: None,
+            instance_profile_name: "instance_profile".to_string(),
         };
 
         // Act
         instance.destroy().await.unwrap();
 
         // Assert
-        assert!(instance.id == None);
-        assert!(instance.public_ip == None);
-        assert!(instance.public_dns == None);
+        assert_eq!(instance.id, None);
+        assert_eq!(instance.public_ip, None);
+        assert_eq!(instance.public_dns, None);
     }
 
     #[tokio::test]
@@ -1090,7 +1070,7 @@ mod tests {
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
-            instance_profile: None,
+            instance_profile_name: "instance_profile".to_string(),
         };
 
         // Act
@@ -1099,9 +1079,9 @@ mod tests {
         // Assert
         assert!(destroy_result.is_err());
 
-        assert!(instance.id == None);
-        assert!(instance.public_ip == Some("1.1.1.1".to_string()));
-        assert!(instance.public_dns == Some("example.com".to_string()));
+        assert_eq!(instance.id, None);
+        assert_eq!(instance.public_ip, Some("1.1.1.1".to_string()));
+        assert_eq!(instance.public_dns, Some("example.com".to_string()));
     }
 
     #[tokio::test]
