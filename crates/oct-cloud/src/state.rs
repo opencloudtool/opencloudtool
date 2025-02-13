@@ -14,12 +14,14 @@ pub struct State {
 
 impl State {
     /// Load state from file or create a new one
-    pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Also returns whether the state was loaded from a file
+    /// as a boolean
+    pub fn new(file_path: &str) -> Result<(Self, bool), Box<dyn std::error::Error>> {
         if std::path::Path::new(file_path).exists() {
             let existing_data = fs::read_to_string(file_path)?;
-            Ok(serde_json::from_str::<State>(&existing_data)?)
+            Ok((serde_json::from_str::<State>(&existing_data)?, true))
         } else {
-            Ok(State::default())
+            Ok((State::default(), false))
         }
     }
 
@@ -870,9 +872,10 @@ mod tests {
         file.write_all(state_file_content.as_bytes()).unwrap();
 
         // Act
-        let state = State::new(file.path().to_str().unwrap()).unwrap();
+        let (state, loaded) = State::new(file.path().to_str().unwrap()).unwrap();
 
         // Assert
+        assert!(loaded);
         assert_eq!(
             state,
             State {
@@ -932,10 +935,11 @@ mod tests {
     #[test]
     fn test_state_new_not_exists() {
         // Act
-        let state = State::new("NO_FILE").unwrap();
+        let (state, loaded) = State::new("NO_FILE").unwrap();
 
         // Assert
         assert_eq!(state.instances.len(), 0);
+        assert!(!loaded);
     }
 
     #[test]

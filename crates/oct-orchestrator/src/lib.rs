@@ -137,7 +137,7 @@ impl Orchestrator {
         let _ = fs::remove_file(&self.user_state_file_path);
 
         // Destroy infrastructure
-        let state = state::State::new(&self.state_file_path)?;
+        let (state, _) = state::State::new(&self.state_file_path)?;
 
         for instance_state in state.instances {
             let mut instance = instance_state.new_from_state().await?;
@@ -170,7 +170,13 @@ impl Orchestrator {
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
         // Get state file
-        let mut state = state::State::new(&self.state_file_path)?;
+        let (mut state, loaded) = state::State::new(&self.state_file_path)?;
+
+        if loaded {
+            log::info!("State file already exists");
+
+            return Ok(state);
+        }
 
         let security_group = SecurityGroup::new(
             None,
