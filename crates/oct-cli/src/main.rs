@@ -77,7 +77,7 @@ mod tests {
 
         // Assert
         cmd.assert()
-            .failure()
-            .stderr(predicate::str::contains("Unable to read state file"));
+            .success()
+            .stderr(predicate::str::contains("Nothing to destroy"));
     }
 }
