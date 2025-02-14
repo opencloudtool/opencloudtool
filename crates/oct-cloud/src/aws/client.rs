@@ -128,6 +128,7 @@ impl Ec2Impl {
         security_group_id: String,
         protocol: String,
         port: i32,
+        cidr_block: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Allowing inbound traffic for security group");
 
@@ -136,16 +137,16 @@ impl Ec2Impl {
             .group_id(security_group_id.clone())
             .ip_permissions(
                 IpPermission::builder()
-                    .ip_protocol(protocol)
+                    .ip_protocol(protocol.clone())
                     .from_port(port)
                     .to_port(port)
-                    .ip_ranges(IpRange::builder().cidr_ip("0.0.0.0/0").build())
+                    .ip_ranges(IpRange::builder().cidr_ip(cidr_block.clone()).build())
                     .build(),
             )
             .send()
             .await?;
 
-        log::info!("Allowed inbound traffic for security group: {security_group_id}");
+        log::info!("Added inbound rule {protocol} {port} {cidr_block} to security group {security_group_id}");
 
         Ok(())
     }

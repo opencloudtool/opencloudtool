@@ -3,8 +3,8 @@ use std::fs;
 use std::path::Path;
 
 use oct_cloud::aws::resource::{
-    Ec2Instance, InstanceProfile, InstanceRole, InternetGateway, RouteTable, SecurityGroup, Subnet,
-    VPC,
+    Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
+    SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::resource::Resource;
@@ -178,16 +178,26 @@ impl Orchestrator {
             return Ok(state);
         }
 
+        let inbound_rules = vec![
+            InboundRule {
+                cidr_block: "0.0.0.0/0".to_string(),
+                protocol: "tcp".to_string(),
+                port: 80,
+            },
+            InboundRule {
+                cidr_block: "0.0.0.0/0".to_string(),
+                protocol: "tcp".to_string(),
+                port: 31888,
+            },
+        ];
+
         let security_group = SecurityGroup::new(
             None,
             "ct-app-security-group".to_string(),
             None,
             "ct-app-security-group".to_string(),
-            // TODO: Add support of multiple ports
-            // TODO: Expose only the ports needed by the application
-            22,
-            "tcp".to_string(),
             "us-west-2".to_string(),
+            inbound_rules,
         )
         .await;
 
