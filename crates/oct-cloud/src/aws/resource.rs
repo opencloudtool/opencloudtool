@@ -25,6 +25,8 @@ pub struct Ec2Instance {
     pub user_data_base64: String,
 
     pub instance_profile_name: String,
+    pub subnet_id: String,
+    pub security_group_id: String,
 }
 impl Ec2Instance {
     const USER_DATA: &str = r#"#!/bin/bash
@@ -53,6 +55,8 @@ impl Ec2Instance {
         instance_type: InstanceType,
         name: String,
         instance_profile_name: String,
+        subnet_id: String,
+        security_group_id: String,
     ) -> Self {
         let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
 
@@ -82,6 +86,8 @@ impl Ec2Instance {
             user_data: Self::USER_DATA.to_string(),
             user_data_base64,
             instance_profile_name,
+            subnet_id,
+            security_group_id,
         }
     }
 }
@@ -99,6 +105,8 @@ impl Resource for Ec2Instance {
                 self.ami.clone(),
                 self.user_data_base64.clone(),
                 self.instance_profile_name.clone(),
+                self.subnet_id.clone(),
+                self.security_group_id.clone(),
             )
             .await?;
 
@@ -262,6 +270,10 @@ impl Resource for VPC {
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Delete Route Table
         self.route_table.destroy().await?;
+
+        // Wait for route table to be deleted
+        log::info!("Waiting for Public IPs to be deleted");
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
         // Delete Internet Gateway
         match &mut self.internet_gateway {
@@ -858,8 +870,10 @@ mod tests {
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq("instance_profile".to_string()),
+                eq("subnet-12345".to_string()),
+                eq("sg-12345".to_string()),
             )
-            .return_once(|_, _, _, _| {
+            .return_once(|_, _, _, _, _, _| {
                 Ok(RunInstancesOutput::builder()
                     .instances(
                         aws_sdk_ec2::types::Instance::builder()
@@ -891,6 +905,8 @@ mod tests {
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
             instance_profile_name: "instance_profile".to_string(),
+            subnet_id: "subnet-12345".to_string(),
+            security_group_id: "sg-12345".to_string(),
         };
 
         // Act
@@ -907,6 +923,7 @@ mod tests {
         assert_eq!(instance.user_data, "test");
         assert_eq!(instance.user_data_base64, "test");
         assert_eq!(instance.instance_profile_name, "instance_profile");
+        assert_eq!(instance.subnet_id, "subnet-12345".to_string());
     }
 
     #[tokio::test]
@@ -967,8 +984,10 @@ mod tests {
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq("instance_profile".to_string()),
+                eq("subnet-12345".to_string()),
+                eq("sg-12345".to_string()),
             )
-            .return_once(|_, _, _, _| Ok(RunInstancesOutput::builder().build()));
+            .return_once(|_, _, _, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
@@ -982,6 +1001,8 @@ mod tests {
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
             instance_profile_name: "instance_profile".to_string(),
+            subnet_id: "subnet-12345".to_string(),
+            security_group_id: "sg-12345".to_string(),
         };
 
         // Act
@@ -1062,6 +1083,8 @@ mod tests {
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
             instance_profile_name: "instance_profile".to_string(),
+            subnet_id: "subnet-12345".to_string(),
+            security_group_id: "sg-12345".to_string(),
         };
 
         // Act
@@ -1104,6 +1127,8 @@ mod tests {
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
             instance_profile_name: "instance_profile".to_string(),
+            subnet_id: "subnet-12345".to_string(),
+            security_group_id: "sg-12345".to_string(),
         };
 
         // Act

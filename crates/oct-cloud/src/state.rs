@@ -43,6 +43,8 @@ pub struct Ec2InstanceState {
     pub instance_type: String,
     pub name: String,
     pub instance_profile_name: String,
+    pub subnet_id: String,
+    pub security_group_id: String,
 }
 
 #[cfg(test)]
@@ -58,6 +60,8 @@ mod mocks {
         pub instance_type: InstanceType,
         pub name: String,
         pub instance_profile_name: String,
+        pub subnet_id: String,
+        pub security_group_id: String,
     }
 
     impl MockEc2Instance {
@@ -70,6 +74,8 @@ mod mocks {
             instance_type: InstanceType,
             name: String,
             instance_profile_name: String,
+            subnet_id: String,
+            security_group_id: String,
         ) -> Self {
             Self {
                 id,
@@ -80,6 +86,8 @@ mod mocks {
                 instance_type,
                 name,
                 instance_profile_name,
+                subnet_id,
+                security_group_id,
             }
         }
     }
@@ -310,6 +318,8 @@ impl Ec2InstanceState {
             instance_type: ec2_instance.instance_type.name.to_string(),
             name: ec2_instance.name.clone(),
             instance_profile_name: ec2_instance.instance_profile_name.clone(),
+            subnet_id: ec2_instance.subnet_id.clone(),
+            security_group_id: ec2_instance.security_group_id.clone(),
         }
     }
 
@@ -323,6 +333,8 @@ impl Ec2InstanceState {
             InstanceType::from(self.instance_type.as_str()),
             self.name.clone(),
             self.instance_profile_name.clone(),
+            self.subnet_id.clone(),
+            self.security_group_id.clone(),
         )
         .await)
     }
@@ -647,6 +659,8 @@ mod tests {
                 instance_type: "t2.micro".to_string(),
                 name: "name".to_string(),
                 instance_profile_name: "instance_profile_name".to_string(),
+                subnet_id: "subnet_id".to_string(),
+                security_group_id: "security_group_id".to_string(),
             }],
         };
 
@@ -666,6 +680,8 @@ mod tests {
             InstanceType::T2_MICRO,
             "name".to_string(),
             "instance_profile_name".to_string(),
+            "subnet_id".to_string(),
+            "security_group_id".to_string(),
         )
         .await;
 
@@ -678,6 +694,12 @@ mod tests {
         assert_eq!(ec2_instance_state.ami, "ami");
         assert_eq!(ec2_instance_state.instance_type, "t2.micro");
         assert_eq!(ec2_instance_state.name, "name");
+        assert_eq!(
+            ec2_instance_state.instance_profile_name,
+            "instance_profile_name"
+        );
+        assert_eq!(ec2_instance_state.subnet_id, "subnet_id");
+        assert_eq!(ec2_instance_state.security_group_id, "security_group_id");
     }
 
     #[tokio::test]
@@ -692,6 +714,8 @@ mod tests {
             instance_type: "t2.micro".to_string(),
             name: "name".to_string(),
             instance_profile_name: "instance_profile_name".to_string(),
+            subnet_id: "subnet_id".to_string(),
+            security_group_id: "security_group_id".to_string(),
         };
 
         // Act
@@ -913,7 +937,9 @@ mod tests {
         "ami": "ami",
         "instance_type": "t2.micro",
         "name": "name",
-        "instance_profile_name": "instance_profile_name"
+        "instance_profile_name": "instance_profile_name",
+        "subnet_id": "subnet_id",
+        "security_group_id": "security_group_id"
     }]
 }"#;
 
@@ -979,6 +1005,8 @@ mod tests {
                     instance_type: "t2.micro".to_string(),
                     name: "name".to_string(),
                     instance_profile_name: "instance_profile_name".to_string(),
+                    subnet_id: "subnet_id".to_string(),
+                    security_group_id: "security_group_id".to_string(),
                 }],
             }
         )
@@ -1049,6 +1077,8 @@ mod tests {
                 instance_type: "t2.micro".to_string(),
                 name: "name".to_string(),
                 instance_profile_name: "instance_profile_name".to_string(),
+                subnet_id: "subnet_id".to_string(),
+                security_group_id: "security_group_id".to_string(),
             }],
         };
 
@@ -1120,7 +1150,9 @@ mod tests {
       "ami": "ami",
       "instance_type": "t2.micro",
       "name": "name",
-      "instance_profile_name": "instance_profile_name"
+      "instance_profile_name": "instance_profile_name",
+      "subnet_id": "subnet_id",
+      "security_group_id": "security_group_id"
     }
   ]
 }"#

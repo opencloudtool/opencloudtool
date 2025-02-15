@@ -462,6 +462,8 @@ impl Ec2Impl {
         ami: String,
         user_data_base64: String,
         instance_profile_name: String,
+        subnet_id: String,
+        security_group_id: String,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
@@ -478,6 +480,8 @@ impl Ec2Impl {
             )
             .min_count(1)
             .max_count(1)
+            .subnet_id(subnet_id)
+            .security_group_ids(security_group_id)
             .send()
             .await?;
 

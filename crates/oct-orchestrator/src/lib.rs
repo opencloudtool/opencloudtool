@@ -229,6 +229,13 @@ impl Orchestrator {
 
         vpc.create().await?;
 
+        let subnet_id = vpc.subnet.id.clone().ok_or("No subnet id")?;
+        let security_group_id = vpc
+            .security_group
+            .id
+            .clone()
+            .ok_or("No security group id")?;
+
         let mut instance_profile = InstanceProfile::new(
             "oct-instance-profile".to_string(),
             "us-west-2".to_string(),
@@ -249,6 +256,8 @@ impl Orchestrator {
                 Self::INSTANCE_TYPE,
                 "oct-cli".to_string(),
                 instance_profile.name.clone(),
+                subnet_id.clone(),
+                security_group_id.clone(),
             )
             .await;
 
