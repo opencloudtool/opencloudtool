@@ -649,6 +649,42 @@ impl IAMImpl {
     }
 }
 
+/// AWS ECR client implementation
+#[derive(Debug)]
+pub(super) struct ECRImpl {
+    inner: aws_sdk_ecr::Client,
+}
+
+// TODO: Add tests using static replay
+#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(test, automock)]
+impl ECRImpl {
+    pub(super) fn new(inner: aws_sdk_ecr::Client) -> Self {
+        Self { inner }
+    }
+
+    pub(super) async fn create_repository(
+        &self,
+        name: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating ECR repository");
+        let response = self
+            .inner
+            .create_repository()
+            .repository_name(name)
+            .send()
+            .await?;
+
+        let registry_id = response
+            .repository()
+            .and_then(|repository| repository.registry_id())
+            .ok_or("Failed to retrieve Registry ID")?
+            .to_string();
+
+        Ok(registry_id)
+    }
+}
+
 // TODO: Is there a better way to expose mocked structs?
 #[cfg(not(test))]
 pub(super) use Ec2Impl as Ec2;
@@ -659,3 +695,8 @@ pub(super) use MockEc2Impl as Ec2;
 pub(super) use IAMImpl as IAM;
 #[cfg(test)]
 pub(super) use MockIAMImpl as IAM;
+
+#[cfg(not(test))]
+pub(super) use ECRImpl as ECR;
+#[cfg(test)]
+pub(super) use MockECRImpl as ECR;
