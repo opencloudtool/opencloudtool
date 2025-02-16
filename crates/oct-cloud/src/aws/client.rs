@@ -156,6 +156,7 @@ impl Ec2Impl {
         &self,
         vpc_id: String,
         cidr_block: String,
+        availability_zone: String,
         name: String,
     ) -> Result<String, Box<dyn std::error::Error>> {
         log::info!("Creating subnet");
@@ -165,6 +166,7 @@ impl Ec2Impl {
             .create_subnet()
             .vpc_id(vpc_id)
             .cidr_block(cidr_block)
+            .availability_zone(availability_zone)
             .tag_specifications(
                 aws_sdk_ec2::types::TagSpecification::builder()
                     .resource_type(aws_sdk_ec2::types::ResourceType::Subnet)

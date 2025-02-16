@@ -169,6 +169,7 @@ mod mocks {
         pub id: Option<String>,
         pub region: String,
         pub cidr_block: String,
+        pub availability_zone: String,
         pub vpc_id: Option<String>,
         pub name: String,
     }
@@ -178,6 +179,7 @@ mod mocks {
             id: Option<String>,
             region: String,
             cidr_block: String,
+            availability_zone: String,
             vpc_id: Option<String>,
             name: String,
         ) -> Self {
@@ -185,6 +187,7 @@ mod mocks {
                 id,
                 region,
                 cidr_block,
+                availability_zone,
                 name,
                 vpc_id,
             }
@@ -444,6 +447,7 @@ pub struct SubnetState {
     pub id: String,
     pub region: String,
     pub cidr_block: String,
+    pub availability_zone: String,
     pub vpc_id: String,
     pub name: String,
 }
@@ -454,6 +458,7 @@ impl SubnetState {
             id: subnet.id.clone().expect("Subnet id not set"),
             region: subnet.region.clone(),
             cidr_block: subnet.cidr_block.clone(),
+            availability_zone: subnet.availability_zone.clone(),
             vpc_id: subnet.vpc_id.clone().expect("vpc id not set"),
             name: subnet.name.clone(),
         }
@@ -464,6 +469,7 @@ impl SubnetState {
             Some(self.id.clone()),
             self.region.clone(),
             self.cidr_block.clone(),
+            self.availability_zone.clone(),
             Some(self.vpc_id.clone()),
             self.name.clone(),
         )
@@ -621,6 +627,7 @@ mod tests {
                     id: "id".to_string(),
                     region: "region".to_string(),
                     cidr_block: "test_cidr_block".to_string(),
+                    availability_zone: "availability_zone".to_string(),
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
                 },
@@ -840,6 +847,7 @@ mod tests {
                 id: Some("id".to_string()),
                 region: "region".to_string(),
                 cidr_block: "test_cidr_block".to_string(),
+                availability_zone: "availability_zone".to_string(),
                 vpc_id: Some("vpc_id".to_string()),
                 name: "name".to_string(),
             },
@@ -889,6 +897,7 @@ mod tests {
             "id": "id",
             "region": "region",
             "cidr_block": "test_cidr_block",
+            "availability_zone": "availability_zone",
             "vpc_id": "vpc_id",
             "name": "name"
         },
@@ -963,6 +972,7 @@ mod tests {
                         id: "id".to_string(),
                         region: "region".to_string(),
                         cidr_block: "test_cidr_block".to_string(),
+                        availability_zone: "availability_zone".to_string(),
                         vpc_id: "vpc_id".to_string(),
                         name: "name".to_string(),
                     },
@@ -1035,6 +1045,7 @@ mod tests {
                     id: "id".to_string(),
                     region: "region".to_string(),
                     cidr_block: "test_cidr_block".to_string(),
+                    availability_zone: "availability_zone".to_string(),
                     vpc_id: "vpc_id".to_string(),
                     name: "name".to_string(),
                 },
@@ -1102,6 +1113,7 @@ mod tests {
       "id": "id",
       "region": "region",
       "cidr_block": "test_cidr_block",
+      "availability_zone": "availability_zone",
       "vpc_id": "vpc_id",
       "name": "name"
     },
@@ -1171,6 +1183,7 @@ mod tests {
                 id: "id".to_string(),
                 region: "region".to_string(),
                 cidr_block: "test_cidr_block".to_string(),
+                availability_zone: "availability_zone".to_string(),
                 vpc_id: "vpc_id".to_string(),
                 name: "name".to_string(),
             },
@@ -1213,6 +1226,7 @@ mod tests {
                 id: "id".to_string(),
                 region: "region".to_string(),
                 cidr_block: "test_cidr_block".to_string(),
+                availability_zone: "availability_zone".to_string(),
                 vpc_id: "vpc_id".to_string(),
                 name: "name".to_string(),
             },
@@ -1291,6 +1305,7 @@ mod tests {
             Some("id".to_string()),
             "region".to_string(),
             "test_cidr_block".to_string(),
+            "availability_zone".to_string(),
             Some("vpc_id".to_string()),
             "test_name".to_string(),
         )
@@ -1314,6 +1329,7 @@ mod tests {
             id: "id".to_string(),
             region: "region".to_string(),
             cidr_block: "test_cidr_block".to_string(),
+            availability_zone: "availability_zone".to_string(),
             vpc_id: "vpc_id".to_string(),
             name: "test_name".to_string(),
         };
