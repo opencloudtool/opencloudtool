@@ -317,12 +317,19 @@ impl Orchestrator {
     }
 
     /// Gets list of services to remove and to create
-    /// Preserves order of services from config
+    /// The order of created services depends on `depends_on` field in the config,
+    /// dependencies are created first
     fn get_user_services_to_create_and_delete(
         config: &config::Config,
         user_state: &user_state::UserState,
     ) -> (Vec<String>, Vec<String>) {
         let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
+        let expected_services_dependencies: Vec<String> = expected_services
+            .iter()
+            .filter_map(|service| config.project.services[service].depends_on.clone())
+            .flatten()
+            .collect();
+
         let user_state_services: Vec<String> = user_state
             .instances
             .values()
@@ -332,7 +339,10 @@ impl Orchestrator {
 
         let services_to_create: Vec<String> = expected_services
             .iter()
-            .filter(|service| !user_state_services.contains(*service))
+            .filter(|service| {
+                !user_state_services.contains(service)
+                    && !expected_services_dependencies.contains(service)
+            })
             .cloned()
             .collect();
 
@@ -342,7 +352,14 @@ impl Orchestrator {
             .cloned()
             .collect();
 
-        (services_to_create, services_to_remove)
+        (
+            expected_services_dependencies
+                .iter()
+                .chain(services_to_create.iter())
+                .cloned()
+                .collect(),
+            services_to_remove,
+        )
     }
 
     /// Calculates the number of instances needed to run the services
