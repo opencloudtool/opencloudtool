@@ -27,6 +27,7 @@ internal_port = 80
 external_port = 80
 cpus = 250
 memory = 64
+depends_on = ["app_1", "app_2"]
 
 [project.services.nginx.envs]
 NGINX_CONF = """

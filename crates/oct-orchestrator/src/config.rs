@@ -47,6 +47,8 @@ pub(crate) struct Service {
     pub(crate) cpus: u32,
     /// Memory in MB
     pub(crate) memory: u64,
+    /// List of services that this service depends on
+    pub(crate) depends_on: Option<Vec<String>>,
     /// Environment variables to set in the container
     #[serde(default)]
     pub(crate) envs: HashMap<String, String>,
@@ -83,6 +85,7 @@ string"""
 image = "nginx:latest"
 cpus = 250
 memory = 64
+depends_on = ["app_1"]
 "#;
 
         let mut file = tempfile::NamedTempFile::new().unwrap();
@@ -106,6 +109,7 @@ memory = 64
                                 external_port: Some(80),
                                 cpus: 250,
                                 memory: 64,
+                                depends_on: None,
                                 envs: HashMap::from([
                                     ("KEY1".to_string(), "VALUE1".to_string()),
                                     ("KEY2".to_string(), "Multiline\nstring".to_string()),
@@ -120,6 +124,7 @@ memory = 64
                                 external_port: None,
                                 cpus: 250,
                                 memory: 64,
+                                depends_on: Some(vec!("app_1".to_string())),
                                 envs: HashMap::new(),
                             }
                         ),
