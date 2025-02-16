@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
 pub(crate) struct UserState {
+    #[serde(skip)]
+    file_path: String,
+
     /// Key - public IP, Value - instance
     pub(crate) instances: HashMap<String, Instance>,
 }
@@ -12,17 +15,22 @@ pub(crate) struct UserState {
 impl UserState {
     /// Load state from file or create a new one
     pub(crate) fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        if std::path::Path::new(file_path).exists() {
+        let user_state = if std::path::Path::new(file_path).exists() {
             let existing_data = fs::read_to_string(file_path)?;
-            Ok(serde_json::from_str::<UserState>(&existing_data)?)
+            serde_json::from_str::<UserState>(&existing_data)?
         } else {
-            Ok(UserState::default())
-        }
+            UserState::default()
+        };
+
+        Ok(UserState {
+            file_path: file_path.to_string(),
+            ..user_state
+        })
     }
 
     /// Save state to file
-    pub(crate) fn save(&self, file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        fs::write(file_path, serde_json::to_string_pretty(self)?)?;
+    pub(crate) fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        fs::write(&self.file_path, serde_json::to_string_pretty(self)?)?;
 
         Ok(())
     }
@@ -98,6 +106,7 @@ mod tests {
         assert_eq!(
             user_state,
             UserState {
+                file_path: file.path().to_str().unwrap().to_string(),
                 instances: HashMap::from([(
                     "89.0.142.86".to_string(),
                     Instance {
@@ -137,7 +146,10 @@ mod tests {
     #[test]
     fn test_user_state_save() {
         // Arrange
+        let state_file = tempfile::NamedTempFile::new().unwrap();
+
         let user_state = UserState {
+            file_path: state_file.path().to_str().unwrap().to_string(),
             instances: HashMap::from([(
                 "test".to_string(),
                 Instance {
@@ -154,12 +166,8 @@ mod tests {
             )]),
         };
 
-        let state_file = tempfile::NamedTempFile::new().unwrap();
-
         // Act
-        user_state
-            .save(state_file.path().to_str().unwrap())
-            .unwrap();
+        user_state.save().unwrap();
 
         // Assert
         let file_content = fs::read_to_string(state_file.path()).unwrap();

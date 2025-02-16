@@ -66,6 +66,8 @@ impl<'a> Scheduler<'a> {
                             memory: service.memory,
                         },
                     );
+
+                    break;
                 }
                 Err(err) => {
                     log::error!("Failed to run '{}' service. Error: {}", service_name, err);
@@ -73,9 +75,9 @@ impl<'a> Scheduler<'a> {
                     continue;
                 }
             }
-
-            return Ok(());
         }
+
+        self.save_state();
 
         Ok(())
     }
@@ -99,6 +101,8 @@ impl<'a> Scheduler<'a> {
             match response {
                 Ok(()) => {
                     instance.services.remove(service_name);
+
+                    break;
                 }
                 Err(err) => {
                     log::error!("Failed to stop container for service '{service_name}': {err}");
@@ -108,6 +112,16 @@ impl<'a> Scheduler<'a> {
             }
         }
 
+        self.save_state();
+
         Ok(())
+    }
+
+    fn save_state(&self) {
+        if let Ok(()) = self.user_state.save() {
+            log::info!("User state saved to file");
+        } else {
+            log::error!("Failed to save user state");
+        }
     }
 }
