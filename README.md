@@ -17,7 +17,13 @@ Each version of OpenCloudTool has a mini-project to prove the design and impleme
 
 ![v0.3.0](./docs/v0.3.0.excalidraw.png)
 
-## Usage
+## Development
+
+### Install pre-commit hooks
+
+```bash
+pre-commit install
+```
 
 ### Build project
 
