@@ -51,7 +51,11 @@ impl Resource for EcrRepository {
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+        self.client.delete_repository(self.name.clone()).await?;
+
+        self.id = None;
+
+        Ok(())
     }
 }
 
@@ -910,6 +914,32 @@ mod tests {
 
         // Assert
         assert!(result.is_err());
+        assert_eq!(ecr_repository.region, "us-west-2");
+        assert_eq!(ecr_repository.name, "test");
+        assert_eq!(ecr_repository.id, None);
+    }
+
+    #[tokio::test]
+    async fn test_destroy_ecr_repository() {
+        // Arrange
+        let mut ecr_impl_mock = ECR::default();
+        ecr_impl_mock
+            .expect_delete_repository()
+            .with(eq("test".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut ecr_repository = EcrRepository {
+            client: ecr_impl_mock,
+            id: Some("test".to_string()),
+            name: "test".to_string(),
+            region: "us-west-2".to_string(),
+        };
+
+        // Act
+        let result = ecr_repository.destroy().await;
+
+        // Assert
+        assert!(result.is_ok());
         assert_eq!(ecr_repository.region, "us-west-2");
         assert_eq!(ecr_repository.name, "test");
         assert_eq!(ecr_repository.id, None);

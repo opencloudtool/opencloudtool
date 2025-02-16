@@ -683,6 +683,22 @@ impl ECRImpl {
 
         Ok(registry_id)
     }
+
+    pub(super) async fn delete_repository(
+        &self,
+        name: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting ECR repository");
+        self.inner
+            .delete_repository()
+            .repository_name(name)
+            .send()
+            .await?;
+
+        log::info!("Deleted ECR repository");
+
+        Ok(())
+    }
 }
 
 // TODO: Is there a better way to expose mocked structs?
