@@ -210,6 +210,7 @@ impl Orchestrator {
             None,
             "us-west-2".to_string(),
             "10.0.0.0/24".to_string(),
+            "us-west-2a".to_string(),
             None,
             "ct-app-subnet".to_string(),
         )

@@ -328,7 +328,7 @@ impl Resource for VPC {
 
         // Wait for route table to be deleted
         log::info!("Waiting for Public IPs to be deleted");
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
 
         // Delete Internet Gateway
         match &mut self.internet_gateway {
@@ -365,6 +365,7 @@ pub struct Subnet {
 
     pub region: String,
     pub cidr_block: String,
+    pub availability_zone: String,
 
     // VPC id will be passed after vpc creation
     pub vpc_id: Option<String>,
@@ -376,6 +377,7 @@ impl Subnet {
         id: Option<String>,
         region: String,
         cidr_block: String,
+        availability_zone: String,
         vpc_id: Option<String>,
         name: String,
     ) -> Self {
@@ -398,6 +400,7 @@ impl Subnet {
             id,
             region,
             cidr_block,
+            availability_zone,
             vpc_id,
             name,
         }
@@ -411,6 +414,7 @@ impl Resource for Subnet {
             .create_subnet(
                 self.vpc_id.clone().expect("vpc_id not set"),
                 self.cidr_block.clone(),
+                self.availability_zone.clone(),
                 self.name.clone(),
             )
             .await?;
@@ -992,8 +996,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
@@ -1106,8 +1111,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
@@ -1196,8 +1202,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
@@ -1245,8 +1252,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
@@ -1511,8 +1519,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -1525,6 +1534,7 @@ mod tests {
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
+                availability_zone: "test".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
             },
@@ -1571,8 +1581,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -1585,6 +1596,7 @@ mod tests {
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
+                availability_zone: "test".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
             },
@@ -1630,8 +1642,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -1644,6 +1657,7 @@ mod tests {
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
+                availability_zone: "test".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
             },
@@ -1689,8 +1703,9 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -1703,6 +1718,7 @@ mod tests {
                 id: None,
                 region: "us-west-2".to_string(),
                 cidr_block: "10.0.0.0/24".to_string(),
+                availability_zone: "test".to_string(),
                 vpc_id: None,
                 name: "test".to_string(),
             },
@@ -1742,14 +1758,16 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Ok("subnet-12345".to_string()));
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut subnet = Subnet {
             client: ec2_impl_mock,
             id: None,
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/24".to_string(),
+            availability_zone: "test".to_string(),
             vpc_id: Some("vpc-12345".to_string()),
             name: "test".to_string(),
         };
@@ -1772,14 +1790,16 @@ mod tests {
                 eq("vpc-12345".to_string()),
                 eq("10.0.0.0/24".to_string()),
                 eq("test".to_string()),
+                eq("test".to_string()),
             )
-            .return_once(|_, _, _| Err("Error".into()));
+            .return_once(|_, _, _, _| Err("Error".into()));
 
         let mut subnet = Subnet {
             client: ec2_impl_mock,
             id: None,
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/24".to_string(),
+            availability_zone: "test".to_string(),
             vpc_id: Some("vpc-12345".to_string()),
             name: "test".to_string(),
         };
@@ -1805,6 +1825,7 @@ mod tests {
             id: Some("subnet-12345".to_string()),
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/24".to_string(),
+            availability_zone: "test".to_string(),
             vpc_id: Some("vpc-12345".to_string()),
             name: "test".to_string(),
         };
@@ -1830,6 +1851,7 @@ mod tests {
             id: Some("subnet-12345".to_string()),
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/24".to_string(),
+            availability_zone: "test".to_string(),
             vpc_id: Some("vpc-12345".to_string()),
             name: "test".to_string(),
         };
