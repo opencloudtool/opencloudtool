@@ -325,17 +325,19 @@ impl Orchestrator {
         user_state: &user_state::UserState,
     ) -> (Vec<String>, Vec<String>) {
         let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
-        let expected_services_dependencies: Vec<String> = expected_services
-            .iter()
-            .filter_map(|service| config.project.services[service].depends_on.clone())
-            .flatten()
-            .collect();
 
         let user_state_services: Vec<String> = user_state
             .instances
             .values()
             .flat_map(|instance| instance.services.keys())
             .cloned()
+            .collect();
+
+        let expected_services_dependencies: Vec<String> = expected_services
+            .iter()
+            .filter_map(|service| config.project.services[service].depends_on.clone())
+            .flatten()
+            .filter(|service| !user_state_services.contains(service))
             .collect();
 
         let services_to_create: Vec<String> = expected_services
@@ -422,11 +424,6 @@ impl Orchestrator {
 
             let _ = scheduler.run(service_name, service).await;
         }
-
-        // Write updated user state to file
-        user_state.save(&self.user_state_file_path)?;
-
-        log::info!("Services saved to user state file");
 
         Ok(())
     }
