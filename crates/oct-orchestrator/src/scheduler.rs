@@ -20,6 +20,8 @@ impl<'a> Scheduler<'a> {
         service_name: &str,
         service: &Service,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let services_context = self.user_state.get_services_context();
+
         for (public_ip, instance) in &mut self.user_state.instances {
             let (available_cpus, available_memory) = instance.get_available_resources();
 
@@ -40,7 +42,7 @@ impl<'a> Scheduler<'a> {
                     service.internal_port,
                     service.cpus,
                     service.memory,
-                    service.envs.clone(),
+                    service.render_envs(&services_context),
                 )
                 .await;
 

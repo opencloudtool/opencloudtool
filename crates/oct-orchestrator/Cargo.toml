@@ -12,6 +12,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
+tera = { workspace = true }
 
 [dev-dependencies]
 mockito = { workspace = true }
