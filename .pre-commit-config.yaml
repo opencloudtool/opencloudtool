@@ -4,14 +4,15 @@ repos:
     -   id: rust-linting
         name: Rust linting
         description: Run cargo fmt on files included in the commit. rustfmt should be installed before-hand.
-        entry: cargo fmt --all --
+        entry: cargo fmt --check --
         pass_filenames: true
         types: [file, rust]
         language: system
+
     -   id: rust-clippy
         name: Rust clippy
         description: Run cargo clippy on files included in the commit. clippy should be installed before-hand.
-        entry: cargo clippy --all --
+        entry: cargo clippy --no-deps -- -Dwarnings
         pass_filenames: false
         types: [file, rust]
         language: system

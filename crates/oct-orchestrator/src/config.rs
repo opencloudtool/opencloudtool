@@ -3,6 +3,8 @@ use std::fs;
 
 use serde::{Deserialize, Serialize};
 
+use crate::user_state;
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Config {
     pub project: Project,
@@ -49,9 +51,40 @@ pub(crate) struct Service {
     pub(crate) memory: u64,
     /// List of services that this service depends on
     pub(crate) depends_on: Option<Vec<String>>,
-    /// Environment variables to set in the container
+    /// Raw environment variables to set in the container
+    /// All values are rendered using in `render_envs` method
     #[serde(default)]
     pub(crate) envs: HashMap<String, String>,
+}
+
+impl Service {
+    /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
+    pub(crate) fn render_envs(
+        &self,
+        services_context: &HashMap<String, user_state::ServiceContext>,
+    ) -> HashMap<String, String> {
+        let mut context = tera::Context::new();
+        context.insert("services", services_context);
+
+        let mut rendered_envs = HashMap::new();
+
+        for (env_name, env_value) in &self.envs {
+            let rendered = tera::Tera::one_off(env_value, &context, true);
+
+            match rendered {
+                Ok(rendered) => {
+                    rendered_envs.insert(env_name.clone(), rendered);
+                }
+                Err(err) => {
+                    log::warn!("Failed to render string: '{env_value}', error: {err}");
+
+                    rendered_envs.insert(env_name.clone(), env_value.clone());
+                }
+            }
+        }
+
+        rendered_envs
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +164,70 @@ depends_on = ["app_1"]
                     ])
                 }
             }
+        );
+    }
+
+    #[test]
+    fn test_service_render_envs_success() {
+        // Arrange
+        let service = Service {
+            image: "nginx:latest".to_string(),
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: Some(vec!["app_1".to_string()]),
+            envs: HashMap::from([(
+                "KEY".to_string(),
+                "Service public_ip={{ services.app_1.public_ip }}".to_string(),
+            )]),
+        };
+
+        let services_context = HashMap::from([(
+            "app_1".to_string(),
+            user_state::ServiceContext {
+                public_ip: "1.2.3.4".to_string(),
+            },
+        )]);
+
+        // Act
+        let rendered_envs = service.render_envs(&services_context);
+
+        // Assert
+        assert_eq!(
+            rendered_envs,
+            HashMap::from([("KEY".to_string(), "Service public_ip=1.2.3.4".to_string())])
+        );
+    }
+
+    #[test]
+    fn test_service_render_envs_failure() {
+        // Arrange
+        let service = Service {
+            image: "nginx:latest".to_string(),
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: Some(vec!["app_1".to_string()]),
+            envs: HashMap::from([(
+                "KEY".to_string(),
+                "Service public_ip={{ UNKNOWN_VAR }}".to_string(),
+            )]),
+        };
+
+        let services_context = HashMap::new();
+
+        // Act
+        let rendered_envs = service.render_envs(&services_context);
+
+        // Assert
+        assert_eq!(
+            rendered_envs,
+            HashMap::from([(
+                "KEY".to_string(),
+                "Service public_ip={{ UNKNOWN_VAR }}".to_string()
+            )])
         );
     }
 }

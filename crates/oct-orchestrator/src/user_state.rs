@@ -34,6 +34,31 @@ impl UserState {
 
         Ok(())
     }
+
+    /// Get context of all services running on instances
+    /// Key - service name, Value - service context
+    pub(crate) fn get_services_context(&self) -> HashMap<String, ServiceContext> {
+        let mut context = HashMap::new();
+
+        for (public_ip, instance) in &self.instances {
+            for service_name in instance.services.keys() {
+                context.insert(
+                    service_name.clone(),
+                    ServiceContext {
+                        public_ip: public_ip.clone(),
+                    },
+                );
+            }
+        }
+
+        context
+    }
+}
+
+/// Context of a service running on an instance
+#[derive(Serialize, Debug, Eq, PartialEq)]
+pub(crate) struct ServiceContext {
+    pub(crate) public_ip: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
@@ -187,6 +212,58 @@ mod tests {
     }
   }
 }"#
+        );
+    }
+
+    #[test]
+    fn test_user_state_get_services_context() {
+        let user_state = UserState {
+            file_path: "test".to_string(),
+            instances: HashMap::from([(
+                "1.2.3.4".to_string(),
+                Instance {
+                    cpus: 1000,
+                    memory: 1024,
+                    services: HashMap::from([
+                        (
+                            "app_1".to_string(),
+                            Service {
+                                cpus: 1000,
+                                memory: 1024,
+                            },
+                        ),
+                        (
+                            "app_2".to_string(),
+                            Service {
+                                cpus: 250,
+                                memory: 256,
+                            },
+                        ),
+                    ]),
+                },
+            )]),
+        };
+
+        // Act
+        let context = user_state.get_services_context();
+
+        // Assert
+        assert_eq!(
+            context,
+            HashMap::from([
+                (
+                    "app_1".to_string(),
+                    ServiceContext {
+                        public_ip: "1.2.3.4".to_string()
+                    }
+                ),
+                (
+                    "app_2".to_string(),
+                    ServiceContext {
+                        public_ip: "1.2.3.4".to_string()
+                    }
+                )
+            ])
         );
     }
 
