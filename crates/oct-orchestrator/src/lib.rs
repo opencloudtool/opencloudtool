@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use oct_cloud::aws::resource::{
     Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
@@ -14,6 +15,53 @@ mod config;
 mod oct_ctl_sdk;
 mod scheduler;
 mod user_state;
+
+pub(crate) fn build_image(dockerfile_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if !Path::new(&dockerfile_path).exists() {
+        log::error!("Dockerfile not found: {}", dockerfile_path);
+
+        return Err("Dockerfile not found".into());
+    }
+
+    // TODO move to ContainerManager struc like in oct_ctl/src/main.rs
+    let mut container_manager = "podman";
+
+    if !Command::new("podman")
+        .args(["--version"])
+        .output()?
+        .status
+        .success()
+    {
+        log::error!("Podman not installed");
+
+        if !Command::new("docker")
+            .args(["--version"])
+            .output()?
+            .status
+            .success()
+        {
+            log::error!("Docker not installed");
+
+            return Err("Docker and Podman not installed".into());
+        }
+
+        container_manager = "docker";
+    }
+
+    // TODO context path maybe should be configurable
+    let run_container_args = Command::new(container_manager)
+        .args(["build", "-t", "-f", dockerfile_path, "."])
+        .output()?;
+
+    log::info!(
+        "Build command output: status={:?}, stdout={:?}, stderr={:?}",
+        run_container_args.status,
+        run_container_args.stdout,
+        run_container_args.stderr
+    );
+
+    Ok(())
+}
 
 /// Deploys and destroys user services and manages underlying cloud resources
 pub struct Orchestrator {
@@ -51,6 +99,17 @@ impl Orchestrator {
 
         let state = self.prepare_infrastructure(number_of_instances).await?; // TODO(#189): pass info about required resources
 
+        config.project.services.iter().for_each(|(_, service)| {
+            match service.dockerfile_path.as_ref() {
+                Some(dockerfile_path) => {
+                    let _ = build_image(dockerfile_path);
+                }
+                None => {
+                    log::error!("Dockerfile path not specified");
+                }
+            }
+        });
+
         let mut instances = Vec::<Ec2Instance>::new();
 
         for instance in state.instances {
@@ -75,17 +134,18 @@ impl Orchestrator {
 
             // Add missing instances to state
             // TODO: Handle removing instances
-            if !user_state.instances.contains_key(&public_ip) {
-                user_state.instances.insert(
-                    public_ip.clone(),
-                    user_state::Instance {
-                        cpus: instance.instance_type.cpus,
-                        memory: instance.instance_type.memory,
-
-                        services: HashMap::new(),
-                    },
-                );
+            if user_state.instances.contains_key(&public_ip) {
+                continue;
             }
+
+            user_state.instances.insert(
+                public_ip.clone(),
+                user_state::Instance {
+                    cpus: instance.instance_type.cpus,
+                    memory: instance.instance_type.memory,
+                    services: HashMap::new(),
+                },
+            );
         }
 
         // All instances are healthy and ready to serve user services
