@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use oct_cloud::aws::resource::{
     Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
@@ -51,6 +52,18 @@ impl Orchestrator {
 
         let state = self.prepare_infrastructure(number_of_instances).await?; // TODO(#189): pass info about required resources
 
+        for service in config.project.services.values() {
+            match &service.dockerfile_path {
+                Some(dockerfile_path) => match build_image(dockerfile_path) {
+                    Ok(()) => log::info!("Successfully built an image"),
+                    Err(e) => log::error!("Failed to build an image: {e}"),
+                },
+                None => {
+                    log::error!("Dockerfile path not specified");
+                }
+            }
+        }
+
         let mut instances = Vec::<Ec2Instance>::new();
 
         for instance in state.instances {
@@ -75,17 +88,18 @@ impl Orchestrator {
 
             // Add missing instances to state
             // TODO: Handle removing instances
-            if !user_state.instances.contains_key(&public_ip) {
-                user_state.instances.insert(
-                    public_ip.clone(),
-                    user_state::Instance {
-                        cpus: instance.instance_type.cpus,
-                        memory: instance.instance_type.memory,
-
-                        services: HashMap::new(),
-                    },
-                );
+            if user_state.instances.contains_key(&public_ip) {
+                continue;
             }
+
+            user_state.instances.insert(
+                public_ip.clone(),
+                user_state::Instance {
+                    cpus: instance.instance_type.cpus,
+                    memory: instance.instance_type.memory,
+                    services: HashMap::new(),
+                },
+            );
         }
 
         // All instances are healthy and ready to serve user services
@@ -427,6 +441,58 @@ impl Orchestrator {
 
         Ok(())
     }
+}
+
+fn build_image(dockerfile_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if !Path::new(&dockerfile_path).exists() {
+        return Err("Dockerfile not found".into());
+    }
+
+    // TODO move to ContainerManager struct like in oct_ctl/src/main.rs
+    let container_manager = get_container_manager()?;
+
+    log::info!("Container manager: {}", container_manager);
+    let run_container_args = Command::new(container_manager)
+        .args(["build", "-t", "-f", dockerfile_path, "."])
+        .output()?;
+
+    log::info!(
+        "Build command output: status={:?}, stdout={:?}, stderr={:?}",
+        run_container_args.status,
+        run_container_args.stdout,
+        run_container_args.stderr
+    );
+
+    if !run_container_args.status.success() {
+        return Err("Failed to build an image".into());
+    }
+
+    Ok(())
+}
+
+/// Return podman or docker string depends on what is installed
+fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
+    let podman_exists = Command::new("podman")
+        .args(["--version"])
+        .output()?
+        .status
+        .success();
+
+    if podman_exists {
+        return Ok("podman".to_string());
+    }
+
+    let docker_exists = Command::new("docker")
+        .args(["--version"])
+        .output()?
+        .status
+        .success();
+
+    if docker_exists {
+        return Ok("docker".to_string());
+    }
+
+    Err("Docker and Podman not installed".into())
 }
 
 #[cfg(test)]
