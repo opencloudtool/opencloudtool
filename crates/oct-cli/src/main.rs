@@ -50,8 +50,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use assert_cmd::Command;
+    use clap::Parser;
     use predicates::prelude::*;
+
+    #[test]
+    fn test_cli_default_paths() {
+        // Arrange
+        let cli = Cli::parse_from(["app", "deploy"]);
+
+        // Assert
+        assert_eq!(cli.state_file_path, "./state.json");
+        assert_eq!(cli.user_state_file_path, "./user_state.json");
+        assert_eq!(cli.dockerfile_path, ".");
+        assert_eq!(cli.context_path, ".");
+    }
 
     #[tokio::test]
     async fn test_main_deploy_no_oct_toml() {
