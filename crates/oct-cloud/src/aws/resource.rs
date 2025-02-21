@@ -873,6 +873,105 @@ mod tests {
     use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
     use mockall::predicate::eq;
 
+    async fn mock_ec2_instance(client: Ec2) -> Ec2Instance {
+        Ec2Instance {
+            client,
+            id: None,
+            public_ip: None,
+            public_dns: None,
+            region: "us-west-2".to_string(),
+            ami: "ami-830c94e3".to_string(),
+            instance_type: InstanceType::T2_MICRO,
+            name: "test".to_string(),
+            user_data: "test".to_string(),
+            user_data_base64: "test".to_string(),
+            instance_profile_name: "instance_profile".to_string(),
+            subnet_id: "subnet-12345".to_string(),
+            security_group_id: "sg-12345".to_string(),
+        }
+    }
+
+    async fn mock_vpc(client: Ec2) -> VPC {
+        VPC {
+            client,
+            id: Some("vpc-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "test".to_string(),
+            subnet: Subnet {
+                client: Ec2::default(),
+                id: None,
+                region: "us-west-2".to_string(),
+                cidr_block: "10.0.0.0/24".to_string(),
+                availability_zone: "test".to_string(),
+                vpc_id: None,
+                name: "test".to_string(),
+            },
+            internet_gateway: None,
+            route_table: RouteTable {
+                client: Ec2::default(),
+                id: None,
+                vpc_id: None,
+                subnet_id: None,
+                region: "us-west-2".to_string(),
+            },
+            security_group: SecurityGroup {
+                client: Ec2::default(),
+                id: None,
+                name: "ct-app-security-group".to_string(),
+                vpc_id: None,
+                description: "ct-app-security-group".to_string(),
+                region: "us-west-2".to_string(),
+                inbound_rules: vec![],
+            },
+        }
+    }
+
+    async fn mock_subnet(client: Ec2) -> Subnet {
+        Subnet {
+            client,
+            id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/24".to_string(),
+            availability_zone: "test".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            name: "test".to_string(),
+        }
+    }
+
+    async fn mock_route_table(client: Ec2) -> RouteTable {
+        RouteTable {
+            client,
+            id: Some("rtb-12345".to_string()),
+            vpc_id: Some("vpc-12345".to_string()),
+            subnet_id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+        }
+    }
+
+    async fn mock_security_group(client: Ec2) -> SecurityGroup {
+        SecurityGroup {
+            client,
+            id: Some("sg-12345".to_string()),
+            name: "ct-app-security-group".to_string(),
+            vpc_id: Some("vpc-12345".to_string()),
+            description: "ct-app-security-group".to_string(),
+            region: "us-west-2".to_string(),
+            inbound_rules: vec![],
+        }
+    }
+
+    async fn mock_internet_gateway(client: Ec2) -> InternetGateway {
+        InternetGateway {
+            client,
+            id: Some("igw-12345".to_string()),
+            vpc_id: Some("vpc-12345".to_string()),
+            route_table_id: Some("rtb-12345".to_string()),
+            subnet_id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn test_create_ecr_repository() {
         // Arrange
@@ -954,53 +1053,6 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance() {
         // Arrange
-        let mut ec2_impl_vpc_mock = Ec2::default();
-        ec2_impl_vpc_mock
-            .expect_create_vpc()
-            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
-            .return_once(|_, _| Ok("vpc-12345".to_string()));
-
-        let mut ec2_impl_security_group_mock = Ec2::default();
-        ec2_impl_security_group_mock
-            .expect_create_security_group()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("ct-app-security-group".to_string()),
-                eq("ct-app-security-group".to_string()),
-            )
-            .return_once(|_, _, _| Ok("sg-12345".to_string()));
-
-        ec2_impl_security_group_mock
-            .expect_allow_inbound_traffic_for_security_group()
-            .with(
-                eq("sg-12345".to_string()),
-                eq("tcp".to_string()),
-                eq(22),
-                eq("10.0.0.0/16".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok(()));
-
-        let mut ec2_impl_route_table_mock = Ec2::default();
-        ec2_impl_route_table_mock
-            .expect_create_route_table()
-            .with(eq("vpc-12345".to_string()))
-            .return_once(|_| Ok("rtb-12345".to_string()));
-
-        ec2_impl_route_table_mock
-            .expect_associate_route_table_with_subnet()
-            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
-            .return_once(|_, _| Ok(()));
-
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
@@ -1033,21 +1085,7 @@ mod tests {
                 .build())
         });
 
-        let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
-            id: None,
-            public_ip: None,
-            public_dns: None,
-            region: "us-west-2".to_string(),
-            ami: "ami-830c94e3".to_string(),
-            instance_type: InstanceType::T2_MICRO,
-            name: "test".to_string(),
-            user_data: "test".to_string(),
-            user_data_base64: "test".to_string(),
-            instance_profile_name: "instance_profile".to_string(),
-            subnet_id: "subnet-12345".to_string(),
-            security_group_id: "sg-12345".to_string(),
-        };
+        let mut instance = mock_ec2_instance(ec2_impl_mock).await;
 
         // Act
         instance.create().await.unwrap();
@@ -1069,54 +1107,6 @@ mod tests {
     #[tokio::test]
     async fn test_create_ec2_instance_no_instance() {
         // Arrange
-        let mut ec2_impl_vpc_mock = Ec2::default();
-        ec2_impl_vpc_mock
-            .expect_create_vpc()
-            .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
-            .return_once(|_, _| Ok("vpc-12345".to_string()));
-
-        let mut ec2_impl_security_group_mock = Ec2::default();
-        ec2_impl_security_group_mock
-            .expect_create_security_group()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("ct-app-security-group".to_string()),
-                eq("ct-app-security-group".to_string()),
-            )
-            .return_once(|_, _, _| Ok("sg-12345".to_string()));
-
-        ec2_impl_security_group_mock
-            .expect_allow_inbound_traffic_for_security_group()
-            .with(
-                eq("sg-12345".to_string()),
-                eq("tcp".to_string()),
-                eq(22),
-                eq("10.0.0.0/16".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok(()));
-
-        let mut ec2_impl_route_table_mock = Ec2::default();
-        ec2_impl_route_table_mock
-            .expect_create_route_table()
-            .with(eq("vpc-12345".to_string()))
-            .return_once(|_| Ok("rtb-12345".to_string()));
-
-        ec2_impl_route_table_mock
-            .expect_associate_route_table_with_subnet()
-            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
-            .return_once(|_, _| Ok(()));
-
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
-
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_run_instances()
@@ -1130,21 +1120,7 @@ mod tests {
             )
             .return_once(|_, _, _, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
-        let mut instance = Ec2Instance {
-            client: ec2_impl_mock,
-            id: None,
-            public_ip: None,
-            public_dns: None,
-            region: "us-west-2".to_string(),
-            ami: "ami-830c94e3".to_string(),
-            instance_type: InstanceType::T2_MICRO,
-            name: "test".to_string(),
-            user_data: "test".to_string(),
-            user_data_base64: "test".to_string(),
-            instance_profile_name: "instance_profile".to_string(),
-            subnet_id: "subnet-12345".to_string(),
-            security_group_id: "sg-12345".to_string(),
-        };
+        let mut instance = mock_ec2_instance(ec2_impl_mock).await;
 
         // Act
         let creation_result = instance.create().await;
@@ -1160,53 +1136,6 @@ mod tests {
     #[tokio::test]
     async fn test_destroy_ec2_instance() {
         // Arrange
-        let mut ec2_impl_vpc_mock = Ec2::default();
-        ec2_impl_vpc_mock
-            .expect_delete_vpc()
-            .with(eq("vpc-12345".to_string()))
-            .return_once(|_| Ok(()));
-
-        let mut ec2_impl_security_group_mock = Ec2::default();
-        ec2_impl_security_group_mock
-            .expect_create_security_group()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("test".to_string()),
-                eq("test_description".to_string()),
-            )
-            .return_once(|_, _, _| Ok("sg-12345".to_string()));
-
-        ec2_impl_security_group_mock
-            .expect_allow_inbound_traffic_for_security_group()
-            .with(
-                eq("sg-12345".to_string()),
-                eq("tcp".to_string()),
-                eq(22),
-                eq("10.0.0.0/16".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok(()));
-
-        let mut ec2_impl_route_table_mock = Ec2::default();
-        ec2_impl_route_table_mock
-            .expect_create_route_table()
-            .with(eq("vpc-12345".to_string()))
-            .return_once(|_| Ok("rtb-12345".to_string()));
-
-        ec2_impl_route_table_mock
-            .expect_associate_route_table_with_subnet()
-            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
-            .return_once(|_, _| Ok(()));
-
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
         let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_terminate_instance()
@@ -1246,17 +1175,6 @@ mod tests {
             .expect_terminate_instance()
             .with(eq("id".to_string()))
             .return_once(|_| Ok(()));
-
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
@@ -1476,8 +1394,18 @@ mod tests {
     #[tokio::test]
     async fn test_create_vpc() {
         // Arrange
-        let mut ec2_impl_mock = Ec2::default();
+        let mut ec2_impl_subnet_mock = Ec2::default();
+        ec2_impl_subnet_mock
+            .expect_create_subnet()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("10.0.0.0/24".to_string()),
+                eq("test".to_string()),
+                eq("test".to_string()),
+            )
+            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
+        let mut ec2_impl_mock = Ec2::default();
         ec2_impl_mock
             .expect_create_vpc()
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
@@ -1514,16 +1442,29 @@ mod tests {
             .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
             .return_once(|_, _| Ok(()));
 
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
+        let mut ec2_impl_internet_gateway_mock = Ec2::default();
+        ec2_impl_internet_gateway_mock
+            .expect_create_internet_gateway()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("igw-12345".to_string()));
+
+        ec2_impl_internet_gateway_mock
+            .expect_add_public_route()
+            .with(eq("rtb-12345".to_string()), eq("igw-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        ec2_impl_internet_gateway_mock
+            .expect_enable_auto_assign_ip_addresses_for_subnet()
+            .with(eq("subnet-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let subnet = mock_subnet(ec2_impl_subnet_mock).await;
+
+        let route_table = mock_route_table(ec2_impl_route_table_mock).await;
+
+        let security_group = mock_security_group(ec2_impl_security_group_mock).await;
+
+        let internet_gateway = mock_internet_gateway(ec2_impl_internet_gateway_mock).await;
 
         let mut vpc = VPC {
             client: ec2_impl_mock,
@@ -1531,32 +1472,10 @@ mod tests {
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
-            subnet: Subnet {
-                client: ec2_impl_subnet_mock,
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/24".to_string(),
-                availability_zone: "test".to_string(),
-                vpc_id: None,
-                name: "test".to_string(),
-            },
-            internet_gateway: None,
-            route_table: RouteTable {
-                client: ec2_impl_route_table_mock,
-                id: None,
-                vpc_id: None,
-                subnet_id: None,
-                region: "us-west-2".to_string(),
-            },
-            security_group: SecurityGroup {
-                client: ec2_impl_security_group_mock,
-                id: None,
-                name: "ct-app-security-group".to_string(),
-                vpc_id: None,
-                description: "ct-app-security-group".to_string(),
-                region: "us-west-2".to_string(),
-                inbound_rules: vec![],
-            },
+            subnet: subnet,
+            internet_gateway: Some(internet_gateway),
+            route_table: route_table,
+            security_group: security_group,
         };
 
         // Act
@@ -1576,50 +1495,7 @@ mod tests {
             .with(eq("10.0.0.0/16".to_string()), eq("test".to_string()))
             .return_once(|_, _| Err("Error".into()));
 
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
-
-        let mut vpc = VPC {
-            client: ec2_impl_mock,
-            id: None,
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/16".to_string(),
-            name: "test".to_string(),
-            subnet: Subnet {
-                client: Ec2::default(),
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/24".to_string(),
-                availability_zone: "test".to_string(),
-                vpc_id: None,
-                name: "test".to_string(),
-            },
-            internet_gateway: None,
-            route_table: RouteTable {
-                client: Ec2::default(),
-                id: None,
-                vpc_id: None,
-                subnet_id: None,
-                region: "us-west-2".to_string(),
-            },
-            security_group: SecurityGroup {
-                client: Ec2::default(),
-                id: None,
-                name: "ct-app-security-group".to_string(),
-                vpc_id: None,
-                description: "ct-app-security-group".to_string(),
-                region: "us-west-2".to_string(),
-                inbound_rules: vec![],
-            },
-        };
+        let mut vpc = mock_vpc(ec2_impl_mock).await;
 
         // Act
         let create_result = vpc.create().await;
@@ -1637,50 +1513,7 @@ mod tests {
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Ok(()));
 
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
-
-        let mut vpc = VPC {
-            client: ec2_impl_mock,
-            id: Some("vpc-12345".to_string()),
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/16".to_string(),
-            name: "test".to_string(),
-            subnet: Subnet {
-                client: Ec2::default(),
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/24".to_string(),
-                availability_zone: "test".to_string(),
-                vpc_id: None,
-                name: "test".to_string(),
-            },
-            internet_gateway: None,
-            route_table: RouteTable {
-                client: Ec2::default(),
-                id: None,
-                vpc_id: None,
-                subnet_id: None,
-                region: "us-west-2".to_string(),
-            },
-            security_group: SecurityGroup {
-                client: Ec2::default(),
-                id: None,
-                name: "ct-app-security-group".to_string(),
-                vpc_id: None,
-                description: "ct-app-security-group".to_string(),
-                region: "us-west-2".to_string(),
-                inbound_rules: vec![],
-            },
-        };
+        let mut vpc = mock_vpc(ec2_impl_mock).await;
 
         // Act
         let destroy_result = vpc.destroy().await;
@@ -1698,50 +1531,7 @@ mod tests {
             .with(eq("vpc-12345".to_string()))
             .return_once(|_| Err("Error".into()));
 
-        let mut ec2_impl_subnet_mock = Ec2::default();
-        ec2_impl_subnet_mock
-            .expect_create_subnet()
-            .with(
-                eq("vpc-12345".to_string()),
-                eq("10.0.0.0/24".to_string()),
-                eq("test".to_string()),
-                eq("test".to_string()),
-            )
-            .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
-
-        let mut vpc = VPC {
-            client: ec2_impl_mock,
-            id: Some("vpc-12345".to_string()),
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/16".to_string(),
-            name: "test".to_string(),
-            subnet: Subnet {
-                client: Ec2::default(),
-                id: None,
-                region: "us-west-2".to_string(),
-                cidr_block: "10.0.0.0/24".to_string(),
-                availability_zone: "test".to_string(),
-                vpc_id: None,
-                name: "test".to_string(),
-            },
-            internet_gateway: None,
-            route_table: RouteTable {
-                client: Ec2::default(),
-                id: None,
-                vpc_id: None,
-                subnet_id: None,
-                region: "us-west-2".to_string(),
-            },
-            security_group: SecurityGroup {
-                client: Ec2::default(),
-                id: None,
-                name: "ct-app-security-group".to_string(),
-                vpc_id: None,
-                description: "ct-app-security-group".to_string(),
-                region: "us-west-2".to_string(),
-                inbound_rules: vec![],
-            },
-        };
+        let mut vpc = mock_vpc(ec2_impl_mock).await;
 
         // Act
         let destroy_result = vpc.destroy().await;
@@ -1764,15 +1554,7 @@ mod tests {
             )
             .return_once(|_, _, _, _| Ok("subnet-12345".to_string()));
 
-        let mut subnet = Subnet {
-            client: ec2_impl_mock,
-            id: None,
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/24".to_string(),
-            availability_zone: "test".to_string(),
-            vpc_id: Some("vpc-12345".to_string()),
-            name: "test".to_string(),
-        };
+        let mut subnet = mock_subnet(ec2_impl_mock).await;
 
         // Act
         let create_result = subnet.create().await;
@@ -1796,15 +1578,7 @@ mod tests {
             )
             .return_once(|_, _, _, _| Err("Error".into()));
 
-        let mut subnet = Subnet {
-            client: ec2_impl_mock,
-            id: None,
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/24".to_string(),
-            availability_zone: "test".to_string(),
-            vpc_id: Some("vpc-12345".to_string()),
-            name: "test".to_string(),
-        };
+        let mut subnet = mock_subnet(ec2_impl_mock).await;
 
         // Act
         let create_result = subnet.create().await;
@@ -1822,15 +1596,7 @@ mod tests {
             .with(eq("subnet-12345".to_string()))
             .return_once(|_| Ok(()));
 
-        let mut subnet = Subnet {
-            client: ec2_impl_mock,
-            id: Some("subnet-12345".to_string()),
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/24".to_string(),
-            availability_zone: "test".to_string(),
-            vpc_id: Some("vpc-12345".to_string()),
-            name: "test".to_string(),
-        };
+        let mut subnet = mock_subnet(ec2_impl_mock).await;
 
         // Act
         let destroy_result = subnet.destroy().await;
@@ -1848,18 +1614,280 @@ mod tests {
             .with(eq("subnet-12345".to_string()))
             .return_once(|_| Err("Error".into()));
 
-        let mut subnet = Subnet {
-            client: ec2_impl_mock,
-            id: Some("subnet-12345".to_string()),
-            region: "us-west-2".to_string(),
-            cidr_block: "10.0.0.0/24".to_string(),
-            availability_zone: "test".to_string(),
-            vpc_id: Some("vpc-12345".to_string()),
-            name: "test".to_string(),
-        };
+        let mut subnet = mock_subnet(ec2_impl_mock).await;
 
         // Act
         let destroy_result = subnet.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_internet_gateway() {
+        // Arrange
+        let mut ec2_impl_internet_gateway_mock = Ec2::default();
+        ec2_impl_internet_gateway_mock
+            .expect_create_internet_gateway()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("igw-12345".to_string()));
+
+        ec2_impl_internet_gateway_mock
+            .expect_add_public_route()
+            .with(eq("rtb-12345".to_string()), eq("igw-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        ec2_impl_internet_gateway_mock
+            .expect_enable_auto_assign_ip_addresses_for_subnet()
+            .with(eq("subnet-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut igw = mock_internet_gateway(ec2_impl_internet_gateway_mock).await;
+
+        // Act
+        let create_result = igw.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+        assert!(igw.id == Some("igw-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_internet_gateway_error() {
+        // Arrange
+        let mut ec2_impl_internet_gateway_mock = Ec2::default();
+        ec2_impl_internet_gateway_mock
+            .expect_create_internet_gateway()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut igw = mock_internet_gateway(ec2_impl_internet_gateway_mock).await;
+
+        // Act
+        let create_result = igw.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_internet_gateway() {
+        // Arrange
+        let mut ec2_impl_internet_gateway_mock = Ec2::default();
+        ec2_impl_internet_gateway_mock
+            .expect_delete_internet_gateway()
+            .with(eq("igw-12345".to_string()), eq("vpc-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        let mut igw = mock_internet_gateway(ec2_impl_internet_gateway_mock).await;
+
+        // Act
+        let destroy_result = igw.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_internet_gateway_error() {
+        // Arrange
+        let mut ec2_impl_internet_gateway_mock = Ec2::default();
+        ec2_impl_internet_gateway_mock
+            .expect_delete_internet_gateway()
+            .with(eq("igw-12345".to_string()), eq("vpc-12345".to_string()))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut igw = mock_internet_gateway(ec2_impl_internet_gateway_mock).await;
+
+        // Act
+        let destroy_result = igw.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_route_table() {
+        // Arrange
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Ok("rtb-12345".to_string()));
+
+        ec2_impl_route_table_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        let mut rtb = mock_route_table(ec2_impl_route_table_mock).await;
+
+        // Act
+        let create_result = rtb.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+        assert_eq!(rtb.id, Some("rtb-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_route_table_error() {
+        // Arrange
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_create_route_table()
+            .with(eq("vpc-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut rtb = mock_route_table(ec2_impl_route_table_mock).await;
+
+        // Act
+        let create_result = rtb.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_route_table() {
+        // Arrange
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        ec2_impl_route_table_mock
+            .expect_delete_route_table()
+            .with(eq("rtb-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut rtb = mock_route_table(ec2_impl_route_table_mock).await;
+
+        // Act
+        let destroy_result = rtb.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_route_table_error_dissassociating() {
+        // Arrange
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Err("Error".into()));
+
+        let mut rtb = mock_route_table(ec2_impl_route_table_mock).await;
+
+        // Act
+        let destroy_result = rtb.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_route_table_error_deleting() {
+        // Arrange
+        let mut ec2_impl_route_table_mock = Ec2::default();
+        ec2_impl_route_table_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq("rtb-12345".to_string()), eq("subnet-12345".to_string()))
+            .return_once(|_, _| Ok(()));
+
+        ec2_impl_route_table_mock
+            .expect_delete_route_table()
+            .with(eq("rtb-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut rtb = mock_route_table(ec2_impl_route_table_mock).await;
+
+        // Act
+        let destroy_result = rtb.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_security_group() {
+        // Arrange
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("ct-app-security-group".to_string()),
+                eq("ct-app-security-group".to_string()),
+            )
+            .return_once(|_, _, _| Ok("sg-12345".to_string()));
+
+        let mut sg = mock_security_group(ec2_impl_security_group_mock).await;
+
+        // Act
+        let create_result = sg.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+        assert_eq!(sg.id, Some("sg-12345".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_create_security_group_error() {
+        // Arrange
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_create_security_group()
+            .with(
+                eq("vpc-12345".to_string()),
+                eq("ct-app-security-group".to_string()),
+                eq("ct-app-security-group".to_string()),
+            )
+            .return_once(|_, _, _| Err("Error".into()));
+
+        let mut sg = mock_security_group(ec2_impl_security_group_mock).await;
+
+        // Act
+        let create_result = sg.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_security_group() {
+        // Arrange
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_delete_security_group()
+            .with(eq("sg-12345".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut sg = mock_security_group(ec2_impl_security_group_mock).await;
+
+        // Act
+        let destroy_result = sg.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_security_group_error() {
+        // Arrange
+        let mut ec2_impl_security_group_mock = Ec2::default();
+        ec2_impl_security_group_mock
+            .expect_delete_security_group()
+            .with(eq("sg-12345".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut sg = mock_security_group(ec2_impl_security_group_mock).await;
+
+        // Act
+        let destroy_result = sg.destroy().await;
 
         // Assert
         assert!(destroy_result.is_err());
