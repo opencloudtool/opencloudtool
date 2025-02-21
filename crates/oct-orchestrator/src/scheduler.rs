@@ -73,8 +73,6 @@ impl<'a> Scheduler<'a> {
                 }
                 Err(err) => {
                     log::error!("Failed to run '{}' service. Error: {}", service_name, err);
-
-                    continue;
                 }
             }
         }
@@ -108,8 +106,6 @@ impl<'a> Scheduler<'a> {
                 }
                 Err(err) => {
                     log::error!("Failed to stop container for service '{service_name}': {err}");
-
-                    continue;
                 }
             }
         }
