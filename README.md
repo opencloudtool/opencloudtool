@@ -18,9 +18,9 @@ A tool to hide the complexity of the cloud.
 
 Each version of OpenCloudTool has a mini-project to prove the design and implementation.
 
-### v0.3.0 "Multi-host deployment"
+### v0.4.0 "Production usage PoC"
 
-![v0.3.0](./docs/v0.3.0.excalidraw.png)
+![v0.4.0](./docs/v0.4.0.excalidraw.png)
 
 ## Development
 
