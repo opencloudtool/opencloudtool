@@ -41,6 +41,8 @@ pub(crate) struct Project {
 pub(crate) struct Service {
     /// Image to use for the container
     pub(crate) image: String,
+    /// Path to the Dockerfile
+    pub(crate) dockerfile_path: Option<String>,
     /// Internal port exposed from the container
     pub(crate) internal_port: Option<u32>,
     /// External port exposed to the public internet
@@ -103,7 +105,8 @@ mod tests {
 name = "example"
 
 [project.services.app_1]
-image = "nginx:latest"
+image = ""
+dockerfile_path = "Dockerfile"
 internal_port = 80
 external_port = 80
 cpus = 250
@@ -137,7 +140,8 @@ depends_on = ["app_1"]
                         (
                             "app_1".to_string(),
                             Service {
-                                image: "nginx:latest".to_string(),
+                                image: "".to_string(),
+                                dockerfile_path: Some("Dockerfile".to_string()),
                                 internal_port: Some(80),
                                 external_port: Some(80),
                                 cpus: 250,
@@ -153,6 +157,7 @@ depends_on = ["app_1"]
                             "app_2".to_string(),
                             Service {
                                 image: "nginx:latest".to_string(),
+                                dockerfile_path: None,
                                 internal_port: None,
                                 external_port: None,
                                 cpus: 250,
@@ -172,6 +177,7 @@ depends_on = ["app_1"]
         // Arrange
         let service = Service {
             image: "nginx:latest".to_string(),
+            dockerfile_path: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
@@ -205,6 +211,7 @@ depends_on = ["app_1"]
         // Arrange
         let service = Service {
             image: "nginx:latest".to_string(),
+            dockerfile_path: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
