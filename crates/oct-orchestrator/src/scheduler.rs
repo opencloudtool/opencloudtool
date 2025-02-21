@@ -15,7 +15,6 @@ impl<'a> Scheduler<'a> {
     }
 
     /// Runs a service on a first available instance and adds it to the state
-    #[allow(clippy::needless_continue)]
     pub(crate) async fn run(
         &mut self,
         service_name: &str,
@@ -74,8 +73,6 @@ impl<'a> Scheduler<'a> {
                 }
                 Err(err) => {
                     log::error!("Failed to run '{}' service. Error: {}", service_name, err);
-
-                    continue;
                 }
             }
         }
@@ -86,7 +83,6 @@ impl<'a> Scheduler<'a> {
     }
 
     /// Stops a running container and removes it from the state
-    #[allow(clippy::needless_continue)]
     pub(crate) async fn stop(
         &mut self,
         service_name: &str,
@@ -110,8 +106,6 @@ impl<'a> Scheduler<'a> {
                 }
                 Err(err) => {
                     log::error!("Failed to stop container for service '{service_name}': {err}");
-
-                    continue;
                 }
             }
         }
