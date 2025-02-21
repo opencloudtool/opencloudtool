@@ -52,22 +52,15 @@ jobs:
       run: cargo test --verbose
 
     - name: Install grcov
-      if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
       uses: clechasseur/rs-cargo@v3
       with:
         command: install
         args: grcov
 
-    - name: Display coverage report
-      if: ${{ github.event_name == 'pull_request' }}
-      run: grcov . --binary-path ./target/debug/deps/ -s . -t markdown --branch --ignore-not-existing --ignore '../*' --ignore "/*"
-
     - name: Generate coverage report
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
 
     - name: Upload coverage report
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       uses: codecov/codecov-action@v5
       with:
         files: ./coverage.xml
