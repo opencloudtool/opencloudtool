@@ -307,6 +307,11 @@ impl Ec2Impl {
 
         log::info!("Deleted Route Table {route_table_id}");
 
+        // Wait for Public IPs to be deleted
+        log::info!("Waiting for Public IPs to be deleted");
+
+        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+
         Ok(())
     }
 

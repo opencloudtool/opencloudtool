@@ -329,9 +329,6 @@ impl Resource for VPC {
         // Wait for route table to be deleted
         log::info!("Waiting for Public IPs to be deleted");
 
-        #[cfg(not(test))] // TODO(andagaev): Refactor to not slow down the tests
-        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
-
         // Delete Internet Gateway
         match &mut self.internet_gateway {
             Some(internet_gateway) => internet_gateway.destroy().await?,
