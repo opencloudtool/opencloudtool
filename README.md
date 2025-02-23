@@ -98,6 +98,11 @@ cargo build -p PACKAGE_NAME --release --timings
 
 ## Pricing comparison
 
+This section compares the cost of running a set of services in a cloud with different
+approaches which do not require the end user to manage underlying infrastructure (serverless).
+
+**Note that OpenCloudTool is a free to use open-source tool and there is no charge for using it.**
+
 ### Simple REST service
 
 Main components:
@@ -116,7 +121,7 @@ Main components:
 
 Total: $92 per month
 
-#### OpenCloudTool Pricing with EC2 only
+#### Single EC2 instance managed by OpenCloudTool
 
 - 1 EC2 [t4g.medium](https://aws.amazon.com/ec2/pricing/on-demand/) instance ($0.0336 per hour): $25.5 per month
 
