@@ -1,5 +1,7 @@
 use base64::{engine::general_purpose, Engine as _};
 
+use aws_sdk_ec2::types::InstanceStateName;
+
 use crate::aws::client::{Ec2, ECR, IAM};
 use crate::aws::types::InstanceType;
 use crate::resource::Resource;
@@ -145,6 +147,35 @@ impl Ec2Instance {
             security_group_id,
         }
     }
+    async fn health_check_instance_termination(
+        &mut self,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let max_attempts = 24;
+        let sleep_duration = 5;
+
+        log::info!("Waiting for EC2 instance {:?} to be terminated...", self.id);
+        for _ in 0..max_attempts {
+            let instance = self
+                .client
+                .describe_instances(self.id.clone().ok_or("No instance id")?)
+                .await?;
+
+            let instance_status = instance.state().and_then(|s| s.name());
+
+            if instance_status == Some(&InstanceStateName::Terminated) {
+                log::info!("EC2 instance {:?} terminated", self.id);
+                return Ok(());
+            }
+
+            log::info!(
+                "Instance is not terminated yet... \
+                 retrying in {sleep_duration} sec...",
+            );
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration)).await;
+        }
+
+        Err("EC2 instance failed to terminate".into())
+    }
 }
 
 impl Resource for Ec2Instance {
@@ -213,11 +244,15 @@ impl Resource for Ec2Instance {
             .terminate_instance(self.id.clone().ok_or("No instance id")?)
             .await?;
 
-        self.id = None;
-        self.public_ip = None;
-        self.public_dns = None;
-
-        Ok(())
+        match self.health_check_instance_termination().await {
+            Ok(()) => {
+                self.id = None;
+                self.public_ip = None;
+                self.public_dns = None;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -325,12 +360,6 @@ impl Resource for VPC {
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Delete Route Table
         self.route_table.destroy().await?;
-
-        // Wait for route table to be deleted
-        log::info!("Waiting for Public IPs to be deleted");
-
-        #[cfg(not(test))] // TODO(andagaev): Refactor to not slow down the tests
-        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
 
         // Delete Internet Gateway
         match &mut self.internet_gateway {
@@ -1141,6 +1170,19 @@ mod tests {
             .expect_terminate_instance()
             .with(eq("id".to_string()))
             .return_once(|_| Ok(()));
+
+        ec2_impl_mock.expect_describe_instances().returning(|_| {
+            Ok(aws_sdk_ec2::types::Instance::builder()
+                .instance_id("id")
+                .public_ip_address("1.1.1.1")
+                .public_dns_name("example.com")
+                .state(
+                    aws_sdk_ec2::types::InstanceState::builder()
+                        .name(aws_sdk_ec2::types::InstanceStateName::Terminated)
+                        .build(),
+                )
+                .build())
+        });
 
         let mut instance = Ec2Instance {
             client: ec2_impl_mock,
