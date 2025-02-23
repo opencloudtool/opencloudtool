@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 use std::process::Command;
 
-#[cfg(test)]
-use mockall::mock;
-
 /// Container manager options
 #[derive(Clone, Default)]
 enum ContainerManager {
@@ -134,32 +131,33 @@ impl ContainerEngine {
     }
 }
 
-// As long as ContainerEngine implemnts Clone, we mock it using
-// mockall::mock macro, more info here:
-// https://docs.rs/mockall/latest/mockall/macro.mock.html#examples
 #[cfg(test)]
-mock! {
-    pub(crate) ContainerEngine {
-        pub(crate) fn run(
-            &self,
-            name: &str,
-            image: &str,
-            external_port: Option<u32>,
-            internal_port: Option<u32>,
-            cpus: u32,
-            memory: u64,
-            envs: &HashMap<String, String>,
-        ) -> Result<(), Box<dyn std::error::Error>>;
+pub(crate) mod mocks {
+    use std::collections::HashMap;
 
-        pub(crate) fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
-    }
+    use mockall::mock;
 
-    impl Clone for ContainerEngine {
-        fn clone(&self) -> Self;
+    // As long as ContainerEngine implemnts Clone, we mock it using
+    // mockall::mock macro, more info here:
+    // https://docs.rs/mockall/latest/mockall/macro.mock.html#examples
+    mock! {
+        pub(crate) ContainerEngine {
+            pub(crate) fn run(
+                &self,
+                name: &str,
+                image: &str,
+                external_port: Option<u32>,
+                internal_port: Option<u32>,
+                cpus: u32,
+                memory: u64,
+                envs: &HashMap<String, String>,
+            ) -> Result<(), Box<dyn std::error::Error>>;
+
+            pub(crate) fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>>;
+        }
+
+        impl Clone for ContainerEngine {
+            fn clone(&self) -> Self;
+        }
     }
 }
-
-#[cfg(not(test))]
-pub(crate) use ContainerEngine as ContainerEngineImpl;
-#[cfg(test)]
-pub(crate) use MockContainerEngine as ContainerEngineImpl;

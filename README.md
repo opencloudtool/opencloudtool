@@ -24,38 +24,40 @@ Each version of OpenCloudTool has a mini-project to prove the design and impleme
 
 ## Development
 
-### Install pre-commit hooks
+### Command examples
+
+#### Install pre-commit hooks
 
 ```bash
 pre-commit install
 ```
 
-### Build project
+#### Build project
 
 ```bash
  cargo build
 ```
 
-### Run deploy command
+#### Run deploy command
 
 ```bash
  cd dir/with/oct.toml
  cargo run -p oct-cli deploy
 ```
 
-### Run destroy command
+#### Run destroy command
 
 ```bash
  cargo run -p oct-cli destroy
 ```
 
-### Show all available commands
+#### Show all available commands
 
 ```bash
  cargo run -p oct-cli --help
 ```
 
-### Show all available parameters for command
+#### Show all available parameters for command
 
 ```bash
  cargo run -p oct-cli command --help
@@ -65,6 +67,39 @@ For example:
 
 ```bash
  cargo run -p oct-cli deploy --help
+```
+
+### Writing tests
+
+[WIP] Main principles:
+
+- Each module provides its own mocks in a public `mocks` module
+
+```rust
+...main code...
+
+pub mod mocks {
+    ...mocks...
+}
+
+#[cfg(test)]
+mod tests {
+    ...tests...
+}
+```
+
+- Each module tests cover only the functionality in the module
+- If a module uses external modules, they are mocked using mocks provided by the imported module's `mocks` module
+
+```rust
+...other imports...
+
+#[cfg(test)]
+use module::mocks::MockModule as Module;
+#[cfg(not(test))]
+use module::Module;
+
+...main code...
 ```
 
 ## Dev tools

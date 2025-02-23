@@ -8,7 +8,10 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
 
-use crate::container::ContainerEngineImpl;
+#[cfg(test)]
+use crate::container::mocks::MockContainerEngine as ContainerEngine;
+#[cfg(not(test))]
+use crate::container::ContainerEngine;
 
 pub(crate) async fn run() {
     let log_file = OpenOptions::new()
@@ -22,7 +25,7 @@ pub(crate) async fn run() {
     tracing_subscriber::fmt().with_writer(log_file).init();
 
     let server_config = ServerConfig {
-        container_engine: ContainerEngineImpl::default(),
+        container_engine: ContainerEngine::default(),
     };
 
     let app = Router::new()
@@ -80,7 +83,7 @@ struct RemoveContainerPayload {
 /// It is used as a Dependency Injection container.
 #[derive(Clone)]
 struct ServerConfig {
-    container_engine: ContainerEngineImpl,
+    container_engine: ContainerEngine,
 }
 
 /// Run container endpoint definition for Axum
@@ -146,8 +149,8 @@ mod tests {
     use axum::routing::Router;
     use tower::ServiceExt;
 
-    fn get_container_engine_mock(is_ok: bool) -> ContainerEngineImpl {
-        let mut container_engine_mock = ContainerEngineImpl::default();
+    fn get_container_engine_mock(is_ok: bool) -> ContainerEngine {
+        let mut container_engine_mock = ContainerEngine::default();
         container_engine_mock
             .expect_run()
             .returning(
