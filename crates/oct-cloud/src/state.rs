@@ -7,6 +7,8 @@ use crate::aws::types::InstanceType;
 pub struct State {
     pub vpc: VPCState,
 
+    pub ecr: ECRState,
+
     pub instance_profile: InstanceProfileState,
 
     pub instances: Vec<Ec2InstanceState>,
@@ -50,6 +52,18 @@ pub struct Ec2InstanceState {
 #[cfg(test)]
 mod mocks {
     use crate::aws::types::InstanceType;
+
+    pub struct MockECR {
+        pub id: Option<String>,
+        pub name: String,
+        pub region: String,
+    }
+
+    impl MockECR {
+        pub async fn new(id: Option<String>, name: String, region: String) -> Self {
+            Self { id, name, region }
+        }
+    }
 
     pub struct MockEc2Instance {
         pub id: Option<String>,
@@ -292,17 +306,43 @@ mod mocks {
 
 #[cfg(not(test))]
 use crate::aws::resource::{
-    Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
-    SecurityGroup, Subnet, VPC,
+    Ec2Instance, EcrRepository, InboundRule, InstanceProfile, InstanceRole, InternetGateway,
+    RouteTable, SecurityGroup, Subnet, VPC,
 };
 
 #[cfg(test)]
 use mocks::{
-    MockEc2Instance as Ec2Instance, MockInboundRule as InboundRule,
+    MockECR as EcrRepository, MockEc2Instance as Ec2Instance, MockInboundRule as InboundRule,
     MockInstanceProfile as InstanceProfile, MockInstanceRole as InstanceRole,
     MockInternetGateway as InternetGateway, MockRouteTable as RouteTable,
     MockSecurityGroup as SecurityGroup, MockSubnet as Subnet, MockVPC as VPC,
 };
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct ECRState {
+    pub id: String,
+    pub name: String,
+    pub region: String,
+}
+
+impl ECRState {
+    pub fn new(ecr_repository: &EcrRepository) -> Self {
+        Self {
+            name: ecr_repository.name.clone(),
+            region: ecr_repository.region.clone(),
+            id: ecr_repository.id.clone().expect("ECR id not set"),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> EcrRepository {
+        EcrRepository::new(
+            Some(self.id.clone()),
+            self.name.clone(),
+            self.region.clone(),
+        )
+        .await
+    }
+}
 
 impl Ec2InstanceState {
     pub fn new(ec2_instance: &Ec2Instance) -> Self {
@@ -647,6 +687,11 @@ mod tests {
                     inbound_rules: vec![],
                 },
             },
+            ecr: ECRState {
+                id: "id".to_string(),
+                name: "name".to_string(),
+                region: "region".to_string(),
+            },
             instance_profile: InstanceProfileState {
                 name: "instance_profile_name".to_string(),
                 region: "region".to_string(),
@@ -923,6 +968,11 @@ mod tests {
             ]
         }
     },
+    "ecr": {
+        "name": "name",
+        "region": "region",
+        "id": "id"
+    },
     "instance_profile": {
         "name": "instance_profile_name",
         "region": "region",
@@ -995,6 +1045,11 @@ mod tests {
                             cidr_block: "cidr_block".to_string(),
                         }],
                     },
+                },
+                ecr: ECRState {
+                    id: "id".to_string(),
+                    name: "name".to_string(),
+                    region: "region".to_string(),
                 },
                 instance_profile: InstanceProfileState {
                     name: "instance_profile_name".to_string(),
@@ -1069,6 +1124,11 @@ mod tests {
                     }],
                 },
             },
+            ecr: ECRState {
+                id: "id".to_string(),
+                name: "name".to_string(),
+                region: "region".to_string(),
+            },
             instance_profile: InstanceProfileState {
                 name: "instance_profile_name".to_string(),
                 region: "region".to_string(),
@@ -1138,6 +1198,11 @@ mod tests {
         }
       ]
     }
+  },
+  "ecr": {
+    "id": "id",
+    "name": "name",
+    "region": "region"
   },
   "instance_profile": {
     "name": "instance_profile_name",
@@ -1520,5 +1585,42 @@ mod tests {
         );
         assert_eq!(internet_gateway.subnet_id, Some("subnet_id".to_string()));
         assert_eq!(internet_gateway.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_ecr_state() {
+        // Arrange
+        let ecr = EcrRepository::new(
+            Some("id".to_string()),
+            "name".to_string(),
+            "region".to_string(),
+        )
+        .await;
+
+        // Act
+        let ecr_state = ECRState::new(&ecr);
+
+        // Assert
+        assert_eq!(ecr_state.id, "id".to_string());
+        assert_eq!(ecr_state.name, "name".to_string());
+        assert_eq!(ecr_state.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_ecr_state_new_from_state() {
+        // Arrange
+        let ecr_state = ECRState {
+            id: "id".to_string(),
+            name: "name".to_string(),
+            region: "region".to_string(),
+        };
+
+        // Act
+        let ecr = ecr_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(ecr.id, Some("id".to_string()));
+        assert_eq!(ecr.name, "name".to_string());
+        assert_eq!(ecr.region, "region".to_string());
     }
 }
