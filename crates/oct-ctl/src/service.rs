@@ -14,30 +14,11 @@ use crate::container::mocks::MockContainerEngine as ContainerEngine;
 use crate::container::ContainerEngine;
 
 pub(crate) async fn run() {
-    let log_file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open("/var/log/oct-ctl.log")
-        .expect("Failed to open log file");
-
-    // Tracing initialization code was inspired by
-    // https://github.com/tower-rs/tower-http/issues/296#issuecomment-1301108593
-    tracing_subscriber::fmt().with_writer(log_file).init();
-
     let server_config = ServerConfig {
         container_engine: ContainerEngine::default(),
     };
 
-    let app = Router::new()
-        .route("/run-container", post(run_container))
-        .route("/remove-container", post(remove_container))
-        .route("/health-check", get(health_check))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-                .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
-        )
-        .with_state(server_config);
+    let app = prepare_router(server_config);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:31888")
         .await
@@ -53,6 +34,29 @@ pub(crate) async fn run() {
     axum::serve(listener, app)
         .await
         .expect("Failed to start server");
+}
+
+fn prepare_router(server_config: ServerConfig) -> Router {
+    let log_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("/var/log/oct-ctl.log")
+        .expect("Failed to open log file");
+
+    // Tracing initialization code was inspired by
+    // https://github.com/tower-rs/tower-http/issues/296#issuecomment-1301108593
+    tracing_subscriber::fmt().with_writer(log_file).init();
+
+    Router::new()
+        .route("/run-container", post(run_container))
+        .route("/remove-container", post(remove_container))
+        .route("/health-check", get(health_check))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+                .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
+        )
+        .with_state(server_config)
 }
 
 #[derive(Serialize, Deserialize)]
