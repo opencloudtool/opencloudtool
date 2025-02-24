@@ -102,6 +102,22 @@ use module::Module;
 ...main code...
 ```
 
+### Imports ordering
+
+When importing modules, the following order should be used:
+
+- Standard library imports
+- Third-party imports
+- Local crate imports
+
+```rust
+use std::fs;
+
+use serde::{Deserialize, Serialize};
+
+use crate::aws::types::InstanceType;
+```
+
 ## Dev tools
 
 ### Machete
