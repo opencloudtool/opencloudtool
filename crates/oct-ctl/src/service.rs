@@ -108,11 +108,11 @@ async fn run_container(
     match run_result {
         Ok(()) => {
             log::info!("Created container: {}", &payload.name);
-            (StatusCode::CREATED, "Success")
+            (StatusCode::CREATED, "Success".to_string())
         }
         Err(err) => {
             log::error!("Failed to create container: {err}");
-            (StatusCode::BAD_REQUEST, "Error")
+            (StatusCode::BAD_REQUEST, format!("Error: {err}"))
         }
     }
 }
