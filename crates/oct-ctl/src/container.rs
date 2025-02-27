@@ -52,12 +52,7 @@ impl ContainerEngine {
                     Self::NETWORK_NAME,
                 ]))?;
 
-        log::info!(
-            "Network create command output: status={:?}, stdout={:?}, stderr={:?}",
-            network_create_output.status,
-            network_create_output.stdout,
-            network_create_output.stderr
-        );
+        log::info!("Network create command output: {network_create_output:?}");
 
         let run_container_args = Self::build_run_container_args(
             name,
@@ -73,12 +68,7 @@ impl ContainerEngine {
             .executor
             .execute(Command::new(self.manager.as_str()).args(&run_container_args))?;
 
-        log::info!(
-            "Run container command output: status={:?}, stdout={:?}, stderr={:?}",
-            run_container_cmd.status,
-            run_container_cmd.stdout,
-            run_container_cmd.stderr
-        );
+        log::info!("Run container command output: {run_container_cmd:?}");
 
         if run_container_cmd.status.success() {
             Ok(())
