@@ -34,13 +34,24 @@ mod mocks {
 
     pub struct MockECR {
         pub id: Option<String>,
+        pub url: Option<String>,
         pub name: String,
         pub region: String,
     }
 
     impl MockECR {
-        pub async fn new(id: Option<String>, name: String, region: String) -> Self {
-            Self { id, name, region }
+        pub async fn new(
+            id: Option<String>,
+            url: Option<String>,
+            name: String,
+            region: String,
+        ) -> Self {
+            Self {
+                id,
+                url,
+                name,
+                region,
+            }
         }
     }
 
@@ -303,6 +314,7 @@ use mocks::{
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ECRState {
     pub id: String,
+    pub url: String,
     pub name: String,
     pub region: String,
 }
@@ -310,15 +322,17 @@ pub struct ECRState {
 impl ECRState {
     pub fn new(ecr_repository: &EcrRepository) -> Self {
         Self {
+            id: ecr_repository.id.clone().expect("ECR id not set"),
+            url: ecr_repository.url.clone().expect("ECR url not set"),
             name: ecr_repository.name.clone(),
             region: ecr_repository.region.clone(),
-            id: ecr_repository.id.clone().expect("ECR id not set"),
         }
     }
 
     pub async fn new_from_state(&self) -> EcrRepository {
         EcrRepository::new(
             Some(self.id.clone()),
+            Some(self.url.clone()),
             self.name.clone(),
             self.region.clone(),
         )
@@ -670,6 +684,7 @@ mod tests {
             },
             ecr: ECRState {
                 id: "id".to_string(),
+                url: "url".to_string(),
                 name: "name".to_string(),
                 region: "region".to_string(),
             },
@@ -1268,6 +1283,7 @@ mod tests {
         // Arrange
         let ecr = EcrRepository::new(
             Some("id".to_string()),
+            Some("url".to_string()),
             "name".to_string(),
             "region".to_string(),
         )
@@ -1287,6 +1303,7 @@ mod tests {
         // Arrange
         let ecr_state = ECRState {
             id: "id".to_string(),
+            url: "url".to_string(),
             name: "name".to_string(),
             region: "region".to_string(),
         };

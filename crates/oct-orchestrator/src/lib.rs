@@ -4,8 +4,8 @@ use std::path::Path;
 use std::process::Command;
 
 use oct_cloud::aws::resource::{
-    Ec2Instance, InboundRule, InstanceProfile, InstanceRole, InternetGateway, RouteTable,
-    SecurityGroup, Subnet, VPC,
+    Ec2Instance, EcrRepository, InboundRule, InstanceProfile, InstanceRole, InternetGateway,
+    RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::backend::{LocalStateBackend, S3StateBackend, StateBackend};
@@ -25,22 +25,6 @@ pub struct Orchestrator {
 
 impl Orchestrator {
     const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
-    const USER_DATA: &str = r#"#!/bin/bash
-    set -e
-
-    sudo apt update
-    sudo apt -y install podman
-    sudo systemctl start podman
-
-    # aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {ecr_repo_uri}
-
-    curl \
-        --output /home/ubuntu/oct-ctl \
-        -L \
-        https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
-        && sudo chmod +x /home/ubuntu/oct-ctl \
-        && /home/ubuntu/oct-ctl &
-    "#;
 
     pub fn new(state_file_path: String, user_state_file_path: String) -> Self {
         Orchestrator {
@@ -51,7 +35,7 @@ impl Orchestrator {
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Put into Orchestrator struct field
-        let config = config::Config::new(None)?;
+        let mut config = config::Config::new(None)?;
 
         // Get user state file data
         let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
@@ -71,17 +55,36 @@ impl Orchestrator {
             .prepare_infrastructure(&config, number_of_instances) // TODO(#189): pass info about required resources
             .await?;
 
-        for service in config.project.services.values() {
+        let ecr_repository = state.ecr.new_from_state().await;
+
+        let Some(repository_url) = ecr_repository.url else {
+            return Err("ECR repository url not found".into());
+        };
+
+        let repository_url = format!("{repository_url}:latest");
+
+        config.project.services.iter_mut().for_each(|(_, service)| {
             match &service.dockerfile_path {
-                Some(dockerfile_path) => match build_image(dockerfile_path) {
-                    Ok(()) => log::info!("Successfully built an image"),
+                Some(dockerfile_path) => match build_image(dockerfile_path, &repository_url) {
+                    Ok(()) => {
+                        let result = push_image(repository_url.clone());
+
+                        match result {
+                            Ok(()) => {
+                                // Save image uri to state
+                                service.image.clone_from(&repository_url);
+                            }
+                            Err(e) => log::error!("Failed to push image to ECR repository: {e}"),
+                        }
+                    }
+
                     Err(e) => log::error!("Failed to build an image: {e}"),
                 },
                 None => {
                     log::error!("Dockerfile path not specified");
                 }
             }
-        }
+        });
 
         let mut instances = Vec::<Ec2Instance>::new();
 
@@ -193,6 +196,9 @@ impl Orchestrator {
 
         log::info!("Instance profile destroyed");
 
+        let mut ecr = state.ecr.new_from_state().await;
+        ecr.destroy().await?;
+
         // Remove infrastructure state file
         fs::remove_file(&self.state_file_path).expect("Unable to remove file");
 
@@ -284,6 +290,29 @@ impl Orchestrator {
 
         instance_profile.create().await?;
 
+        let mut ecr =
+            EcrRepository::new(None, None, "oct-ecr".to_string(), "us-west-2".to_string()).await;
+
+        ecr.create().await?;
+        let user_data = format!(
+            r#"#!/bin/bash
+        set -e
+        sudo apt update
+        sudo apt -y install podman
+        sudo systemctl start podman
+        sudo snap install aws-cli --classic
+        aws ecr get-login-password --region {ecr_region} | podman login --username AWS --password-stdin {ecr_url}
+        curl \
+            --output /home/ubuntu/oct-ctl \
+            -L \
+            https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
+            && sudo chmod +x /home/ubuntu/oct-ctl \
+            && /home/ubuntu/oct-ctl &
+        "#,
+            ecr_region = ecr.region,
+            ecr_url = ecr.url.clone().ok_or("No ecr url")?,
+        );
+
         let mut created_instances = Vec::<Ec2Instance>::new();
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
@@ -297,7 +326,7 @@ impl Orchestrator {
                 instance_profile.name.clone(),
                 subnet_id.clone(),
                 security_group_id.clone(),
-                Self::USER_DATA.to_string(),
+                user_data.clone(),
             )
             .await;
 
@@ -317,6 +346,7 @@ impl Orchestrator {
             .into_iter()
             .map(|instance| state::Ec2InstanceState::new(&instance))
             .collect();
+        state.ecr = state::ECRState::new(&ecr);
 
         state_backend.save(&state)?;
 
@@ -477,7 +507,7 @@ fn get_state_backend(config: &config::Config) -> Box<dyn StateBackend> {
     }
 }
 
-fn build_image(dockerfile_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn build_image(dockerfile_path: &String, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
     if !Path::new(&dockerfile_path).exists() {
         return Err("Dockerfile not found".into());
     }
@@ -486,20 +516,27 @@ fn build_image(dockerfile_path: &str) -> Result<(), Box<dyn std::error::Error>> 
     let container_manager = get_container_manager()?;
 
     log::info!("Container manager: {}", container_manager);
+
     let run_container_args = Command::new(container_manager)
-        .args(["build", "-t", "-f", dockerfile_path, "."])
+        .args([
+            "build",
+            "-t",
+            tag,
+            "--platform",
+            "linux/amd64",
+            "-f",
+            dockerfile_path.as_str(),
+            ".",
+        ])
         .output()?;
 
-    log::info!(
-        "Build command output: status={:?}, stdout={:?}, stderr={:?}",
-        run_container_args.status,
-        run_container_args.stdout,
-        run_container_args.stderr
-    );
+    log::info!("Build command output: {:?}", run_container_args);
 
     if !run_container_args.status.success() {
         return Err("Failed to build an image".into());
     }
+
+    log::info!("Successfully built an image");
 
     Ok(())
 }
@@ -527,6 +564,22 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     }
 
     Err("Docker and Podman not installed".into())
+}
+
+fn push_image(repository_url: String) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Pushing image to ECR repository");
+
+    let push_args = vec!["push".to_string(), repository_url];
+
+    let output = Command::new("podman").args(push_args).output()?;
+
+    if !output.status.success() {
+        return Err(format!("Failed to push image to ECR repository. {output:?}").into());
+    }
+
+    log::info!("Pushed image to ECR repository");
+
+    Ok(())
 }
 
 #[cfg(test)]

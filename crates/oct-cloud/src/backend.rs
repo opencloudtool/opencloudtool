@@ -113,6 +113,7 @@ mod tests {
     },
     "ecr": {
         "name": "name",
+        "url": "url",
         "region": "region",
         "id": "id"
     },
@@ -194,6 +195,7 @@ mod tests {
                 },
                 ecr: state::ECRState {
                     id: "id".to_string(),
+                    url: "url".to_string(),
                     name: "name".to_string(),
                     region: "region".to_string(),
                 },
@@ -276,6 +278,7 @@ mod tests {
             },
             ecr: state::ECRState {
                 id: "id".to_string(),
+                url: "url".to_string(),
                 name: "name".to_string(),
                 region: "region".to_string(),
             },
@@ -355,6 +358,7 @@ mod tests {
   },
   "ecr": {
     "id": "id",
+    "url": "url",
     "name": "name",
     "region": "region"
   },

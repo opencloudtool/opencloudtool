@@ -668,7 +668,7 @@ impl ECRImpl {
     pub(super) async fn create_repository(
         &self,
         name: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<(String, String), Box<dyn std::error::Error>> {
         log::info!("Creating ECR repository");
         let response = self
             .inner
@@ -677,13 +677,19 @@ impl ECRImpl {
             .send()
             .await?;
 
-        let registry_id = response
-            .repository()
-            .and_then(|repository| repository.registry_id())
-            .ok_or("Failed to retrieve Registry ID")?
-            .to_string();
+        let repository = response.repository();
 
-        Ok(registry_id)
+        match repository {
+            Some(repo) => {
+                let registry_id = repo.registry_id().ok_or("Failed to retrieve registry ID")?;
+                let repository_uri = repo
+                    .repository_uri()
+                    .ok_or("Failed to retrieve registry URI")?;
+
+                Ok((registry_id.to_string(), repository_uri.to_string()))
+            }
+            None => Err("Failed to create ECR repository".into()),
+        }
     }
 
     pub(super) async fn delete_repository(
@@ -694,6 +700,7 @@ impl ECRImpl {
         self.inner
             .delete_repository()
             .repository_name(name)
+            .force(true)
             .send()
             .await?;
 
