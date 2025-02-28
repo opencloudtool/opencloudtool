@@ -47,6 +47,7 @@ pub struct Ec2InstanceState {
     pub instance_profile_name: String,
     pub subnet_id: String,
     pub security_group_id: String,
+    pub user_data: String,
 }
 
 #[cfg(test)]
@@ -76,6 +77,7 @@ mod mocks {
         pub instance_profile_name: String,
         pub subnet_id: String,
         pub security_group_id: String,
+        pub user_data: String,
     }
 
     impl MockEc2Instance {
@@ -90,6 +92,7 @@ mod mocks {
             instance_profile_name: String,
             subnet_id: String,
             security_group_id: String,
+            user_data: String,
         ) -> Self {
             Self {
                 id,
@@ -102,6 +105,7 @@ mod mocks {
                 instance_profile_name,
                 subnet_id,
                 security_group_id,
+                user_data,
             }
         }
     }
@@ -363,6 +367,7 @@ impl Ec2InstanceState {
             instance_profile_name: ec2_instance.instance_profile_name.clone(),
             subnet_id: ec2_instance.subnet_id.clone(),
             security_group_id: ec2_instance.security_group_id.clone(),
+            user_data: ec2_instance.user_data.clone(),
         }
     }
 
@@ -378,6 +383,7 @@ impl Ec2InstanceState {
             self.instance_profile_name.clone(),
             self.subnet_id.clone(),
             self.security_group_id.clone(),
+            self.user_data.clone(),
         )
         .await)
     }
@@ -713,6 +719,7 @@ mod tests {
                 instance_profile_name: "instance_profile_name".to_string(),
                 subnet_id: "subnet_id".to_string(),
                 security_group_id: "security_group_id".to_string(),
+                user_data: "user_data".to_string(),
             }],
         };
 
@@ -734,6 +741,7 @@ mod tests {
             "instance_profile_name".to_string(),
             "subnet_id".to_string(),
             "security_group_id".to_string(),
+            "user_data".to_string(),
         )
         .await;
 
@@ -768,6 +776,7 @@ mod tests {
             instance_profile_name: "instance_profile_name".to_string(),
             subnet_id: "subnet_id".to_string(),
             security_group_id: "security_group_id".to_string(),
+            user_data: "user_data".to_string(),
         };
 
         // Act
@@ -998,7 +1007,8 @@ mod tests {
         "name": "name",
         "instance_profile_name": "instance_profile_name",
         "subnet_id": "subnet_id",
-        "security_group_id": "security_group_id"
+        "security_group_id": "security_group_id",
+        "user_data": "user_data"
     }]
 }"#;
 
@@ -1072,6 +1082,7 @@ mod tests {
                     instance_profile_name: "instance_profile_name".to_string(),
                     subnet_id: "subnet_id".to_string(),
                     security_group_id: "security_group_id".to_string(),
+                    user_data: "user_data".to_string(),
                 }],
             }
         )
@@ -1150,6 +1161,7 @@ mod tests {
                 instance_profile_name: "instance_profile_name".to_string(),
                 subnet_id: "subnet_id".to_string(),
                 security_group_id: "security_group_id".to_string(),
+                user_data: "user_data".to_string(),
             }],
         };
 
@@ -1229,7 +1241,8 @@ mod tests {
       "name": "name",
       "instance_profile_name": "instance_profile_name",
       "subnet_id": "subnet_id",
-      "security_group_id": "security_group_id"
+      "security_group_id": "security_group_id",
+      "user_data": "user_data"
     }
   ]
 }"#
