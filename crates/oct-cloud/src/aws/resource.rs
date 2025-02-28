@@ -86,23 +86,6 @@ pub struct Ec2Instance {
     pub security_group_id: String,
 }
 impl Ec2Instance {
-    const USER_DATA: &str = r#"#!/bin/bash
-    set -e
-
-    sudo apt update
-    sudo apt -y install podman
-    sudo systemctl start podman
-
-    # aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {ecr_repo_uri}
-
-    curl \
-        --output /home/ubuntu/oct-ctl \
-        -L \
-        https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
-        && sudo chmod +x /home/ubuntu/oct-ctl \
-        && /home/ubuntu/oct-ctl &
-    "#;
-
     pub async fn new(
         id: Option<String>,
         public_ip: Option<String>,
@@ -114,8 +97,9 @@ impl Ec2Instance {
         instance_profile_name: String,
         subnet_id: String,
         security_group_id: String,
+        user_data: String,
     ) -> Self {
-        let user_data_base64 = general_purpose::STANDARD.encode(Self::USER_DATA);
+        let user_data_base64 = general_purpose::STANDARD.encode(user_data.clone());
 
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
@@ -140,7 +124,7 @@ impl Ec2Instance {
             ami,
             instance_type,
             name,
-            user_data: Self::USER_DATA.to_string(),
+            user_data,
             user_data_base64,
             instance_profile_name,
             subnet_id,

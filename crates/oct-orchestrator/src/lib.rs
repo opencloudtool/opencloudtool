@@ -24,6 +24,22 @@ pub struct Orchestrator {
 
 impl Orchestrator {
     const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
+    const USER_DATA: &str = r#"#!/bin/bash
+    set -e
+
+    sudo apt update
+    sudo apt -y install podman
+    sudo systemctl start podman
+
+    # aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {ecr_repo_uri}
+
+    curl \
+        --output /home/ubuntu/oct-ctl \
+        -L \
+        https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
+        && sudo chmod +x /home/ubuntu/oct-ctl \
+        && /home/ubuntu/oct-ctl &
+    "#;
 
     pub fn new(state_file_path: String, user_state_file_path: String) -> Self {
         Orchestrator {
@@ -273,6 +289,7 @@ impl Orchestrator {
                 instance_profile.name.clone(),
                 subnet_id.clone(),
                 security_group_id.clone(),
+                Self::USER_DATA.to_string(),
             )
             .await;
 
