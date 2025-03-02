@@ -1,6 +1,9 @@
 [project]
 name = "multi-host-rest-service-with-lb"
 
+[project.state_backend.local]
+path = "./state.json"
+
 [project.services.app_1]
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 cpus = 1000

@@ -90,8 +90,8 @@ mod tests {
         let cmd = oct_cli_bin.arg("destroy");
 
         // Assert
-        cmd.assert()
-            .success()
-            .stderr(predicate::str::contains("Nothing to destroy"));
+        cmd.assert().failure().stderr(predicate::str::contains(
+            "Failed to read config file oct.toml",
+        ));
     }
 }

@@ -8,6 +8,7 @@ use oct_cloud::aws::resource::{
     SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::InstanceType;
+use oct_cloud::backend::{LocalStateBackend, S3StateBackend, StateBackend};
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -49,7 +50,7 @@ impl Orchestrator {
     }
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        // Get project config
+        // TODO: Put into Orchestrator struct field
         let config = config::Config::new(None)?;
 
         // Get user state file data
@@ -66,7 +67,9 @@ impl Orchestrator {
 
         log::info!("Number of instances required: {number_of_instances}");
 
-        let state = self.prepare_infrastructure(number_of_instances).await?; // TODO(#189): pass info about required resources
+        let state = self
+            .prepare_infrastructure(&config, number_of_instances) // TODO(#189): pass info about required resources
+            .await?;
 
         for service in config.project.services.values() {
             match &service.dockerfile_path {
@@ -131,7 +134,13 @@ impl Orchestrator {
     }
 
     pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        if !Path::new(&self.state_file_path).exists() {
+        // TODO: Put into Orchestrator struct field
+        let config = config::Config::new(None)?;
+
+        let state_backend = get_state_backend(&config);
+        let (state, loaded) = state_backend.load()?;
+
+        if !loaded {
             log::info!("Nothing to destroy");
 
             return Ok(());
@@ -167,8 +176,6 @@ impl Orchestrator {
         let _ = fs::remove_file(&self.user_state_file_path);
 
         // Destroy infrastructure
-        let (state, _) = state::State::new(&self.state_file_path)?;
-
         for instance_state in state.instances {
             let mut instance = instance_state.new_from_state().await?;
             instance.destroy().await?;
@@ -197,10 +204,11 @@ impl Orchestrator {
     /// Prepares L1 infrastructure (VM instances and base networking)
     async fn prepare_infrastructure(
         &self,
+        config: &config::Config,
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
-        // Get state file
-        let (mut state, loaded) = state::State::new(&self.state_file_path)?;
+        let state_backend = get_state_backend(config);
+        let (mut state, loaded) = state_backend.load()?;
 
         if loaded {
             log::info!("State file already exists");
@@ -302,7 +310,7 @@ impl Orchestrator {
             created_instances.push(instance);
         }
 
-        // Add high-level resources to state
+        // TODO: Use setters?
         state.vpc = state::VPCState::new(&vpc);
         state.instance_profile = state::InstanceProfileState::new(&instance_profile);
         state.instances = created_instances
@@ -310,7 +318,7 @@ impl Orchestrator {
             .map(|instance| state::Ec2InstanceState::new(&instance))
             .collect();
 
-        state.save(&self.state_file_path)?;
+        state_backend.save(&state)?;
 
         Ok(state)
     }
@@ -457,6 +465,15 @@ impl Orchestrator {
         }
 
         Ok(())
+    }
+}
+
+fn get_state_backend(config: &config::Config) -> Box<dyn StateBackend> {
+    match &config.project.state_backend {
+        config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
+        config::StateBackend::S3 { region, bucket } => {
+            Box::new(S3StateBackend::new(region, bucket))
+        }
     }
 }
 

@@ -7,7 +7,7 @@ use crate::user_state;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Config {
-    pub project: Project,
+    pub(crate) project: Project,
 }
 
 impl Config {
@@ -29,10 +29,21 @@ impl Config {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct Project {
-    pub name: String,
+pub(crate) enum StateBackend {
+    #[serde(rename = "local")]
+    Local { path: String },
 
-    pub services: HashMap<String, Service>,
+    #[serde(rename = "s3")]
+    S3 { region: String, bucket: String },
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct Project {
+    pub(crate) name: String,
+
+    pub(crate) state_backend: StateBackend,
+
+    pub(crate) services: HashMap<String, Service>,
 }
 
 /// Configuration for a service
@@ -104,6 +115,9 @@ mod tests {
 [project]
 name = "example"
 
+[project.state_backend.local]
+path = "./state.json"
+
 [project.services.app_1]
 image = ""
 dockerfile_path = "Dockerfile"
@@ -136,6 +150,9 @@ depends_on = ["app_1"]
             Config {
                 project: Project {
                     name: "example".to_string(),
+                    state_backend: StateBackend::Local {
+                        path: "./state.json".to_string()
+                    },
                     services: HashMap::from([
                         (
                             "app_1".to_string(),
