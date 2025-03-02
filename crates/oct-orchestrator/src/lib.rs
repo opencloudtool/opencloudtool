@@ -141,7 +141,7 @@ impl Orchestrator {
         let config = config::Config::new(None)?;
 
         let state_backend = get_state_backend(&config);
-        let (state, loaded) = state_backend.load()?;
+        let (state, loaded) = state_backend.load().await?;
 
         if !loaded {
             log::info!("Nothing to destroy");
@@ -214,7 +214,7 @@ impl Orchestrator {
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
         let state_backend = get_state_backend(config);
-        let (mut state, loaded) = state_backend.load()?;
+        let (mut state, loaded) = state_backend.load().await?;
 
         if loaded {
             log::info!("State file already exists");
@@ -348,7 +348,7 @@ impl Orchestrator {
             .collect();
         state.ecr = state::ECRState::new(&ecr);
 
-        state_backend.save(&state)?;
+        state_backend.save(&state).await?;
 
         Ok(state)
     }
@@ -501,9 +501,11 @@ impl Orchestrator {
 fn get_state_backend(config: &config::Config) -> Box<dyn StateBackend> {
     match &config.project.state_backend {
         config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
-        config::StateBackend::S3 { region, bucket } => {
-            Box::new(S3StateBackend::new(region, bucket))
-        }
+        config::StateBackend::S3 {
+            region,
+            bucket,
+            key,
+        } => Box::new(S3StateBackend::new(region, bucket, key)),
     }
 }
 

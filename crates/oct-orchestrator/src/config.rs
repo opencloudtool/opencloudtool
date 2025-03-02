@@ -31,10 +31,20 @@ impl Config {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) enum StateBackend {
     #[serde(rename = "local")]
-    Local { path: String },
+    Local {
+        /// Local path to the state file
+        path: String,
+    },
 
     #[serde(rename = "s3")]
-    S3 { region: String, bucket: String },
+    S3 {
+        /// Bucket region
+        region: String,
+        /// Bucket name
+        bucket: String,
+        /// Path to the file inside the S3 bucket
+        key: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
