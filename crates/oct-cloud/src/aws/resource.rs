@@ -12,14 +12,19 @@ pub struct EcrRepository {
 
     // Known after creation
     pub id: Option<String>,
+    pub url: Option<String>,
 
     pub name: String,
-
     pub region: String,
 }
 
 impl EcrRepository {
-    pub async fn new(id: Option<String>, name: String, region: String) -> Self {
+    pub async fn new(
+        id: Option<String>,
+        url: Option<String>,
+        name: String,
+        region: String,
+    ) -> Self {
         // Load AWS configuration
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -37,6 +42,7 @@ impl EcrRepository {
         Self {
             client: ECR::new(ecr_client),
             id,
+            url,
             name,
             region,
         }
@@ -45,9 +51,11 @@ impl EcrRepository {
 
 impl Resource for EcrRepository {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let repository_id = self.client.create_repository(self.name.clone()).await?;
+        let (repository_id, repository_uri) =
+            self.client.create_repository(self.name.clone()).await?;
 
         self.id = Some(repository_id);
+        self.url = Some(repository_uri);
 
         Ok(())
     }
@@ -992,11 +1000,12 @@ mod tests {
         ecr_impl_mock
             .expect_create_repository()
             .with(eq("test".to_string()))
-            .return_once(|_| Ok("test".to_string()));
+            .return_once(|_| Ok(("test".to_string(), "url".to_string())));
 
         let mut ecr_repository = EcrRepository {
             client: ecr_impl_mock,
             id: None,
+            url: None,
             name: "test".to_string(),
             region: "us-west-2".to_string(),
         };
@@ -1023,6 +1032,7 @@ mod tests {
         let mut ecr_repository = EcrRepository {
             client: ecr_impl_mock,
             id: None,
+            url: None,
             name: "test".to_string(),
             region: "us-west-2".to_string(),
         };
@@ -1049,6 +1059,7 @@ mod tests {
         let mut ecr_repository = EcrRepository {
             client: ecr_impl_mock,
             id: Some("test".to_string()),
+            url: Some("url".to_string()),
             name: "test".to_string(),
             region: "us-west-2".to_string(),
         };
@@ -1498,10 +1509,10 @@ mod tests {
             region: "us-west-2".to_string(),
             cidr_block: "10.0.0.0/16".to_string(),
             name: "test".to_string(),
-            subnet: subnet,
+            subnet,
             internet_gateway: Some(internet_gateway),
-            route_table: route_table,
-            security_group: security_group,
+            route_table,
+            security_group,
         };
 
         // Act
