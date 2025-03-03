@@ -54,6 +54,8 @@ pub(crate) struct Project {
     pub(crate) state_backend: StateBackend,
 
     pub(crate) services: HashMap<String, Service>,
+
+    pub(crate) domain: Option<String>,
 }
 
 /// Configuration for a service
@@ -126,6 +128,7 @@ mod tests {
         let config_file_content = r#"
 [project]
 name = "example"
+domain = "opencloudtool.com"
 
 [project.state_backend.local]
 path = "./state.json"
@@ -198,7 +201,8 @@ depends_on = ["app_1"]
                                 envs: HashMap::new(),
                             }
                         ),
-                    ])
+                    ]),
+                    domain: Some("opencloudtool.com".to_string()),
                 }
             }
         );

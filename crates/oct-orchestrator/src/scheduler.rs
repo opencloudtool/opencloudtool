@@ -60,7 +60,7 @@ impl<'a> Scheduler<'a> {
                         None => {
                             log::info!("Service '{}' is running", service_name);
                         }
-                    };
+                    }
 
                     instance.services.insert(
                         service_name.to_string(),

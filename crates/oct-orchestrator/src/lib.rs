@@ -4,8 +4,8 @@ use std::path::Path;
 use std::process::Command;
 
 use oct_cloud::aws::resource::{
-    Ec2Instance, EcrRepository, InboundRule, InstanceProfile, InstanceRole, InternetGateway,
-    RouteTable, SecurityGroup, Subnet, VPC,
+    Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
+    InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::backend::{LocalStateBackend, S3StateBackend, StateBackend};
@@ -50,8 +50,8 @@ impl Orchestrator {
         log::info!("Number of instances required: {number_of_instances}");
 
         let state = self
-            .prepare_infrastructure(&config, number_of_instances) // TODO(#189): pass info about required resources
-            .await?;
+            .prepare_infrastructure(&config, number_of_instances)
+            .await?; // TODO(#189): pass info about required resources
 
         let ecr_repository = state.ecr.new_from_state().await;
 
@@ -131,6 +131,8 @@ impl Orchestrator {
         )
         .await?;
 
+        // TODO: Map public IP to domain name in Route 53
+
         Ok(())
     }
 
@@ -194,6 +196,11 @@ impl Orchestrator {
 
         log::info!("Instance profile destroyed");
 
+        if let Some(hosted_zone) = state.hosted_zone {
+            let mut hosted_zone = hosted_zone.new_from_state().await;
+            hosted_zone.destroy().await?;
+        }
+
         let mut ecr = state.ecr.new_from_state().await;
         ecr.destroy().await?;
 
@@ -215,6 +222,14 @@ impl Orchestrator {
             log::info!("State file already exists");
 
             return Ok(state);
+        }
+
+        if let Some(domain_name) = config.project.domain.clone() {
+            let mut hosted_zone =
+                HostedZone::new(None, None, domain_name, "us-west-2".to_string()).await;
+            hosted_zone.create().await?;
+
+            state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
         }
 
         let inbound_rules = vec![

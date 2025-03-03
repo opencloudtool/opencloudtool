@@ -1,0 +1,11 @@
+[project]
+name = "rest-service-with-domain"
+domain = "test.opencloudtool.com"
+
+[project.state_backend.local]
+path = "./state.json"
+
+[project.services.app_1]
+image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
+cpus = 250
+memory = 64

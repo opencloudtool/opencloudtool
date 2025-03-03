@@ -114,6 +114,8 @@ mod tests {
 
     use std::io::Write;
 
+    use crate::aws::types::RecordType;
+
     #[tokio::test]
     async fn test_state_new_exists() {
         // Arrange
@@ -187,7 +189,23 @@ mod tests {
         "subnet_id": "subnet_id",
         "security_group_id": "security_group_id",
         "user_data": "user_data"
-    }]
+    }
+      ],
+  "hosted_zone": {
+    "id": "id",
+    "dns_record_sets": [
+      {
+        "name": "name",
+        "record_type": "A",
+        "records": [
+          "records"
+        ],
+        "ttl": 300
+      }
+    ],
+    "name": "name",
+    "region": "region"
+  }
 }"#;
 
         let mut file = tempfile::NamedTempFile::new().unwrap();
@@ -265,6 +283,17 @@ mod tests {
                     security_group_id: "security_group_id".to_string(),
                     user_data: "user_data".to_string(),
                 }],
+                hosted_zone: Some(state::HostedZoneState {
+                    id: "id".to_string(),
+                    dns_record_sets: vec![state::DNSRecordSetState {
+                        name: "name".to_string(),
+                        record_type: RecordType::A.as_str().to_string(),
+                        records: Some(vec!["records".to_string()]),
+                        ttl: Some(300),
+                    }],
+                    name: "name".to_string(),
+                    region: "region".to_string(),
+                }),
             }
         )
     }
@@ -348,6 +377,17 @@ mod tests {
                 security_group_id: "security_group_id".to_string(),
                 user_data: "user_data".to_string(),
             }],
+            hosted_zone: Some(state::HostedZoneState {
+                id: "id".to_string(),
+                dns_record_sets: vec![state::DNSRecordSetState {
+                    name: "name".to_string(),
+                    record_type: RecordType::A.as_str().to_string(),
+                    records: Some(vec!["records".to_string()]),
+                    ttl: Some(300),
+                }],
+                name: "name".to_string(),
+                region: "region".to_string(),
+            }),
         };
 
         let state_file = tempfile::NamedTempFile::new().unwrap();
@@ -433,7 +473,22 @@ mod tests {
       "security_group_id": "security_group_id",
       "user_data": "user_data"
     }
-  ]
+  ],
+  "hosted_zone": {
+    "id": "id",
+    "dns_record_sets": [
+      {
+        "name": "name",
+        "record_type": "A",
+        "records": [
+          "records"
+        ],
+        "ttl": 300
+      }
+    ],
+    "name": "name",
+    "region": "region"
+  }
 }"#
         );
     }
