@@ -1,14 +1,20 @@
 use std::fs;
 
+use crate::aws::resource::S3Bucket;
+use crate::resource::Resource;
 use crate::state;
 
+#[async_trait::async_trait]
 pub trait StateBackend {
     /// Saves state to a backend
-    fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>>;
+    async fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Loads state from a backend or initialize a new one
     /// Also returns whether the state was loaded as a boolean
-    fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>>;
+    async fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>>;
+
+    /// Removes state file from a backend
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub struct LocalStateBackend {
@@ -23,14 +29,15 @@ impl LocalStateBackend {
     }
 }
 
+#[async_trait::async_trait]
 impl StateBackend for LocalStateBackend {
-    fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>> {
+    async fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&self.file_path, serde_json::to_string_pretty(state)?)?;
 
         Ok(())
     }
 
-    fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>> {
+    async fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>> {
         if std::path::Path::new(&self.file_path).exists() {
             let existing_data = fs::read_to_string(&self.file_path)?;
             Ok((serde_json::from_str::<state::State>(&existing_data)?, true))
@@ -38,30 +45,66 @@ impl StateBackend for LocalStateBackend {
             Ok((state::State::default(), false))
         }
     }
+
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>> {
+        fs::remove_file(&self.file_path)?;
+
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
 pub struct S3StateBackend {
     region: String,
     bucket: String,
+    key: String,
 }
 
 impl S3StateBackend {
-    pub fn new(region: &str, bucket: &str) -> Self {
+    pub fn new(region: &str, bucket: &str, key: &str) -> Self {
         S3StateBackend {
             region: region.to_string(),
             bucket: bucket.to_string(),
+            key: key.to_string(),
         }
     }
 }
 
+#[async_trait::async_trait]
 impl StateBackend for S3StateBackend {
-    fn save(&self, _state: &state::State) -> Result<(), Box<dyn std::error::Error>> {
-        todo!()
+    async fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>> {
+        let mut s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
+        s3_bucket.create().await?;
+
+        s3_bucket
+            .put_object(&self.key, serde_json::to_vec(state)?)
+            .await?;
+
+        Ok(())
     }
 
-    fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>> {
-        todo!()
+    async fn load(&self) -> Result<(state::State, bool), Box<dyn std::error::Error>> {
+        let s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
+
+        let data = s3_bucket.get_object(&self.key).await;
+
+        match data {
+            Ok(data) => Ok((serde_json::from_slice(&data)?, true)),
+            Err(_) => Ok((state::State::default(), false)),
+        }
+    }
+
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
+
+        // For now we expect to have only one file in the bucket
+        // If there are multiple files, the state is corrupted and bucket
+        // will not be deleted
+        s3_bucket.delete_object(&self.key).await?;
+
+        s3_bucket.destroy().await?;
+
+        Ok(())
     }
 }
 
@@ -71,8 +114,8 @@ mod tests {
 
     use std::io::Write;
 
-    #[test]
-    fn test_state_new_exists() {
+    #[tokio::test]
+    async fn test_state_new_exists() {
         // Arrange
         let state_file_content = r#"
 {
@@ -153,7 +196,7 @@ mod tests {
         let state_backend = LocalStateBackend::new(file.path().to_str().unwrap());
 
         // Act
-        let (state, loaded) = state_backend.load().unwrap();
+        let (state, loaded) = state_backend.load().await.unwrap();
 
         // Assert
         assert!(loaded);
@@ -226,21 +269,21 @@ mod tests {
         )
     }
 
-    #[test]
-    fn test_state_new_not_exists() {
+    #[tokio::test]
+    async fn test_state_new_not_exists() {
         // Arrange
         let state_backend = LocalStateBackend::new("NO_FILE");
 
         // Act
-        let (state, loaded) = state_backend.load().unwrap();
+        let (state, loaded) = state_backend.load().await.unwrap();
 
         // Assert
         assert_eq!(state.instances.len(), 0);
         assert!(!loaded);
     }
 
-    #[test]
-    fn test_local_state_backend_save() {
+    #[tokio::test]
+    async fn test_local_state_backend_save() {
         // Arrange
         let state = state::State {
             vpc: state::VPCState {
@@ -313,7 +356,7 @@ mod tests {
         let state_backend = LocalStateBackend::new(state_file_path);
 
         // Act
-        state_backend.save(&state).unwrap();
+        state_backend.save(&state).await.unwrap();
 
         // Assert
         let file_content = fs::read_to_string(state_file_path).unwrap();
@@ -397,27 +440,27 @@ mod tests {
 
     #[test]
     fn test_s3_backend_new() {
-        let state_backend = S3StateBackend::new("region", "bucket");
+        let state_backend = S3StateBackend::new("region", "bucket", "key");
 
         assert_eq!(state_backend.region, "region");
         assert_eq!(state_backend.bucket, "bucket");
     }
 
-    #[test]
-    #[should_panic(expected = "not yet implemented")]
-    fn test_s3_backend_save() {
-        let state_backend = S3StateBackend::new("region", "bucket");
+    #[tokio::test]
+    #[ignore = "Requires AWS setup"]
+    async fn test_s3_backend_save() {
+        let state_backend = S3StateBackend::new("region", "bucket", "key");
 
         let state = state::State::default();
 
-        state_backend.save(&state).unwrap();
+        state_backend.save(&state).await.unwrap();
     }
 
-    #[test]
-    #[should_panic(expected = "not yet implemented")]
-    fn test_s3_backend_load() {
-        let state_backend = S3StateBackend::new("region", "bucket");
+    #[tokio::test]
+    #[ignore = "Requires AWS setup"]
+    async fn test_s3_backend_load() {
+        let state_backend = S3StateBackend::new("region", "bucket", "key");
 
-        state_backend.load().unwrap();
+        state_backend.load().await.unwrap();
     }
 }

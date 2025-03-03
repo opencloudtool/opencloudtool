@@ -7,6 +7,91 @@ use crate::aws::types::InstanceType;
 #[cfg(test)]
 use mockall::automock;
 
+pub(super) struct S3Impl {
+    inner: aws_sdk_s3::Client,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(test, automock)]
+impl S3Impl {
+    pub(super) fn new(inner: aws_sdk_s3::Client) -> Self {
+        Self { inner }
+    }
+
+    pub(super) async fn create_bucket(
+        &self,
+        region: &str,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.inner
+            .create_bucket()
+            .create_bucket_configuration(
+                aws_sdk_s3::types::CreateBucketConfiguration::builder()
+                    .location_constraint(region.into())
+                    .build(),
+            )
+            .bucket(name)
+            .send()
+            .await?;
+
+        Ok(())
+    }
+
+    pub(super) async fn delete_bucket(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.inner.delete_bucket().bucket(name).send().await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn put_object(
+        &self,
+        bucket_name: &str,
+        key: &str,
+        data: Vec<u8>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.inner
+            .put_object()
+            .bucket(bucket_name)
+            .key(key)
+            .body(data.into())
+            .send()
+            .await?;
+
+        Ok(())
+    }
+
+    pub(crate) async fn get_object(
+        &self,
+        bucket_name: &str,
+        key: &str,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let response = self
+            .inner
+            .get_object()
+            .bucket(bucket_name)
+            .key(key)
+            .send()
+            .await?;
+
+        Ok(response.body.collect().await?.to_vec())
+    }
+
+    pub(crate) async fn delete_object(
+        &self,
+        bucket_name: &str,
+        key: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.inner
+            .delete_object()
+            .bucket(bucket_name)
+            .key(key)
+            .send()
+            .await?;
+
+        Ok(())
+    }
+}
+
 /// AWS EC2 client implementation
 #[derive(Debug)]
 pub(super) struct Ec2Impl {
@@ -711,6 +796,11 @@ impl ECRImpl {
 }
 
 // TODO: Is there a better way to expose mocked structs?
+#[cfg(test)]
+pub(super) use MockS3Impl as S3;
+#[cfg(not(test))]
+pub(super) use S3Impl as S3;
+
 #[cfg(not(test))]
 pub(super) use Ec2Impl as Ec2;
 #[cfg(test)]
