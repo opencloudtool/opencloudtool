@@ -1,0 +1,12 @@
+[project]
+name = "s3-remote-state-storage"
+
+[project.state_backend.s3]
+region = "us-west-2"
+bucket = "oct-state"
+key = "state.json"
+
+[project.services.app_1]
+image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
+cpus = 250
+memory = 64
