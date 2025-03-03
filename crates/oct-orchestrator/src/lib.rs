@@ -19,16 +19,14 @@ mod user_state;
 
 /// Deploys and destroys user services and manages underlying cloud resources
 pub struct Orchestrator {
-    state_file_path: String,
     user_state_file_path: String,
 }
 
 impl Orchestrator {
     const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
 
-    pub fn new(state_file_path: String, user_state_file_path: String) -> Self {
+    pub fn new(user_state_file_path: String) -> Self {
         Orchestrator {
-            state_file_path,
             user_state_file_path,
         }
     }
@@ -199,10 +197,7 @@ impl Orchestrator {
         let mut ecr = state.ecr.new_from_state().await;
         ecr.destroy().await?;
 
-        // Remove infrastructure state file
-        fs::remove_file(&self.state_file_path).expect("Unable to remove file");
-
-        log::info!("Infrastructure state file removed");
+        state_backend.remove().await?;
 
         Ok(())
     }
@@ -498,7 +493,10 @@ impl Orchestrator {
     }
 }
 
+/// Initializes state backend using config
 fn get_state_backend(config: &config::Config) -> Box<dyn StateBackend> {
+    log::info!("Using state backend: {:?}", config.project.state_backend);
+
     match &config.project.state_backend {
         config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
         config::StateBackend::S3 {

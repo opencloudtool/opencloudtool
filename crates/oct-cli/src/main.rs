@@ -6,10 +6,6 @@ struct Cli {
     #[clap(subcommand)]
     command: Commands,
 
-    /// Path to the infra state file
-    #[clap(long, default_value = "./state.json")]
-    state_file_path: String,
-
     /// Path to the user state file
     #[clap(long, default_value = "./user_state.json")]
     user_state_file_path: String,
@@ -37,8 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = Cli::parse();
 
-    let orchestrator =
-        oct_orchestrator::Orchestrator::new(cli.state_file_path, cli.user_state_file_path);
+    let orchestrator = oct_orchestrator::Orchestrator::new(cli.user_state_file_path);
 
     match &cli.command {
         Commands::Deploy => orchestrator.deploy().await?,
@@ -61,7 +56,6 @@ mod tests {
         let cli = Cli::parse_from(["app", "deploy"]);
 
         // Assert
-        assert_eq!(cli.state_file_path, "./state.json");
         assert_eq!(cli.user_state_file_path, "./user_state.json");
         assert_eq!(cli.dockerfile_path, ".");
         assert_eq!(cli.context_path, ".");
