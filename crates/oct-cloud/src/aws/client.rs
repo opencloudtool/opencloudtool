@@ -231,7 +231,9 @@ impl Ec2Impl {
             .send()
             .await?;
 
-        log::info!("Added inbound rule {protocol} {port} {cidr_block} to security group {security_group_id}");
+        log::info!(
+            "Added inbound rule {protocol} {port} {cidr_block} to security group {security_group_id}"
+        );
 
         Ok(())
     }
