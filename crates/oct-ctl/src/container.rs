@@ -35,8 +35,9 @@ impl ContainerEngine {
     /// Runs container using `podman`
     pub(crate) fn run(
         &self,
-        name: &str,
-        image: &str,
+        name: String,
+        image: String,
+        command: Option<String>,
         external_port: Option<u32>,
         internal_port: Option<u32>,
         cpus: u32,
@@ -57,6 +58,7 @@ impl ContainerEngine {
         let run_container_args = Self::build_run_container_args(
             name,
             image,
+            command,
             external_port,
             internal_port,
             cpus,
@@ -91,8 +93,9 @@ impl ContainerEngine {
     }
 
     fn build_run_container_args(
-        name: &str,
-        image: &str,
+        name: String,
+        image: String,
+        command: Option<String>,
         external_port: Option<u32>,
         internal_port: Option<u32>,
         cpus: u32,
@@ -109,7 +112,7 @@ impl ContainerEngine {
             "always".to_string(),
             "-d".to_string(),
             "--name".to_string(),
-            name.to_string(),
+            name,
             "--cpus".to_string(),
             cpus_str,
             "--memory".to_string(),
@@ -131,7 +134,11 @@ impl ContainerEngine {
             run_container_args.push(env_str);
         }
 
-        run_container_args.push(image.to_string());
+        run_container_args.push(image);
+
+        if let Some(command) = command {
+            run_container_args.push(command);
+        }
 
         run_container_args
     }
@@ -150,8 +157,9 @@ pub(crate) mod mocks {
         pub(crate) ContainerEngine {
             pub(crate) fn run(
                 &self,
-                name: &str,
-                image: &str,
+                name: String,
+                image: String,
+                command: Option<String>,
                 external_port: Option<u32>,
                 internal_port: Option<u32>,
                 cpus: u32,
@@ -200,8 +208,9 @@ mod tests {
 
         // Act
         let run_result = container_engine.run(
-            "test",
-            "ubuntu:latest",
+            "test".to_string(),
+            "ubuntu:latest".to_string(),
+            Some("echo hello".to_string()),
             Some(80),
             Some(8080),
             1,
@@ -225,8 +234,9 @@ mod tests {
 
         // Act
         let run_result = container_engine.run(
-            "test",
-            "ubuntu:latest",
+            "test".to_string(),
+            "ubuntu:latest".to_string(),
+            Some("echo hello".to_string()),
             Some(80),
             Some(8080),
             1,

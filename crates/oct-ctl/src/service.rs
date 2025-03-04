@@ -65,6 +65,8 @@ struct RunContainerPayload {
     name: String,
     /// Image to use for the container
     image: String,
+    /// Command to run in the container
+    command: Option<String>,
     /// External container port
     external_port: Option<u32>,
     /// Internal container port
@@ -96,8 +98,9 @@ async fn run_container(
     Json(payload): Json<RunContainerPayload>,
 ) -> impl IntoResponse {
     let run_result = server_config.container_engine.run(
-        payload.name.as_str(),
-        payload.image.as_str(),
+        payload.name.clone(),
+        payload.image,
+        payload.command,
         payload.external_port,
         payload.internal_port,
         payload.cpus,
@@ -107,7 +110,7 @@ async fn run_container(
 
     match run_result {
         Ok(()) => {
-            log::info!("Created container: {}", &payload.name);
+            log::info!("Created container: {}", payload.name);
             (StatusCode::CREATED, "Success".to_string())
         }
         Err(err) => {
@@ -158,7 +161,7 @@ mod tests {
         container_engine_mock
             .expect_run()
             .returning(
-                move |_, _, _, _, _, _, _| {
+                move |_, _, _, _, _, _, _, _| {
                     if is_ok { Ok(()) } else { Err("error".into()) }
                 },
             );
@@ -192,6 +195,7 @@ mod tests {
                         serde_json::to_string_pretty(&RunContainerPayload {
                             name: "test".to_string(),
                             image: "nginx:latest".to_string(),
+                            command: Some("echo hello".to_string()),
                             external_port: Some(8080),
                             internal_port: Some(80),
                             cpus: 250,
@@ -226,6 +230,7 @@ mod tests {
                         serde_json::to_string_pretty(&RunContainerPayload {
                             name: "test".to_string(),
                             image: "nginx:latest".to_string(),
+                            command: Some("echo hello".to_string()),
                             external_port: Some(8080),
                             internal_port: Some(80),
                             cpus: 250,

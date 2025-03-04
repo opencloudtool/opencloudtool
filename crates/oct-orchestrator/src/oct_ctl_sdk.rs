@@ -14,6 +14,7 @@ pub(crate) struct Client {
 struct RunContainerRequest {
     name: String,
     image: String,
+    command: Option<String>,
     external_port: Option<u32>,
     internal_port: Option<u32>,
     cpus: u32,
@@ -40,6 +41,7 @@ impl Client {
         &self,
         name: String,
         image: String,
+        command: Option<String>,
         external_port: Option<u32>,
         internal_port: Option<u32>,
         cpus: u32,
@@ -51,6 +53,7 @@ impl Client {
         let request = RunContainerRequest {
             name,
             image,
+            command,
             external_port,
             internal_port,
             cpus,
@@ -153,6 +156,7 @@ mod tests {
             .run_container(
                 "test".to_string(),
                 "nginx:latest".to_string(),
+                Some("echo hello".to_string()),
                 Some(8080),
                 Some(80),
                 250,
@@ -188,6 +192,7 @@ mod tests {
             .run_container(
                 "test".to_string(),
                 "nginx:latest".to_string(),
+                None,
                 Some(8080),
                 Some(80),
                 250,

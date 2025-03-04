@@ -64,6 +64,8 @@ pub(crate) struct Service {
     pub(crate) image: String,
     /// Path to the Dockerfile
     pub(crate) dockerfile_path: Option<String>,
+    /// Command to run in the container
+    pub(crate) command: Option<String>,
     /// Internal port exposed from the container
     pub(crate) internal_port: Option<u32>,
     /// External port exposed to the public internet
@@ -131,6 +133,7 @@ path = "./state.json"
 [project.services.app_1]
 image = ""
 dockerfile_path = "Dockerfile"
+command = "echo Hello World!"
 internal_port = 80
 external_port = 80
 cpus = 250
@@ -169,6 +172,7 @@ depends_on = ["app_1"]
                             Service {
                                 image: "".to_string(),
                                 dockerfile_path: Some("Dockerfile".to_string()),
+                                command: Some("echo Hello World!".to_string()),
                                 internal_port: Some(80),
                                 external_port: Some(80),
                                 cpus: 250,
@@ -185,6 +189,7 @@ depends_on = ["app_1"]
                             Service {
                                 image: "nginx:latest".to_string(),
                                 dockerfile_path: None,
+                                command: None,
                                 internal_port: None,
                                 external_port: None,
                                 cpus: 250,
@@ -205,6 +210,7 @@ depends_on = ["app_1"]
         let service = Service {
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
+            command: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
@@ -239,6 +245,7 @@ depends_on = ["app_1"]
         let service = Service {
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
+            command: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
