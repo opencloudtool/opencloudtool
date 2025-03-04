@@ -37,7 +37,8 @@ impl<'a> Scheduler<'a> {
             let response = oct_ctl_client
                 .run_container(
                     service_name.to_string(),
-                    service.image.to_string(),
+                    service.image.clone(),
+                    service.command.clone(),
                     service.external_port,
                     service.internal_port,
                     service.cpus,
