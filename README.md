@@ -11,6 +11,7 @@ A tool to hide the complexity of the cloud.
 - [Multiple REST services on different hosts with NGINX load balancer](./examples/projects/multi-host-rest-service-with-lb/)
 - [S3 remote state storage](./examples/projects/s3-remote-state-storage/)
 - [REST service with domain](./examples/projects/rest-service-with-domain/)
+- [Ray single worker](./examples/projects/ray-single-worker/)
 
 ## High Level Design
 
