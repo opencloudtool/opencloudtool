@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::aws::types::InstanceType;
+use crate::aws::types::{InstanceType, RecordType};
 
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct State {
@@ -11,6 +11,8 @@ pub struct State {
     pub instance_profile: InstanceProfileState,
 
     pub instances: Vec<Ec2InstanceState>,
+
+    pub hosted_zone: Option<HostedZoneState>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -30,7 +32,53 @@ pub struct Ec2InstanceState {
 
 #[cfg(test)]
 mod mocks {
-    use crate::aws::types::InstanceType;
+    use crate::aws::types::{InstanceType, RecordType};
+
+    pub struct MockHostedZone {
+        pub id: Option<String>,
+        pub dns_record_sets: Option<Vec<MockDNSRecordSet>>,
+        pub name: String,
+        pub region: String,
+    }
+
+    impl MockHostedZone {
+        pub async fn new(
+            id: Option<String>,
+            dns_record_sets: Option<Vec<MockDNSRecordSet>>,
+            name: String,
+            region: String,
+        ) -> Self {
+            Self {
+                id,
+                dns_record_sets,
+                name,
+                region,
+            }
+        }
+    }
+
+    pub struct MockDNSRecordSet {
+        pub name: String,
+        pub record_type: RecordType,
+        pub records: Option<Vec<String>>,
+        pub ttl: Option<i64>,
+    }
+
+    impl MockDNSRecordSet {
+        pub fn new(
+            name: String,
+            record_type: RecordType,
+            records: Option<Vec<String>>,
+            ttl: Option<i64>,
+        ) -> Self {
+            Self {
+                name,
+                record_type,
+                records,
+                ttl,
+            }
+        }
+    }
 
     pub struct MockECR {
         pub id: Option<String>,
@@ -299,17 +347,89 @@ mod mocks {
 
 #[cfg(not(test))]
 use crate::aws::resource::{
-    Ec2Instance, EcrRepository, InboundRule, InstanceProfile, InstanceRole, InternetGateway,
-    RouteTable, SecurityGroup, Subnet, VPC,
+    DNSRecordSet, Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile,
+    InstanceRole, InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 
 #[cfg(test)]
 use mocks::{
-    MockECR as EcrRepository, MockEc2Instance as Ec2Instance, MockInboundRule as InboundRule,
+    MockDNSRecordSet as DNSRecordSet, MockECR as EcrRepository, MockEc2Instance as Ec2Instance,
+    MockHostedZone as HostedZone, MockInboundRule as InboundRule,
     MockInstanceProfile as InstanceProfile, MockInstanceRole as InstanceRole,
     MockInternetGateway as InternetGateway, MockRouteTable as RouteTable,
     MockSecurityGroup as SecurityGroup, MockSubnet as Subnet, MockVPC as VPC,
 };
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct HostedZoneState {
+    pub id: String,
+    pub dns_record_sets: Vec<DNSRecordSetState>,
+    pub name: String,
+    pub region: String,
+}
+
+impl HostedZoneState {
+    pub fn new(hosted_zone: &HostedZone) -> Self {
+        Self {
+            id: hosted_zone.id.clone().expect("No Hosted zone id"),
+            dns_record_sets: hosted_zone
+                .dns_record_sets
+                .as_ref()
+                .map(|records| records.iter().map(DNSRecordSetState::new).collect())
+                .unwrap_or_default(),
+            name: hosted_zone.name.clone(),
+            region: hosted_zone.region.clone(),
+        }
+    }
+
+    pub async fn new_from_state(&self) -> HostedZone {
+        HostedZone::new(
+            Some(self.id.clone()),
+            Some(
+                self.dns_record_sets
+                    .iter()
+                    .map(DNSRecordSetState::new_from_state)
+                    .collect(),
+            ),
+            self.name.clone(),
+            self.region.clone(),
+        )
+        .await
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
+pub struct DNSRecordSetState {
+    pub name: String,
+    pub record_type: String,
+    pub records: Option<Vec<String>>,
+    pub ttl: Option<i64>,
+}
+
+impl DNSRecordSetState {
+    pub fn new(dns_record_set: &DNSRecordSet) -> Self {
+        Self {
+            name: dns_record_set.name.clone(),
+            record_type: dns_record_set.record_type.as_str().to_string(),
+            records: Some(
+                dns_record_set
+                    .records
+                    .clone()
+                    .expect("DNS record set records not set"),
+            ),
+            ttl: dns_record_set.ttl,
+        }
+    }
+
+    pub fn new_from_state(&self) -> DNSRecordSet {
+        DNSRecordSet::new(
+            self.name.clone(),
+            RecordType::from(self.record_type.as_str()),
+            self.records.clone(),
+            self.ttl,
+        )
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct ECRState {
@@ -711,6 +831,17 @@ mod tests {
                 security_group_id: "security_group_id".to_string(),
                 user_data: "user_data".to_string(),
             }],
+            hosted_zone: Some(HostedZoneState {
+                id: "id".to_string(),
+                dns_record_sets: vec![DNSRecordSetState {
+                    name: "name".to_string(),
+                    record_type: RecordType::A.as_str().to_string(),
+                    records: Some(vec!["records".to_string()]),
+                    ttl: Some(300),
+                }],
+                name: "name".to_string(),
+                region: "region".to_string(),
+            }),
         };
 
         // Assert
@@ -1315,5 +1446,96 @@ mod tests {
         assert_eq!(ecr.id, Some("id".to_string()));
         assert_eq!(ecr.name, "name".to_string());
         assert_eq!(ecr.region, "region".to_string());
+    }
+    #[tokio::test]
+    async fn test_hosted_zone_state() {
+        // Arrange
+        let hosted_zone = HostedZone::new(
+            Some("id".to_string()),
+            Some(vec![DNSRecordSet::new(
+                "name".to_string(),
+                RecordType::A,
+                Some(vec!["1.1.1.1".to_string()]),
+                Some(3600),
+            )]),
+            "name".to_string(),
+            "region".to_string(),
+        )
+        .await;
+
+        // Act
+        let hosted_zone_state = HostedZoneState::new(&hosted_zone);
+
+        // Assert
+        assert_eq!(hosted_zone_state.id, "id".to_string());
+        assert_eq!(hosted_zone_state.name, "name".to_string());
+        assert_eq!(hosted_zone_state.region, "region".to_string());
+    }
+
+    #[tokio::test]
+    async fn test_hosted_zone_state_new_from_state() {
+        // Arrange
+        let hosted_zone_state = HostedZoneState {
+            id: "id".to_string(),
+            dns_record_sets: vec![DNSRecordSetState {
+                name: "name".to_string(),
+                record_type: RecordType::A.as_str().to_string(),
+                records: Some(vec!["1.1.1.1".to_string()]),
+                ttl: Some(3600),
+            }],
+            name: "name".to_string(),
+            region: "region".to_string(),
+        };
+
+        // Act
+        let hosted_zone = hosted_zone_state.new_from_state().await;
+
+        // Assert
+        assert_eq!(hosted_zone.id, Some("id".to_string()));
+        assert_eq!(hosted_zone.name, "name".to_string());
+        assert_eq!(hosted_zone.region, "region".to_string());
+    }
+
+    #[test]
+    fn test_dns_record_set_state() {
+        // Arrange
+        let record_set = DNSRecordSet::new(
+            "name".to_string(),
+            RecordType::A,
+            Some(vec!["1.1.1.1".to_string()]),
+            Some(3600),
+        );
+
+        // Act
+        let record_set_state = DNSRecordSetState::new(&record_set);
+
+        // Assert
+        assert_eq!(record_set_state.name, "name".to_string());
+        assert_eq!(
+            record_set_state.record_type,
+            RecordType::A.as_str().to_string()
+        );
+        assert_eq!(record_set_state.records, Some(vec!["1.1.1.1".to_string()]));
+        assert_eq!(record_set_state.ttl, Some(3600));
+    }
+
+    #[test]
+    fn test_dns_record_set_state_new_from_state() {
+        // Arrange
+        let record_set_state = DNSRecordSetState {
+            name: "name".to_string(),
+            record_type: RecordType::A.as_str().to_string(),
+            records: Some(vec!["1.1.1.1".to_string()]),
+            ttl: Some(3600),
+        };
+
+        // Act
+        let record_set = record_set_state.new_from_state();
+
+        // Assert
+        assert_eq!(record_set.name, "name".to_string());
+        assert_eq!(record_set.record_type, RecordType::A);
+        assert_eq!(record_set.records, Some(vec!["1.1.1.1".to_string()]));
+        assert_eq!(record_set.ttl, Some(3600));
     }
 }

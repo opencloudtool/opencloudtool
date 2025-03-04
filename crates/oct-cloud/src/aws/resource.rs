@@ -2,8 +2,8 @@ use base64::{Engine as _, engine::general_purpose};
 
 use aws_sdk_ec2::types::InstanceStateName;
 
-use crate::aws::client::{ECR, Ec2, IAM, S3};
-use crate::aws::types::InstanceType;
+use crate::aws::client::{ECR, Ec2, IAM, Route53, S3};
+use crate::aws::types::{InstanceType, RecordType};
 use crate::resource::Resource;
 
 pub struct S3Bucket {
@@ -71,6 +71,117 @@ impl Resource for S3Bucket {
         self.client.delete_bucket(&self.name).await?;
 
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct HostedZone {
+    client: Route53,
+
+    // Known after creation
+    pub id: Option<String>,
+    pub dns_record_sets: Option<Vec<DNSRecordSet>>,
+
+    pub name: String,
+    pub region: String,
+}
+
+impl HostedZone {
+    pub async fn new(
+        id: Option<String>,
+        dns_record_sets: Option<Vec<DNSRecordSet>>,
+        name: String,
+        region: String,
+    ) -> Self {
+        // Load AWS configuration
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let route53_client = aws_sdk_route53::Client::new(&config);
+
+        Self {
+            client: Route53::new(route53_client),
+            id,
+            dns_record_sets,
+            name,
+            region,
+        }
+    }
+}
+
+impl Resource for HostedZone {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let hosted_zone_id = self.client.create_hosted_zone(self.name.clone()).await?;
+
+        log::info!("Getting DNS record sets for hosted zone");
+
+        let resource_record_sets = self
+            .client
+            .get_dns_record_sets(hosted_zone_id.clone())
+            .await?;
+
+        let dns_record_sets = resource_record_sets
+            .into_iter()
+            .map(|record_set| {
+                DNSRecordSet::new(
+                    record_set.name,
+                    RecordType::from(record_set.r#type),
+                    record_set
+                        .resource_records
+                        .map(|records| records.iter().map(|r| r.value.clone()).collect()),
+                    record_set.ttl,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.id = Some(hosted_zone_id);
+        self.dns_record_sets = Some(dns_record_sets.clone());
+
+        log::info!("DNS record sets: {:?}", dns_record_sets);
+
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(id) = self.id.clone() {
+            self.client.delete_hosted_zone(id).await?;
+        }
+
+        self.id = None;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DNSRecordSet {
+    pub name: String,
+    pub record_type: RecordType,
+    pub records: Option<Vec<String>>,
+    pub ttl: Option<i64>,
+}
+
+impl DNSRecordSet {
+    pub fn new(
+        name: String,
+        record_type: RecordType,
+        records: Option<Vec<String>>,
+        ttl: Option<i64>,
+    ) -> Self {
+        Self {
+            name,
+            record_type,
+            records,
+            ttl,
+        }
     }
 }
 
@@ -960,6 +1071,7 @@ mod tests {
     use super::*;
 
     use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
+    use aws_sdk_route53::types::{ResourceRecord, ResourceRecordSet};
     use mockall::predicate::eq;
 
     async fn mock_ec2_instance(client: Ec2) -> Ec2Instance {
@@ -1057,6 +1169,21 @@ mod tests {
             vpc_id: Some("vpc-12345".to_string()),
             route_table_id: Some("rtb-12345".to_string()),
             subnet_id: Some("subnet-12345".to_string()),
+            region: "us-west-2".to_string(),
+        }
+    }
+
+    async fn mock_hosted_zone(client: Route53) -> HostedZone {
+        HostedZone {
+            client,
+            id: Some("hosted-zone-id".to_string()),
+            dns_record_sets: Some(vec![DNSRecordSet {
+                name: "example.com".to_string(),
+                record_type: RecordType::A,
+                records: Some(vec!["test-record".to_string()]),
+                ttl: Some(3600),
+            }]),
+            name: "example.com".to_string(),
             region: "us-west-2".to_string(),
         }
     }
@@ -2225,6 +2352,98 @@ mod tests {
 
         // Act
         let destroy_result = sg.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_hosted_zone() {
+        // Arrange
+        let mut route53_impl_hosted_zone_mock = Route53::default();
+        route53_impl_hosted_zone_mock
+            .expect_create_hosted_zone()
+            .with(eq("example.com".to_string()))
+            .return_once(|_| Ok("hosted-zone-id".to_string()));
+
+        route53_impl_hosted_zone_mock
+            .expect_get_dns_record_sets()
+            .with(eq("hosted-zone-id".to_string()))
+            .return_once(|_| {
+                Ok(vec![
+                    ResourceRecordSet::builder()
+                        .name("example.com")
+                        .r#type(aws_sdk_route53::types::RrType::A)
+                        .resource_records(
+                            ResourceRecord::builder()
+                                .value("test-record")
+                                .build()
+                                .expect("Failed to build ResourceRecord"),
+                        )
+                        .ttl(3600)
+                        .build()
+                        .expect("Failed to get DNS record sets"),
+                ])
+            });
+
+        let mut hosted_zone = mock_hosted_zone(route53_impl_hosted_zone_mock).await;
+
+        // Act
+        let create_result = hosted_zone.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_hosted_zone_error() {
+        // Arrange
+        let mut route53_impl_hosted_zone_mock = Route53::default();
+        route53_impl_hosted_zone_mock
+            .expect_create_hosted_zone()
+            .with(eq("example.com".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut hosted_zone = mock_hosted_zone(route53_impl_hosted_zone_mock).await;
+
+        // Act
+        let create_result = hosted_zone.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_hosted_zone() {
+        // Arrange
+        let mut route53_impl_hosted_zone_mock = Route53::default();
+        route53_impl_hosted_zone_mock
+            .expect_delete_hosted_zone()
+            .with(eq("hosted-zone-id".to_string()))
+            .return_once(|_| Ok(()));
+
+        let mut hosted_zone = mock_hosted_zone(route53_impl_hosted_zone_mock).await;
+
+        // Act
+        let destroy_result = hosted_zone.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_hosted_zone_error() {
+        // Arrange
+        let mut route53_impl_hosted_zone_mock = Route53::default();
+        route53_impl_hosted_zone_mock
+            .expect_delete_hosted_zone()
+            .with(eq("hosted-zone-id".to_string()))
+            .return_once(|_| Err("Error".into()));
+
+        let mut hosted_zone = mock_hosted_zone(route53_impl_hosted_zone_mock).await;
+
+        // Act
+        let destroy_result = hosted_zone.destroy().await;
 
         // Assert
         assert!(destroy_result.is_err());

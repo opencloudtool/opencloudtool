@@ -1,6 +1,8 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
+use aws_sdk_route53::types::ResourceRecordSet;
+use uuid::Uuid;
 
 use crate::aws::types::InstanceType;
 
@@ -593,6 +595,75 @@ impl Ec2Impl {
     }
 }
 
+/// AWS Route53 client implementation
+#[derive(Debug)]
+pub(super) struct Route53Impl {
+    inner: aws_sdk_route53::Client,
+}
+
+#[cfg_attr(test, allow(dead_code))]
+#[cfg_attr(test, automock)]
+impl Route53Impl {
+    pub(super) fn new(inner: aws_sdk_route53::Client) -> Self {
+        Self { inner }
+    }
+
+    pub(super) async fn create_hosted_zone(
+        &self,
+        domain_name: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        log::info!("Creating Route53 hosted zone for {domain_name}");
+
+        let response = self
+            .inner
+            .create_hosted_zone()
+            .name(domain_name)
+            .caller_reference(Uuid::new_v4().to_string())
+            .send()
+            .await?;
+
+        log::info!("Created Route53 hosted zone");
+
+        Ok(response
+            .hosted_zone()
+            .expect("Failed to retrieve hosted zone")
+            .id()
+            .to_string())
+    }
+
+    pub(super) async fn delete_hosted_zone(
+        &self,
+        id: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Deleting Route53 hosted zone {id}");
+        self.inner
+            .delete_hosted_zone()
+            .id(id.clone())
+            .send()
+            .await?;
+
+        log::info!("Deleted Route53 hosted zone {id}");
+
+        Ok(())
+    }
+
+    pub(super) async fn get_dns_record_sets(
+        &self,
+        hosted_zone_id: String,
+    ) -> Result<Vec<ResourceRecordSet>, Box<dyn std::error::Error>> {
+        log::info!("Getting DNS records for {hosted_zone_id}");
+
+        let response = self
+            .inner
+            .list_resource_record_sets()
+            .hosted_zone_id(hosted_zone_id)
+            .send()
+            .await?;
+
+        Ok(response.resource_record_sets().to_vec())
+    }
+}
+
 /// AWS IAM client implementation
 #[derive(Debug)]
 pub(super) struct IAMImpl {
@@ -817,3 +888,8 @@ pub(super) use MockIAMImpl as IAM;
 pub(super) use ECRImpl as ECR;
 #[cfg(test)]
 pub(super) use MockECRImpl as ECR;
+
+#[cfg(test)]
+pub(super) use MockRoute53Impl as Route53;
+#[cfg(not(test))]
+pub(super) use Route53Impl as Route53;
