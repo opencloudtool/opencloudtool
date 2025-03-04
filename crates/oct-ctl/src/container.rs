@@ -137,7 +137,7 @@ impl ContainerEngine {
         run_container_args.push(image);
 
         if let Some(command) = command {
-            run_container_args.push(command);
+            run_container_args.extend(command.split(' ').map(str::to_string));
         }
 
         run_container_args
