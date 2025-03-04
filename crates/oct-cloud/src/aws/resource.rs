@@ -1,8 +1,8 @@
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 
 use aws_sdk_ec2::types::InstanceStateName;
 
-use crate::aws::client::{Ec2, ECR, IAM, S3};
+use crate::aws::client::{ECR, Ec2, IAM, S3};
 use crate::aws::types::InstanceType;
 use crate::resource::Resource;
 

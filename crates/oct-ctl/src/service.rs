@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 
 use axum::{
-    extract::State, http::StatusCode, response::IntoResponse, routing::get, routing::post, Json,
-    Router,
+    Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::get,
+    routing::post,
 };
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
 
-#[cfg(test)]
-use crate::container::mocks::MockContainerEngine as ContainerEngine;
 #[cfg(not(test))]
 use crate::container::ContainerEngine;
+#[cfg(test)]
+use crate::container::mocks::MockContainerEngine as ContainerEngine;
 
 pub(crate) async fn run() {
     let server_config = ServerConfig {
@@ -159,21 +159,13 @@ mod tests {
             .expect_run()
             .returning(
                 move |_, _, _, _, _, _, _| {
-                    if is_ok {
-                        Ok(())
-                    } else {
-                        Err("error".into())
-                    }
+                    if is_ok { Ok(()) } else { Err("error".into()) }
                 },
             );
 
-        container_engine_mock.expect_remove().returning(move |_| {
-            if is_ok {
-                Ok(())
-            } else {
-                Err("error".into())
-            }
-        });
+        container_engine_mock
+            .expect_remove()
+            .returning(move |_| if is_ok { Ok(()) } else { Err("error".into()) });
 
         container_engine_mock
             .expect_clone()

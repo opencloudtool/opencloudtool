@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::process::Command;
 
-#[cfg(test)]
-use crate::executor::mocks::MockCommandExecutor as CommandExecutor;
 #[cfg(not(test))]
 use crate::executor::CommandExecutor;
+#[cfg(test)]
+use crate::executor::mocks::MockCommandExecutor as CommandExecutor;
 
 /// Container manager options
 #[derive(Clone, Default)]
