@@ -1,0 +1,13 @@
+[project]
+name = "http-server-with-dockerfile"
+
+[project.state_backend.local]
+path = "./state.json"
+
+[project.services.app_1]
+image = ""
+dockerfile_path = "Dockerfile"
+internal_port = 8000
+external_port = 80
+cpus = 250
+memory = 64
