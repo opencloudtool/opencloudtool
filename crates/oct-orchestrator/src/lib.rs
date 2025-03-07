@@ -79,7 +79,7 @@ impl Orchestrator {
                     Err(e) => log::error!("Failed to build an image: {e}"),
                 },
                 None => {
-                    log::error!("Dockerfile path not specified");
+                    log::info!("Dockerfile path not specified");
                 }
             }
         });
