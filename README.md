@@ -12,6 +12,7 @@ A tool to hide the complexity of the cloud.
 - [S3 remote state storage](./examples/projects/s3-remote-state-storage/)
 - [REST service with domain](./examples/projects/rest-service-with-domain/)
 - [Ray single worker](./examples/projects/ray-single-worker/)
+- [Inject system env variables](./examples/projects/inject-system-env-var/)
 
 ## High Level Design
 

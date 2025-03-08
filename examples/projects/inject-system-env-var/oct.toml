@@ -1,0 +1,21 @@
+[project]
+name = "inject-system-env-var"
+
+[project.state_backend.local]
+path = "./state.json"
+
+[project.services.app_1]
+image = "ghcr.io/opencloudtool/example-python-fastapi:{{ env.IMAGE_TAG }}"
+cpus = 250
+memory = 64
+
+[project.services.app_2]
+image = "ghcr.io/opencloudtool/example-python-fastapi:{{ env.IMAGE_TAG }}"
+cpus = 250
+memory = 64
+internal_port = 8000
+external_port = 80
+depends_on = ["app_1"]
+
+[project.services.app_2.envs]
+APP_NAME = "app_1 public ip is {{ services.app_1.public_ip }}"
