@@ -14,17 +14,42 @@ impl Config {
     const DEFAULT_CONFIG_PATH: &'static str = "oct.toml";
 
     pub(crate) fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
-        let data = fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH)).map_err(|e| {
-            format!(
-                "Failed to read config file {}: {}",
-                Self::DEFAULT_CONFIG_PATH,
-                e
-            )
-        })?;
+        let config =
+            fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH)).map_err(|e| {
+                format!(
+                    "Failed to read config file {}: {}",
+                    Self::DEFAULT_CONFIG_PATH,
+                    e
+                )
+            })?;
 
-        let toml_data: Config = toml::from_str(&data)?;
+        let config_with_injected_envs = Self::render_system_envs(config);
+
+        let toml_data: Config = toml::from_str(&config_with_injected_envs)?;
 
         Ok(toml_data)
+    }
+
+    /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
+    /// All system environment variables are available under the `env` context variable
+    fn render_system_envs(config: String) -> String {
+        let mut context = tera::Context::new();
+        context.insert("env", &std::env::vars().collect::<HashMap<_, _>>());
+
+        let render_result = tera::Tera::one_off(&config, &context, true);
+
+        match render_result {
+            Ok(render_result) => {
+                log::info!("Config with injected env vars:\n{render_result}");
+
+                render_result
+            }
+            Err(e) => {
+                log::warn!("Failed to render string: '{config}', error: {e}, context: {context:?}");
+
+                config
+            }
+        }
     }
 }
 
@@ -86,6 +111,8 @@ pub(crate) struct Service {
 
 impl Service {
     /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
+    /// Available variables:
+    /// - `services`: Map of all services
     pub(crate) fn render_envs(
         &self,
         services_context: &HashMap<String, user_state::ServiceContext>,
@@ -146,6 +173,8 @@ memory = 64
 KEY1 = "VALUE1"
 KEY2 = """Multiline
 string"""
+KEY_WITH_INJECTED_ENV = "{{ env.CARGO_PKG_NAME }}"
+KEY_WITH_OTHER_TEMPLATE_VARIABLE = "{{ other_vars.some_var }}"
 
 [project.services.app_2]
 image = "nginx:latest"
@@ -184,6 +213,14 @@ depends_on = ["app_1"]
                                 envs: HashMap::from([
                                     ("KEY1".to_string(), "VALUE1".to_string()),
                                     ("KEY2".to_string(), "Multiline\nstring".to_string()),
+                                    (
+                                        "KEY_WITH_INJECTED_ENV".to_string(),
+                                        "oct-orchestrator".to_string()
+                                    ),
+                                    (
+                                        "KEY_WITH_OTHER_TEMPLATE_VARIABLE".to_string(),
+                                        "{{ other_vars.some_var }}".to_string()
+                                    ),
                                 ]),
                             }
                         ),
