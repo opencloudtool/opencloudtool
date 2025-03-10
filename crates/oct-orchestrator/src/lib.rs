@@ -243,6 +243,11 @@ impl Orchestrator {
                 protocol: "tcp".to_string(),
                 port: 31888,
             },
+            InboundRule {
+                cidr_block: "0.0.0.0/0".to_string(),
+                protocol: "tcp".to_string(),
+                port: 22,
+            },
         ];
 
         let security_group = SecurityGroup::new(
