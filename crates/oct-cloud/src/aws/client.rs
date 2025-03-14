@@ -767,6 +767,49 @@ impl Route53Impl {
         )
         .await
     }
+
+    #[allow(dead_code)]
+    pub(super) async fn create_dns_record(
+        &self,
+        hosted_zone_id: String,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: i64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Creating DNS record for {domain_name}");
+
+        let resource_record = aws_sdk_route53::types::ResourceRecord::builder()
+            .value(record_value)
+            .build()?;
+
+        let record_set = aws_sdk_route53::types::ResourceRecordSet::builder()
+            .name(domain_name.clone())
+            .r#type(record_type.into())
+            .ttl(ttl)
+            .resource_records(resource_record)
+            .build()?;
+
+        let change = aws_sdk_route53::types::Change::builder()
+            .action(aws_sdk_route53::types::ChangeAction::Create)
+            .resource_record_set(record_set)
+            .build()?;
+
+        let changes = aws_sdk_route53::types::ChangeBatch::builder()
+            .changes(change)
+            .build()?;
+
+        self.inner
+            .change_resource_record_sets()
+            .hosted_zone_id(hosted_zone_id)
+            .change_batch(changes)
+            .send()
+            .await?;
+
+        log::info!("Created DNS record for {domain_name}");
+
+        Ok(())
+    }
 }
 
 /// AWS IAM client implementation
