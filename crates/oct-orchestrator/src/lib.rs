@@ -38,11 +38,12 @@ impl Orchestrator {
         // Get user state file data
         let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
 
-        let (services_to_create, services_to_remove) =
+        let (services_to_create, services_to_remove, services_to_update) =
             Self::get_user_services_to_create_and_delete(&config, &user_state);
 
         log::info!("Services to create: {services_to_create:?}");
         log::info!("Services to remove: {services_to_remove:?}");
+        log::info!("Services to update: {services_to_update:?}");
 
         let number_of_instances =
             Self::get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
@@ -128,6 +129,7 @@ impl Orchestrator {
             &mut user_state,
             &services_to_create,
             &services_to_remove,
+            &services_to_update,
         )
         .await?;
 
@@ -401,13 +403,13 @@ impl Orchestrator {
         Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
     }
 
-    /// Gets list of services to remove and to create
+    /// Gets list of services to remove/create/update
     /// The order of created services depends on `depends_on` field in the config,
     /// dependencies are created first
     fn get_user_services_to_create_and_delete(
         config: &config::Config,
         user_state: &user_state::UserState,
-    ) -> (Vec<String>, Vec<String>) {
+    ) -> (Vec<String>, Vec<String>, Vec<String>) {
         let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
 
         let user_state_services: Vec<String> = user_state
@@ -439,6 +441,22 @@ impl Orchestrator {
             .cloned()
             .collect();
 
+        let services_to_update_dependencies: Vec<String> = expected_services
+            .iter()
+            .filter(|service| user_state_services.contains(service))
+            .filter_map(|service| config.project.services[service].depends_on.clone())
+            .flatten()
+            .collect();
+
+        let services_to_update: Vec<String> = expected_services
+            .iter()
+            .filter(|service| {
+                user_state_services.contains(service)
+                    && !services_to_update_dependencies.contains(service)
+            })
+            .cloned()
+            .collect();
+
         (
             expected_services_dependencies
                 .iter()
@@ -446,6 +464,11 @@ impl Orchestrator {
                 .cloned()
                 .collect(),
             services_to_remove,
+            services_to_update_dependencies
+                .iter()
+                .chain(services_to_update.iter())
+                .cloned()
+                .collect(),
         )
     }
 
@@ -487,6 +510,7 @@ impl Orchestrator {
         user_state: &mut user_state::UserState,
         services_to_create: &[String],
         services_to_remove: &[String],
+        services_to_update: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut scheduler = scheduler::Scheduler::new(user_state);
 
@@ -506,6 +530,22 @@ impl Orchestrator {
 
             log::info!("Running service: {service_name}");
 
+            let _ = scheduler.run(service_name, service).await;
+        }
+
+        for service_name in services_to_update {
+            log::info!("Updating service: {service_name}");
+
+            let service = config.project.services.get(service_name);
+            let Some(service) = service else {
+                log::error!("Service '{service_name}' not found in config");
+
+                continue;
+            };
+
+            log::info!("Recreating container for service: {service_name}");
+
+            let _ = scheduler.stop(service_name).await;
             let _ = scheduler.run(service_name, service).await;
         }
 
