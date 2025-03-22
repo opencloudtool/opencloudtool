@@ -30,6 +30,16 @@ impl From<RrType> for RecordType {
     }
 }
 
+impl From<RecordType> for RrType {
+    fn from(value: RecordType) -> Self {
+        match value {
+            RecordType::A => Self::A,
+            RecordType::NS => Self::Ns,
+            RecordType::SOA => Self::Soa,
+        }
+    }
+}
+
 impl RecordType {
     pub fn as_str(&self) -> &str {
         match self {
