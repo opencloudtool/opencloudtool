@@ -25,7 +25,8 @@ impl S3Impl {
         region: &str,
         name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.inner
+        let response = self
+            .inner
             .create_bucket()
             .create_bucket_configuration(
                 aws_sdk_s3::types::CreateBucketConfiguration::builder()
@@ -34,9 +35,18 @@ impl S3Impl {
             )
             .bucket(name)
             .send()
-            .await?;
+            .await;
 
-        Ok(())
+        match response {
+            Ok(_) => Ok(()),
+            Err(sdk_err) => {
+                match sdk_err.into_service_error() {
+                    aws_sdk_s3::operation::create_bucket::CreateBucketError::BucketAlreadyOwnedByYou(_) => Ok(()),
+                    aws_sdk_s3::operation::create_bucket::CreateBucketError::BucketAlreadyExists(_) => Ok(()),
+                    err => Err(Box::new(err)),
+                }
+            }
+        }
     }
 
     pub(super) async fn delete_bucket(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
