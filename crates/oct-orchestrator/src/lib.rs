@@ -143,7 +143,7 @@ impl Orchestrator {
         let config = config::Config::new(None)?;
 
         let state_backend = get_state_backend(&config);
-        let (state, loaded) = state_backend.load().await?;
+        let (mut state, loaded) = state_backend.load().await?;
 
         if !loaded {
             log::info!("Nothing to destroy");
@@ -181,30 +181,49 @@ impl Orchestrator {
         let _ = fs::remove_file(&self.user_state_file_path);
 
         // Destroy infrastructure
-        for instance_state in state.instances {
-            let mut instance = instance_state.new_from_state().await?;
+        for i in (0..state.instances.len()).rev() {
+            let mut instance = state.instances[i].new_from_state().await?;
+
             instance.destroy().await?;
+            state.instances.remove(i);
+            state_backend.save(&state).await?;
         }
 
         log::info!("Instances destroyed");
 
         let mut vpc = state.vpc.new_from_state().await;
+
         vpc.destroy().await?;
+        state.vpc = state::VPCState::default();
+        state_backend.save(&state).await?;
 
         log::info!("VPC destroyed");
 
         let mut instance_profile = state.instance_profile.new_from_state().await;
+
         instance_profile.destroy().await?;
+        state.instance_profile = state::InstanceProfileState::default();
+        state_backend.save(&state).await?;
 
         log::info!("Instance profile destroyed");
 
         if let Some(hosted_zone) = state.hosted_zone {
             let mut hosted_zone = hosted_zone.new_from_state().await;
+
             hosted_zone.destroy().await?;
+            state.hosted_zone = None;
+            state_backend.save(&state).await?;
+
+            log::info!("Hosted zone destroyed");
         }
 
         let mut ecr = state.ecr.new_from_state().await;
+
         ecr.destroy().await?;
+        state.ecr = state::ECRState::default();
+        state_backend.save(&state).await?;
+
+        log::info!("ECR destroyed");
 
         state_backend.remove().await?;
 
@@ -232,6 +251,7 @@ impl Orchestrator {
             hosted_zone.create().await?;
 
             state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
+            state_backend.save(&state).await?;
         }
 
         let inbound_rules = vec![
@@ -290,6 +310,8 @@ impl Orchestrator {
         .await;
 
         vpc.create().await?;
+        state.vpc = state::VPCState::new(&vpc);
+        state_backend.save(&state).await?;
 
         let subnet_id = vpc.subnet.id.clone().ok_or("No subnet id")?;
         let security_group_id = vpc
@@ -306,11 +328,16 @@ impl Orchestrator {
         .await;
 
         instance_profile.create().await?;
+        state.instance_profile = state::InstanceProfileState::new(&instance_profile);
+        state_backend.save(&state).await?;
 
         let mut ecr =
             EcrRepository::new(None, None, "oct-ecr".to_string(), "us-west-2".to_string()).await;
 
         ecr.create().await?;
+        state.ecr = state::ECRState::new(&ecr);
+        state_backend.save(&state).await?;
+
         let user_data = format!(
             r#"#!/bin/bash
         set -e
@@ -330,7 +357,6 @@ impl Orchestrator {
             ecr_url = ecr.url.clone().ok_or("No ecr url")?,
         );
 
-        let mut created_instances = Vec::<Ec2Instance>::new();
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
                 None,
@@ -353,19 +379,12 @@ impl Orchestrator {
 
             log::info!("Instance created: {instance_id}");
 
-            created_instances.push(instance);
+            state
+                .instances
+                .push(state::Ec2InstanceState::new(&instance));
+
+            state_backend.save(&state).await?;
         }
-
-        // TODO: Use setters?
-        state.vpc = state::VPCState::new(&vpc);
-        state.instance_profile = state::InstanceProfileState::new(&instance_profile);
-        state.instances = created_instances
-            .into_iter()
-            .map(|instance| state::Ec2InstanceState::new(&instance))
-            .collect();
-        state.ecr = state::ECRState::new(&ecr);
-
-        state_backend.save(&state).await?;
 
         Ok(state)
     }
