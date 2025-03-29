@@ -67,7 +67,7 @@ impl<'a> Scheduler<'a> {
                             );
                         }
                         None => {
-                            log::info!("Service '{}' is running", service_name);
+                            log::info!("Service '{service_name}' is running");
                         }
                     }
 
@@ -82,7 +82,7 @@ impl<'a> Scheduler<'a> {
                     break;
                 }
                 Err(err) => {
-                    log::error!("Failed to run '{}' service. Error: {}", service_name, err);
+                    log::error!("Failed to run '{service_name}' service. Error: {err}");
                 }
             }
         }
@@ -131,7 +131,7 @@ impl<'a> Scheduler<'a> {
                 log::info!("User state saved using state backend");
             }
             Err(err) => {
-                log::error!("Failed to save user state: {}", err);
+                log::error!("Failed to save user state: {err}");
             }
         }
     }

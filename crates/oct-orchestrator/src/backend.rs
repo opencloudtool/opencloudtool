@@ -14,7 +14,7 @@ pub(crate) fn get_state_backend<T>(
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
 {
-    log::info!("Using state backend: {:?}", state_backend_config);
+    log::info!("Using state backend: {state_backend_config:?}");
 
     match state_backend_config {
         config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),

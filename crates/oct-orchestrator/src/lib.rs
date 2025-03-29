@@ -96,7 +96,7 @@ impl Orchestrator {
 
             let host_health = self.check_host_health(&oct_ctl_client).await;
             if host_health.is_err() {
-                log::error!("Failed to check '{}' host health", public_ip);
+                log::error!("Failed to check '{public_ip}' host health");
 
                 continue;
             }
@@ -572,7 +572,7 @@ fn build_image(dockerfile_path: &String, tag: &str) -> Result<(), Box<dyn std::e
     // TODO move to ContainerManager struct like in oct_ctl/src/main.rs
     let container_manager = get_container_manager()?;
 
-    log::info!("Container manager: {}", container_manager);
+    log::info!("Container manager: {container_manager}");
 
     let run_container_args = Command::new(container_manager)
         .args([
@@ -587,7 +587,7 @@ fn build_image(dockerfile_path: &String, tag: &str) -> Result<(), Box<dyn std::e
         ])
         .output()?;
 
-    log::info!("Build command output: {:?}", run_container_args);
+    log::info!("Build command output: {run_container_args:?}");
 
     if !run_container_args.status.success() {
         return Err("Failed to build an image".into());
