@@ -77,6 +77,7 @@ pub(crate) struct Project {
     pub(crate) name: String,
 
     pub(crate) state_backend: StateBackend,
+    pub(crate) user_state_backend: StateBackend,
 
     pub(crate) services: HashMap<String, Service>,
 
@@ -160,6 +161,9 @@ domain = "opencloudtool.com"
 [project.state_backend.local]
 path = "./state.json"
 
+[project.user_state_backend.local]
+path = "./user_state.json"
+
 [project.services.app_1]
 image = ""
 dockerfile_path = "Dockerfile"
@@ -197,6 +201,9 @@ depends_on = ["app_1"]
                     name: "example".to_string(),
                     state_backend: StateBackend::Local {
                         path: "./state.json".to_string()
+                    },
+                    user_state_backend: StateBackend::Local {
+                        path: "./user_state.json".to_string()
                     },
                     services: HashMap::from([
                         (

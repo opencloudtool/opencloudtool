@@ -4,6 +4,9 @@ name = "http-server-with-dockerfile"
 [project.state_backend.local]
 path = "./state.json"
 
+[project.user_state_backend.local]
+path = "./user_state.json"
+
 [project.services.app_1]
 image = ""
 dockerfile_path = "Dockerfile"

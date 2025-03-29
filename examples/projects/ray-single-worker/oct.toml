@@ -4,6 +4,9 @@ name = "ray-multi-worker"
 [project.state_backend.local]
 path = "./state.json"
 
+[project.user_state_backend.local]
+path = "./user_state.json"
+
 [project.services.head]
 image = "docker.io/rayproject/ray:latest"
 command = "ray start --head --port 6379 --dashboard-host 0.0.0.0 --dashboard-port 8265 --block"
