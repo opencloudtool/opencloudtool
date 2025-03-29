@@ -1,11 +1,11 @@
 use std::fs;
 
-use crate::aws::resource::S3Bucket;
-use crate::resource::Resource;
-use crate::state;
+use oct_cloud::aws::resource::S3Bucket;
+use oct_cloud::resource::Resource;
+use oct_cloud::state;
 
 #[async_trait::async_trait]
-pub trait StateBackend {
+pub(crate) trait StateBackend {
     /// Saves state to a backend
     async fn save(&self, state: &state::State) -> Result<(), Box<dyn std::error::Error>>;
 
@@ -17,12 +17,12 @@ pub trait StateBackend {
     async fn remove(&self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-pub struct LocalStateBackend {
+pub(crate) struct LocalStateBackend {
     file_path: String,
 }
 
 impl LocalStateBackend {
-    pub fn new(file_path: &str) -> Self {
+    pub(crate) fn new(file_path: &str) -> Self {
         LocalStateBackend {
             file_path: file_path.to_string(),
         }
@@ -54,14 +54,14 @@ impl StateBackend for LocalStateBackend {
 }
 
 #[allow(dead_code)]
-pub struct S3StateBackend {
+pub(crate) struct S3StateBackend {
     region: String,
     bucket: String,
     key: String,
 }
 
 impl S3StateBackend {
-    pub fn new(region: &str, bucket: &str, key: &str) -> Self {
+    pub(crate) fn new(region: &str, bucket: &str, key: &str) -> Self {
         S3StateBackend {
             region: region.to_string(),
             bucket: bucket.to_string(),
@@ -114,7 +114,7 @@ mod tests {
 
     use std::io::Write;
 
-    use crate::aws::types::RecordType;
+    use oct_cloud::aws::types::RecordType;
 
     #[tokio::test]
     async fn test_state_new_exists() {

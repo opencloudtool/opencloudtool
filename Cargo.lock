@@ -2078,7 +2078,6 @@ dependencies = [
 name = "oct-cloud"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "aws-config",
  "aws-sdk-ec2",
  "aws-sdk-ecr",
@@ -2089,7 +2088,6 @@ dependencies = [
  "log",
  "mockall",
  "serde",
- "serde_json",
  "tempfile",
  "tokio",
  "uuid",
@@ -2115,6 +2113,7 @@ dependencies = [
 name = "oct-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "log",
  "mockito",
  "oct-cloud",

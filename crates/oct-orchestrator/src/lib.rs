@@ -3,15 +3,16 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use backend::{LocalStateBackend, S3StateBackend, StateBackend};
 use oct_cloud::aws::resource::{
     Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::InstanceType;
-use oct_cloud::backend::{LocalStateBackend, S3StateBackend, StateBackend};
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
+mod backend;
 mod config;
 mod oct_ctl_sdk;
 mod scheduler;

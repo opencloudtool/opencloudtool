@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 oct-cloud = { workspace = true }
 
+async-trait = { workspace = true }
 log = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
