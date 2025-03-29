@@ -1,3 +1,4 @@
+use crate::backend;
 use crate::config::Service;
 use crate::oct_ctl_sdk;
 use crate::user_state;
@@ -5,13 +6,21 @@ use crate::user_state;
 /// Schedules services on EC2 instances
 /// TODO:
 /// - Implement custom errors (Not enough capacity)
+/// - Move state saving logic from Scheduler?
 pub(crate) struct Scheduler<'a> {
     user_state: &'a mut user_state::UserState,
+    state_backend: &'a dyn backend::StateBackend<user_state::UserState>,
 }
 
 impl<'a> Scheduler<'a> {
-    pub(crate) fn new(user_state: &'a mut user_state::UserState) -> Self {
-        Self { user_state }
+    pub(crate) fn new(
+        user_state: &'a mut user_state::UserState,
+        state_backend: &'a dyn backend::StateBackend<user_state::UserState>,
+    ) -> Self {
+        Self {
+            user_state,
+            state_backend,
+        }
     }
 
     /// Runs a service on a first available instance and adds it to the state
@@ -78,7 +87,7 @@ impl<'a> Scheduler<'a> {
             }
         }
 
-        self.save_state();
+        self.save_state().await;
 
         Ok(())
     }
@@ -111,16 +120,19 @@ impl<'a> Scheduler<'a> {
             }
         }
 
-        self.save_state();
+        self.save_state().await;
 
         Ok(())
     }
 
-    fn save_state(&self) {
-        if let Ok(()) = self.user_state.save() {
-            log::info!("User state saved to file");
-        } else {
-            log::error!("Failed to save user state");
+    async fn save_state(&self) {
+        match self.state_backend.save(self.user_state).await {
+            Ok(()) => {
+                log::info!("User state saved using state backend");
+            }
+            Err(err) => {
+                log::error!("Failed to save user state: {}", err);
+            }
         }
     }
 }

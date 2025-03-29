@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = Cli::parse();
 
-    let orchestrator = oct_orchestrator::Orchestrator::new(cli.user_state_file_path);
+    let orchestrator = oct_orchestrator::Orchestrator;
 
     match &cli.command {
         Commands::Deploy => orchestrator.deploy().await?,

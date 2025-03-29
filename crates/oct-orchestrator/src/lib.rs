@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use backend::{LocalStateBackend, S3StateBackend, StateBackend};
 use oct_cloud::aws::resource::{
     Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
@@ -18,26 +16,21 @@ mod oct_ctl_sdk;
 mod scheduler;
 mod user_state;
 
-/// Deploys and destroys user services and manages underlying cloud resources
-pub struct Orchestrator {
-    user_state_file_path: String,
-}
+/// Orchestrates the deployment and destruction of user services while managing the underlying
+/// cloud infrastructure resources such as instances, networking, and container repositories
+pub struct Orchestrator;
 
 impl Orchestrator {
     const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
-
-    pub fn new(user_state_file_path: String) -> Self {
-        Orchestrator {
-            user_state_file_path,
-        }
-    }
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Put into Orchestrator struct field
         let mut config = config::Config::new(None)?;
 
         // Get user state file data
-        let mut user_state = user_state::UserState::new(&self.user_state_file_path)?;
+        let user_state_backend =
+            backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
+        let (mut user_state, _loaded) = user_state_backend.load().await?;
 
         let (services_to_create, services_to_remove, services_to_update) =
             Self::get_user_services_to_create_and_delete(&config, &user_state);
@@ -125,9 +118,11 @@ impl Orchestrator {
         }
 
         // All instances are healthy and ready to serve user services
+        let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
+
         self.deploy_user_services(
             &config,
-            &mut user_state,
+            &mut scheduler,
             &services_to_create,
             &services_to_remove,
             &services_to_update,
@@ -143,7 +138,8 @@ impl Orchestrator {
         // TODO: Put into Orchestrator struct field
         let config = config::Config::new(None)?;
 
-        let state_backend = get_state_backend(&config);
+        let state_backend =
+            backend::get_state_backend::<state::State>(&config.project.state_backend);
         let (mut state, loaded) = state_backend.load().await?;
 
         if !loaded {
@@ -153,33 +149,29 @@ impl Orchestrator {
         }
 
         // Destroy user services
-        let user_state = user_state::UserState::new(&self.user_state_file_path)?;
+        let user_state_backend =
+            backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
+        let (mut user_state, user_state_loaded) = user_state_backend.load().await?;
 
-        for (instance_ip, instance) in user_state.instances {
-            for (service_name, _service) in instance.services {
-                // Remove container from instance
-                log::info!("Removing container for service: {}", service_name);
+        if user_state_loaded {
+            // TODO: Simplify
+            let all_service_names = user_state
+                .instances
+                .values()
+                .map(|instance| instance.services.keys().cloned())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
 
-                let oct_ctl_client = oct_ctl_sdk::Client::new(instance_ip.clone());
+            let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
-                let response = oct_ctl_client.remove_container(service_name.clone()).await;
-
-                match response {
-                    Ok(()) => {
-                        log::info!("Container removed for service: {}", service_name);
-                    }
-                    Err(err) => {
-                        log::error!(
-                            "Failed to remove container for service: {}. Error: {}",
-                            service_name,
-                            err
-                        );
-                    }
-                }
+            for service_name in all_service_names {
+                let _ = scheduler.stop(&service_name).await;
             }
-        }
 
-        let _ = fs::remove_file(&self.user_state_file_path);
+            user_state_backend.remove().await?;
+        }
 
         // Destroy infrastructure
         for i in (0..state.instances.len()).rev() {
@@ -237,7 +229,8 @@ impl Orchestrator {
         config: &config::Config,
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
-        let state_backend = get_state_backend(config);
+        let state_backend =
+            backend::get_state_backend::<state::State>(&config.project.state_backend);
         let (mut state, loaded) = state_backend.load().await?;
 
         if loaded {
@@ -249,8 +242,8 @@ impl Orchestrator {
         if let Some(domain_name) = config.project.domain.clone() {
             let mut hosted_zone =
                 HostedZone::new(None, None, domain_name, "us-west-2".to_string()).await;
-            hosted_zone.create().await?;
 
+            hosted_zone.create().await?;
             state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
             state_backend.save(&state).await?;
         }
@@ -527,13 +520,11 @@ impl Orchestrator {
     async fn deploy_user_services(
         &self,
         config: &config::Config,
-        user_state: &mut user_state::UserState,
+        scheduler: &mut scheduler::Scheduler<'_>, // TODO: Figure out why lifetime is needed
         services_to_create: &[String],
         services_to_remove: &[String],
         services_to_update: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut scheduler = scheduler::Scheduler::new(user_state);
-
         for service_name in services_to_remove {
             log::info!("Stopping container for service: {service_name}");
 
@@ -570,20 +561,6 @@ impl Orchestrator {
         }
 
         Ok(())
-    }
-}
-
-/// Initializes state backend using config
-fn get_state_backend(config: &config::Config) -> Box<dyn StateBackend> {
-    log::info!("Using state backend: {:?}", config.project.state_backend);
-
-    match &config.project.state_backend {
-        config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
-        config::StateBackend::S3 {
-            region,
-            bucket,
-            key,
-        } => Box::new(S3StateBackend::new(region, bucket, key)),
     }
 }
 
