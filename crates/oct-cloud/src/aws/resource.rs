@@ -145,7 +145,7 @@ impl Resource for HostedZone {
         self.id = Some(hosted_zone_id);
         self.dns_record_sets = Some(dns_record_sets.clone());
 
-        log::info!("DNS record sets: {:?}", dns_record_sets);
+        log::info!("DNS record sets: {dns_record_sets:?}");
 
         Ok(())
     }
@@ -386,12 +386,12 @@ impl Resource for Ec2Instance {
                 if let Some(public_ip) = instance.public_ip_address() {
                     self.public_ip = Some(public_ip.to_string());
 
-                    log::info!("Metadata retrieved: public_ip={}", public_ip);
+                    log::info!("Metadata retrieved: public_ip={public_ip}");
                 }
                 if let Some(public_dns) = instance.public_dns_name() {
                     self.public_dns = Some(public_dns.to_string());
 
-                    log::info!("Metadata retrieved: public_dns={}", public_dns);
+                    log::info!("Metadata retrieved: public_dns={public_dns}");
                 }
 
                 // Break if all metadata is available
