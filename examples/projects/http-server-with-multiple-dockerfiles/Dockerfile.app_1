@@ -1,0 +1,5 @@
+FROM python:3-alpine
+
+RUN mkdir -p /apps/app_1
+
+CMD ["python", "-m", "http.server", "8000", "-d", "/apps"]

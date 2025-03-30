@@ -298,43 +298,52 @@ impl Orchestrator {
         state.instance_profile = state::InstanceProfileState::new(&instance_profile);
         state_backend.save(&state).await?;
 
-        // TODO: create multiple ECR repositories: one for each Dockerfile
-        //     with format <project_name>/<service_name>:latest
-        let mut ecr =
-            EcrRepository::new(None, None, "oct-ecr".to_string(), "us-west-2".to_string()).await;
+        let mut base_ecr_url = None; // TODO: Make prettier
+        let mut ecr_repos_cache = HashMap::new();
+        for (service_name, service) in &mut config.project.services {
+            let Some(dockerfile_path) = &service.dockerfile_path else {
+                log::debug!("Dockerfile path not specified");
 
-        ecr.create().await?;
-        state.ecr_repos.push(state::ECRState::new(&ecr));
-        state_backend.save(&state).await?;
+                continue;
+            };
 
-        let repository_url = state
-            .ecr_repos
-            .last()
-            .ok_or("No ECR repository")?
-            .url
-            .clone();
-        let image_tag = format!("{repository_url}:latest");
+            if ecr_repos_cache.contains_key(dockerfile_path) {
+                service.image.clone_from(&ecr_repos_cache[dockerfile_path]);
 
-        config.project.services.iter_mut().for_each(|(_, service)| {
-            match &service.dockerfile_path {
-                Some(dockerfile_path) => match build_image(dockerfile_path, &image_tag) {
-                    Ok(()) => {
-                        match push_image(&image_tag) {
-                            Ok(()) => {
-                                // Save image uri to state
-                                service.image.clone_from(&image_tag);
-                            }
-                            Err(e) => log::error!("Failed to push image to ECR repository: {e}"),
-                        }
-                    }
-
-                    Err(e) => log::error!("Failed to build an image: {e}"),
-                },
-                None => {
-                    log::info!("Dockerfile path not specified");
-                }
+                continue;
             }
-        });
+
+            // TODO: Change service_name to the name connected to Dockerfile
+            let ecr_repo_name = format!("{}/{}", config.project.name, service_name);
+            let mut ecr =
+                EcrRepository::new(None, None, ecr_repo_name, "us-west-2".to_string()).await;
+
+            ecr.create().await?;
+            state.ecr_repos.push(state::ECRState::new(&ecr));
+            state_backend.save(&state).await?;
+
+            base_ecr_url = Some(format!(
+                "{}.dkr.ecr.{}.amazonaws.com",
+                ecr.id.clone().ok_or("No ECR id")?,
+                ecr.region
+            ));
+
+            let image_tag = format!("{}:latest", ecr.url.ok_or("No ECR url")?);
+
+            match build_image(dockerfile_path, &image_tag) {
+                Ok(()) => match push_image(&image_tag) {
+                    Ok(()) => {
+                        service.image.clone_from(&image_tag);
+
+                        ecr_repos_cache.insert(dockerfile_path.clone(), image_tag.clone());
+                    }
+                    Err(e) => {
+                        log::error!("Failed to push image to ECR repository: {e}");
+                    }
+                },
+                Err(e) => log::error!("Failed to build an image: {e}"),
+            };
+        }
 
         let user_data = format!(
             r#"#!/bin/bash
@@ -343,7 +352,9 @@ impl Orchestrator {
         sudo apt -y install podman
         sudo systemctl start podman
         sudo snap install aws-cli --classic
-        aws ecr get-login-password --region {ecr_region} | podman login --username AWS --password-stdin {ecr_url}
+        
+        aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {base_ecr_url}
+
         curl \
             --output /home/ubuntu/oct-ctl \
             -L \
@@ -351,8 +362,7 @@ impl Orchestrator {
             && sudo chmod +x /home/ubuntu/oct-ctl \
             && /home/ubuntu/oct-ctl &
         "#,
-            ecr_region = ecr.region,
-            ecr_url = ecr.url.clone().ok_or("No ecr url")?,
+            base_ecr_url = base_ecr_url.ok_or("No base ECR url")?,
         );
 
         for _ in 0..number_of_instances {
