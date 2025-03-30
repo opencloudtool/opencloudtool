@@ -13,6 +13,8 @@ A tool to hide the complexity of the cloud.
 - [REST service with domain](./examples/projects/rest-service-with-domain/)
 - [Ray single worker](./examples/projects/ray-single-worker/)
 - [Inject system env variables](./examples/projects/inject-system-env-var/)
+- [HTTP server with single dockerfile](./examples/projects/http-server-with-dockerfile/)
+- [HTTP server with multiple dockerfiles](./examples/projects/http-server-with-multiple-dockerfiles/)
 
 ## High Level Design
 
