@@ -178,10 +178,15 @@ impl Orchestrator {
             log::info!("Hosted zone destroyed");
         }
 
-        let mut ecr = state.ecr.new_from_state().await;
+        let mut ecr = state
+            .ecr_repos
+            .last()
+            .ok_or("No ECR repository")?
+            .new_from_state()
+            .await;
 
         ecr.destroy().await?;
-        state.ecr = state::ECRState::default();
+        state.ecr_repos.pop();
         state_backend.save(&state).await?;
 
         log::info!("ECR destroyed");
@@ -293,24 +298,31 @@ impl Orchestrator {
         state.instance_profile = state::InstanceProfileState::new(&instance_profile);
         state_backend.save(&state).await?;
 
+        // TODO: create multiple ECR repositories: one for each Dockerfile
+        //     with format <project_name>/<service_name>:latest
         let mut ecr =
             EcrRepository::new(None, None, "oct-ecr".to_string(), "us-west-2".to_string()).await;
 
-        // TODO: Create ECR repository for each service
         ecr.create().await?;
-        state.ecr = state::ECRState::new(&ecr);
+        state.ecr_repos.push(state::ECRState::new(&ecr));
         state_backend.save(&state).await?;
 
-        let repository_url = format!("{}:latest", state.ecr.url);
+        let repository_url = state
+            .ecr_repos
+            .last()
+            .ok_or("No ECR repository")?
+            .url
+            .clone();
+        let image_tag = format!("{repository_url}:latest");
 
         config.project.services.iter_mut().for_each(|(_, service)| {
             match &service.dockerfile_path {
-                Some(dockerfile_path) => match build_image(dockerfile_path, &repository_url) {
+                Some(dockerfile_path) => match build_image(dockerfile_path, &image_tag) {
                     Ok(()) => {
-                        match push_image(&repository_url) {
+                        match push_image(&image_tag) {
                             Ok(()) => {
                                 // Save image uri to state
-                                service.image.clone_from(&repository_url);
+                                service.image.clone_from(&image_tag);
                             }
                             Err(e) => log::error!("Failed to push image to ECR repository: {e}"),
                         }
@@ -615,10 +627,10 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     Err("Docker and Podman not installed".into())
 }
 
-fn push_image(repository_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Pushing image to ECR repository");
 
-    let push_args = vec!["push".to_string(), repository_url.to_string()];
+    let push_args = vec!["push".to_string(), image_tag.to_string()];
 
     let output = Command::new("podman").args(push_args).output()?;
 
