@@ -20,22 +20,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        ref: ${{ github.event.release.tag_name }}
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
-    - name: Cache Cargo dependencies
-      uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
-    - name: Build oct-ctl
-      run: cargo build -p oct-ctl --release --verbose
+      - name: Build oct binaries
+        run: cargo build -p oct-ctl -p oct-cli --release --verbose
 
-    - name: Upload artifacts
-      uses: softprops/action-gh-release@v2
-      with:
-        name: ${{ github.event.release.tag_name }}
-        prerelease: false
-        tag_name: ${{ github.event.release.tag_name }}
-        target_commitish: ${{ github.sha }}
-        files: |
-          target/release/oct-ctl
+      - name: Upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.event.release.tag_name }}
+          prerelease: false
+          tag_name: ${{ github.event.release.tag_name }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            target/release/oct-ctl
+            target/release/oct-cli

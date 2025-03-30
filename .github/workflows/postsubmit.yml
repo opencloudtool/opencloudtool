@@ -2,10 +2,9 @@ name: Post-submit Checks
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
   merge_group:
-
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,54 +19,54 @@ jobs:
 
     env:
       RUSTFLAGS: -Dwarnings -Cinstrument-coverage
-      LLVM_PROFILE_FILE: 'coverage/%p-%m.profraw'
+      LLVM_PROFILE_FILE: "coverage/%p-%m.profraw"
 
     steps:
-    - name: Free Disk Space (Ubuntu)
-      uses: jlumbroso/free-disk-space@main
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
 
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - uses: dtolnay/rust-toolchain@stable
-      with:
-        components: "llvm-tools-preview,clippy"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: "llvm-tools-preview,clippy"
 
-    - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-    - name: Run fmt
-      run: cargo fmt --check
+      - name: Run fmt
+        run: cargo fmt --check
 
-    - name: Run clippy
-      run: cargo clippy --no-deps
+      - name: Run clippy
+        run: cargo clippy --no-deps
 
-    - name: Machete
-      uses: bnjbvr/cargo-machete@main
+      - name: Machete
+        uses: bnjbvr/cargo-machete@main
 
-    - name: Compile for tests
-      run: cargo test --no-run --locked
+      - name: Compile for tests
+        run: cargo test --no-run --locked
 
-    # Binaries needs to be compiled separately because
-    # CLI tests call these binaries.
-    - name: Compile debug binaries for tests
-      run: cargo build --bin oct-cli
+      # Binaries needs to be compiled separately because
+      # CLI tests call these binaries.
+      - name: Compile debug binaries for tests
+        run: cargo build --bin oct-cli
 
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Run tests
+        run: cargo test --verbose
 
-    - name: Install grcov
-      uses: clechasseur/rs-cargo@v3
-      with:
-        command: install
-        args: grcov
+      - name: Install grcov
+        uses: clechasseur/rs-cargo@v3
+        with:
+          command: install
+          args: grcov
 
-    - name: Generate coverage report
-      if: ${{ github.event_name != 'merge_group' }}
-      run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
+      - name: Generate coverage report
+        if: ${{ github.event_name != 'merge_group' }}
+        run: grcov . --binary-path ./target/debug/deps/ -s . -t cobertura-pretty --branch --ignore-not-existing --ignore '../*' --ignore "/*" -o ./coverage.xml
 
-    - name: Upload coverage report
-      if: ${{ github.event_name != 'merge_group' }}
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./coverage.xml
-        token: ${{ secrets.CODECOV_TOKEN }}
-        slug: opencloudtool/opencloudtool
+      - name: Upload coverage report
+        if: ${{ github.event_name != 'merge_group' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: opencloudtool/opencloudtool

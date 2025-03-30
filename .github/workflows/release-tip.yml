@@ -25,27 +25,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Cache Cargo dependencies
-      uses: Swatinem/rust-cache@v2
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
 
-    - name: Build oct-ctl
-      run: cargo build -p oct-ctl --release --verbose
+      - name: Build oct binaries
+        run: cargo build -p oct-ctl -p oct-cli --release --verbose
 
-    - name: Tip Tag
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git tag -fa tip -m "Latest Continuous Release"
-        git push -f origin tip
+      - name: Tip Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa tip -m "Latest Continuous Release"
+          git push -f origin tip
 
-    - name: Upload release
-      uses: softprops/action-gh-release@v2
-      with:
-        name: 'Opencloudtool Tip ("Nightly")'
-        prerelease: true
-        tag_name: tip
-        target_commitish: ${{ github.sha }}
-        files: |
-          target/release/oct-ctl
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'Opencloudtool Tip ("Nightly")'
+          prerelease: true
+          tag_name: tip
+          target_commitish: ${{ github.sha }}
+          files: |
+            target/release/oct-ctl
+            target/release/oct-cli
