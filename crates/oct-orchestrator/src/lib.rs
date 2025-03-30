@@ -45,42 +45,10 @@ impl Orchestrator {
         log::info!("Number of instances required: {number_of_instances}");
 
         let state = self
-            .prepare_infrastructure(&config, number_of_instances)
+            .prepare_infrastructure(&mut config, number_of_instances)
             .await?; // TODO(#189): pass info about required resources
 
-        let ecr_repository = state.ecr.new_from_state().await;
-
-        let Some(repository_url) = ecr_repository.url else {
-            return Err("ECR repository url not found".into());
-        };
-
-        let repository_url = format!("{repository_url}:latest");
-
-        config.project.services.iter_mut().for_each(|(_, service)| {
-            match &service.dockerfile_path {
-                Some(dockerfile_path) => match build_image(dockerfile_path, &repository_url) {
-                    Ok(()) => {
-                        let result = push_image(repository_url.clone());
-
-                        match result {
-                            Ok(()) => {
-                                // Save image uri to state
-                                service.image.clone_from(&repository_url);
-                            }
-                            Err(e) => log::error!("Failed to push image to ECR repository: {e}"),
-                        }
-                    }
-
-                    Err(e) => log::error!("Failed to build an image: {e}"),
-                },
-                None => {
-                    log::info!("Dockerfile path not specified");
-                }
-            }
-        });
-
         let mut instances = Vec::<Ec2Instance>::new();
-
         for instance in state.instances {
             instances.push(instance.new_from_state().await?);
         }
@@ -226,7 +194,7 @@ impl Orchestrator {
     /// Prepares L1 infrastructure (VM instances and base networking)
     async fn prepare_infrastructure(
         &self,
-        config: &config::Config,
+        config: &mut config::Config,
         number_of_instances: u32,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
         let state_backend =
@@ -328,9 +296,33 @@ impl Orchestrator {
         let mut ecr =
             EcrRepository::new(None, None, "oct-ecr".to_string(), "us-west-2".to_string()).await;
 
+        // TODO: Create ECR repository for each service
         ecr.create().await?;
         state.ecr = state::ECRState::new(&ecr);
         state_backend.save(&state).await?;
+
+        let repository_url = format!("{}:latest", state.ecr.url);
+
+        config.project.services.iter_mut().for_each(|(_, service)| {
+            match &service.dockerfile_path {
+                Some(dockerfile_path) => match build_image(dockerfile_path, &repository_url) {
+                    Ok(()) => {
+                        match push_image(&repository_url) {
+                            Ok(()) => {
+                                // Save image uri to state
+                                service.image.clone_from(&repository_url);
+                            }
+                            Err(e) => log::error!("Failed to push image to ECR repository: {e}"),
+                        }
+                    }
+
+                    Err(e) => log::error!("Failed to build an image: {e}"),
+                },
+                None => {
+                    log::info!("Dockerfile path not specified");
+                }
+            }
+        });
 
         let user_data = format!(
             r#"#!/bin/bash
@@ -564,8 +556,8 @@ impl Orchestrator {
     }
 }
 
-fn build_image(dockerfile_path: &String, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if !Path::new(&dockerfile_path).exists() {
+fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if !Path::new(dockerfile_path).exists() {
         return Err("Dockerfile not found".into());
     }
 
@@ -582,7 +574,7 @@ fn build_image(dockerfile_path: &String, tag: &str) -> Result<(), Box<dyn std::e
             "--platform",
             "linux/amd64",
             "-f",
-            dockerfile_path.as_str(),
+            dockerfile_path,
             ".",
         ])
         .output()?;
@@ -623,10 +615,10 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     Err("Docker and Podman not installed".into())
 }
 
-fn push_image(repository_url: String) -> Result<(), Box<dyn std::error::Error>> {
+fn push_image(repository_url: &str) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Pushing image to ECR repository");
 
-    let push_args = vec!["push".to_string(), repository_url];
+    let push_args = vec!["push".to_string(), repository_url.to_string()];
 
     let output = Command::new("podman").args(push_args).output()?;
 

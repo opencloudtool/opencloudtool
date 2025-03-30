@@ -6,6 +6,8 @@ use crate::aws::types::{InstanceType, RecordType};
 pub struct State {
     pub vpc: VPCState,
 
+    // TODO: create multiple ECR repositories: one for each Dockerfile
+    //     with format <project_name>/<service_name>:latest
     pub ecr: ECRState,
 
     pub instance_profile: InstanceProfileState,
