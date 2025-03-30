@@ -1,0 +1,37 @@
+name: Test example projects
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-example-project:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        project:
+          - http-server-with-dockerfile
+          - http-server-with-multiple-dockerfiles
+          - inject-system-env-var
+          - multi-host-rest-service-with-lb
+          - ray-single-worker
+          - rest-service-with-domain
+          - s3-remote-state-storage
+          - single-host-rest-service-with-lb
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run opencloudtool Command
+        uses: opencloudtool/oct-action@v0.0.3
+        with:
+          command: "deploy"
+          working-directory: "./examples/projects/${{ matrix.project }}"
