@@ -102,6 +102,35 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Destroys all deployed user services and associated cloud infrastructure.
+    /// 
+    /// This asynchronous method cleans up persistent state-managed resources by:
+    /// - Stopping running user services via the scheduler.
+    /// - Terminating active EC2 instances.
+    /// - Destroying the VPC, instance profile, and (if present) the hosted zone.
+    /// - Removing the most recent ECR repository from state.
+    /// - Clearing the persistent state from the backend.
+    /// 
+    /// If no state is loaded, the function logs that there is nothing to destroy and exits successfully.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if any resource destruction operation fails.
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// use oct_orchestrator::Orchestrator;
+    /// use std::error::Error;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn Error>> {
+    ///     let orchestrator = Orchestrator::new();
+    ///     // Tear down all deployed services and infrastructure.
+    ///     orchestrator.destroy().await?;
+    ///     Ok(())
+    /// }
+    /// ```
     pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Put into Orchestrator struct field
         let config = config::Config::new(None)?;
@@ -196,8 +225,43 @@ impl Orchestrator {
         Ok(())
     }
 
-    /// Prepares L1 infrastructure (VM instances and base networking)
-    async fn prepare_infrastructure(
+    /// Prepares the base cloud infrastructure required to deploy user services.
+    /// 
+    /// If an existing state is detected, the function returns it, avoiding redundant setup.
+    /// Otherwise, it establishes essential networking and compute resources including:
+    /// 
+    /// - A hosted zone (if a domain is specified),
+    /// - A VPC with an associated subnet, internet gateway, route table, and security group,
+    /// - An instance profile,
+    /// - An Elastic Container Registry (ECR) repository.
+    /// 
+    /// The function also builds and pushes Docker images for each defined service and provisions
+    /// the specified number of VM instances with appropriate initialization scripts.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `config` - Mutable deployment configuration containing project settings and service definitions.
+    /// * `number_of_instances` - The target number of VM instances to create.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns an updated state reflecting the newly prepared infrastructure, or an error if the setup fails.
+    /// 
+    /// # Examples
+    /// 
+    /// ```no_run
+    /// use orchestrator::Orchestrator;
+    /// use config;
+    /// 
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let orchestrator = Orchestrator::new();
+    ///     let mut cfg = config::Config::default();
+    ///     let state = orchestrator.prepare_infrastructure(&mut cfg, 2).await?;
+    ///     assert!(state.vpc.is_some());
+    ///     Ok(())
+    /// }
+    /// ```    async fn prepare_infrastructure(
         &self,
         config: &mut config::Config,
         number_of_instances: u32,
@@ -602,8 +666,22 @@ fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-/// Return podman or docker string depends on what is installed
-fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
+/// Returns the name of the available container manager.
+///
+/// This function checks if Podman or Docker is installed by executing their
+/// respective `--version` commands. It returns `"podman"` if Podman is available,
+/// or `"docker"` if Docker is available. If neither tool is found, an error is returned.
+///
+/// # Examples
+///
+/// ```rust
+/// # use std::error::Error;
+/// # fn main() -> Result<(), Box<dyn Error>> {
+/// let container_manager = get_container_manager()?;
+/// assert!(container_manager == "podman" || container_manager == "docker");
+/// # Ok(())
+/// # }
+/// ```fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     let podman_exists = Command::new("podman")
         .args(["--version"])
         .output()?
@@ -627,6 +705,30 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     Err("Docker and Podman not installed".into())
 }
 
+/// Pushes a container image to an ECR repository using Podman.
+///
+/// This function runs the `podman push` command with the specified image tag,
+/// logging progress and returning an error if the push operation fails.
+///
+/// # Arguments
+///
+/// * `image_tag` - A string slice representing the tagged image identifier, which typically includes the repository URL.
+///
+/// # Errors
+///
+/// Returns an error if the `podman push` command fails to execute successfully.
+///
+/// # Examples
+///
+/// ```
+/// use std::error::Error;
+///
+/// fn main() -> Result<(), Box<dyn Error>> {
+///     let image_tag = "123456789012.dkr.ecr.region.amazonaws.com/my-image:latest";
+///     push_image(image_tag)?;
+///     Ok(())
+/// }
+/// ```
 fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Pushing image to ECR repository");
 
