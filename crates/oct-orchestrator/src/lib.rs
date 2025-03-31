@@ -178,18 +178,20 @@ impl Orchestrator {
             log::info!("Hosted zone destroyed");
         }
 
-        let mut ecr = state
-            .ecr_repos
-            .last()
-            .ok_or("No ECR repository")?
-            .new_from_state()
-            .await;
+        if state.ecr_repos.last().is_some() {
+            let mut ecr = state
+                .ecr_repos
+                .last()
+                .ok_or("No ECR repository")?
+                .new_from_state()
+                .await;
 
-        ecr.destroy().await?;
-        state.ecr_repos.pop();
-        state_backend.save(&state).await?;
+            ecr.destroy().await?;
+            state.ecr_repos.pop();
+            state_backend.save(&state).await?;
 
-        log::info!("ECR destroyed");
+            log::info!("ECR destroyed");
+        }
 
         state_backend.remove().await?;
 
@@ -342,8 +344,15 @@ impl Orchestrator {
                     }
                 },
                 Err(e) => log::error!("Failed to build an image: {e}"),
-            };
+            }
         }
+
+        let ecr_login = match base_ecr_url {
+            Some(base_ecr_url) => format!(
+                r"aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {base_ecr_url}"
+            ),
+            None => String::new(),
+        };
 
         let user_data = format!(
             r#"#!/bin/bash
@@ -353,7 +362,7 @@ impl Orchestrator {
         sudo systemctl start podman
         sudo snap install aws-cli --classic
         
-        aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {base_ecr_url}
+        {ecr_login}
 
         curl \
             --output /home/ubuntu/oct-ctl \
@@ -362,7 +371,6 @@ impl Orchestrator {
             && sudo chmod +x /home/ubuntu/oct-ctl \
             && /home/ubuntu/oct-ctl &
         "#,
-            base_ecr_url = base_ecr_url.ok_or("No base ECR url")?,
         );
 
         for _ in 0..number_of_instances {
