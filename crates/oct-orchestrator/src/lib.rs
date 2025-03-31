@@ -178,16 +178,10 @@ impl Orchestrator {
             log::info!("Hosted zone destroyed");
         }
 
-        if state.ecr_repos.last().is_some() {
-            let mut ecr = state
-                .ecr_repos
-                .last()
-                .ok_or("No ECR repository")?
-                .new_from_state()
-                .await;
+        while let Some(ecr) = state.ecr_repos.pop() {
+            let mut ecr = ecr.new_from_state().await;
 
             ecr.destroy().await?;
-            state.ecr_repos.pop();
             state_backend.save(&state).await?;
 
             log::info!("ECR destroyed");
