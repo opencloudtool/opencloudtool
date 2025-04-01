@@ -115,6 +115,26 @@ impl HostedZone {
             region,
         }
     }
+
+    pub async fn create_dns_record(
+        &mut self,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: i64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .create_dns_record(
+                self.id.clone().ok_or("No hosted zone id")?,
+                domain_name,
+                record_type,
+                record_value,
+                ttl,
+            )
+            .await?;
+
+        Ok(())
+    }
 }
 
 impl Resource for HostedZone {
@@ -142,10 +162,16 @@ impl Resource for HostedZone {
             })
             .collect::<Vec<_>>();
 
-        self.id = Some(hosted_zone_id);
-        self.dns_record_sets = Some(dns_record_sets.clone());
+        let ns_records = dns_record_sets
+            .iter()
+            .filter(|r| r.record_type == RecordType::NS)
+            .cloned()
+            .collect::<Vec<_>>();
 
-        log::info!("DNS record sets: {dns_record_sets:?}");
+        self.id = Some(hosted_zone_id);
+        self.dns_record_sets = Some(dns_record_sets);
+
+        log::info!("Please map these NS records in your domain provider: {ns_records:?}");
 
         Ok(())
     }
