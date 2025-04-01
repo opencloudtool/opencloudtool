@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
-use uuid::Uuid;
 
 use oct_cloud::aws::resource::{
     Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
-use oct_cloud::aws::types::{InstanceType, RecordType};
+use oct_cloud::aws::types::InstanceType;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -294,9 +293,6 @@ impl Orchestrator {
             hosted_zone.create().await?;
             state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
             state_backend.save(&state).await?;
-
-            // Check for ns records do be mapped
-            self.check_ns_records(&mut hosted_zone).await?;
         }
 
         let inbound_rules = vec![
@@ -401,7 +397,7 @@ impl Orchestrator {
             && /home/ubuntu/oct-ctl &
         "#,
         );
-
+        // TODO pass HZ
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
                 None,
@@ -432,60 +428,6 @@ impl Orchestrator {
         }
 
         Ok(state)
-    }
-
-    /// Check if ns records need to be mapped
-    async fn check_ns_records(
-        &self,
-        hosted_zone: &mut HostedZone,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let verification_id = Uuid::new_v4().simple().to_string();
-        let subdomain = format!("_verify.{}", hosted_zone.name);
-
-        hosted_zone
-            .create_dns_record(
-                subdomain.clone(),
-                RecordType::TXT,
-                format!("\"{verification_id}\""),
-                300,
-            )
-            .await?;
-
-        log::info!("Record created: {subdomain} - {verification_id}");
-
-        log::info!("Checking record...");
-
-        let mut attempts = 0;
-        let max_attempts = 70;
-        let sleep_duration_s = 5;
-
-        while attempts < max_attempts {
-            let output = std::process::Command::new("dig")
-                .arg("-t")
-                .arg("TXT")
-                .arg(subdomain.clone())
-                .arg("+short")
-                .output()?;
-
-            if output.status.success() {
-                let output = String::from_utf8_lossy(&output.stdout);
-                if output.contains(&verification_id) {
-                    log::info!("Record verified");
-
-                    return Ok(());
-                }
-            }
-
-            log::info!(
-                "Record not verified. \
-                Retrying in {sleep_duration_s} seconds..."
-            );
-
-            attempts += 1;
-            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
-        }
-
-        Err("Failed to verify record".into())
     }
 
     /// Waits for a host to be healthy

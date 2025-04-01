@@ -1,4 +1,5 @@
 use base64::{Engine as _, engine::general_purpose};
+use uuid::Uuid;
 
 use aws_sdk_ec2::types::InstanceStateName;
 
@@ -116,6 +117,57 @@ impl HostedZone {
         }
     }
 
+    pub async fn check_ns_records(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let verification_id = Uuid::new_v4().simple().to_string();
+        let subdomain = format!("_verify.{}", self.name);
+
+        self.client
+            .create_dns_record(
+                self.id.clone().ok_or("No hosted zone id")?,
+                subdomain.clone(),
+                RecordType::TXT,
+                format!("\"{verification_id}\""),
+                300,
+            )
+            .await?;
+
+        log::info!("Record created: {subdomain} - {verification_id}");
+
+        log::info!("Checking record...");
+
+        let mut attempts = 0;
+        let max_attempts = 70;
+        let sleep_duration_s = 5;
+
+        while attempts < max_attempts {
+            let output = std::process::Command::new("dig")
+                .arg("-t")
+                .arg("TXT")
+                .arg(subdomain.clone())
+                .arg("+short")
+                .output()?;
+
+            if output.status.success() {
+                let output = String::from_utf8_lossy(&output.stdout);
+                if output.contains(&verification_id) {
+                    log::info!("Record verified");
+
+                    return Ok(());
+                }
+            }
+
+            log::info!(
+                "Record not verified. \
+                Retrying in {sleep_duration_s} seconds..."
+            );
+
+            attempts += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+        }
+
+        Err("Failed to verify record".into())
+    }
+
     pub async fn create_dns_record(
         &mut self,
         domain_name: String,
@@ -169,7 +221,9 @@ impl Resource for HostedZone {
         self.dns_record_sets = Some(dns_record_sets);
 
         log::info!("Please map these NS records in your domain provider: {ns_records:?}");
-        self.dns_records = dns_records;
+
+        // Check if ns records need to be mapped
+        self.check_ns_records().await?;
 
         Ok(())
     }
@@ -347,6 +401,7 @@ pub struct Ec2Instance {
     pub instance_profile_name: String,
     pub subnet_id: String,
     pub security_group_id: String,
+    // Add HostedZone
 }
 impl Ec2Instance {
     pub async fn new(
@@ -482,6 +537,9 @@ impl Resource for Ec2Instance {
         if self.public_ip.is_none() || self.public_dns.is_none() {
             return Err("Failed to retrieve instance metadata after retries".into());
         }
+
+        // Assign domanin {instance_id}.test.opencloudtool.com
+        // create DNS record
 
         Ok(())
     }
