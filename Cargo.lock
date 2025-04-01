@@ -2124,6 +2124,7 @@ dependencies = [
  "tera",
  "tokio",
  "toml",
+ "uuid",
 ]
 
 [[package]]

@@ -115,6 +115,26 @@ impl HostedZone {
             region,
         }
     }
+
+    pub async fn create_dns_record(
+        &mut self,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: i64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .create_dns_record(
+                self.id.clone().ok_or("No hosted zone id")?,
+                domain_name,
+                record_type,
+                record_value,
+                ttl,
+            )
+            .await?;
+
+        Ok(())
+    }
 }
 
 impl Resource for HostedZone {
@@ -125,24 +145,30 @@ impl Resource for HostedZone {
 
         let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
-        let mut dns_records = Vec::new();
-        for (name, record_type, value, ttl) in dns_records_data {
-            dns_records.push(
-                DNSRecord::new(
-                    hosted_zone_id.clone(),
-                    name,
-                    record_type,
-                    value,
-                    ttl,
-                    self.region.clone(),
+        let dns_record_sets = resource_record_sets
+            .into_iter()
+            .map(|record_set| {
+                DNSRecordSet::new(
+                    record_set.name,
+                    RecordType::from(record_set.r#type),
+                    record_set
+                        .resource_records
+                        .map(|records| records.iter().map(|r| r.value.clone()).collect()),
+                    record_set.ttl,
                 )
-                .await,
-            );
-        }
+            })
+            .collect::<Vec<_>>();
 
-        log::info!("DNS records: {dns_records:?}");
+        let ns_records = dns_record_sets
+            .iter()
+            .filter(|r| r.record_type == RecordType::NS)
+            .cloned()
+            .collect::<Vec<_>>();
 
         self.id = Some(hosted_zone_id);
+        self.dns_record_sets = Some(dns_record_sets);
+
+        log::info!("Please map these NS records in your domain provider: {ns_records:?}");
         self.dns_records = dns_records;
 
         Ok(())

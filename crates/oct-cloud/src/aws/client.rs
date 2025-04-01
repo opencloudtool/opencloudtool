@@ -646,6 +646,43 @@ impl Route53Impl {
         id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting Route53 hosted zone {id}");
+        // List all record sets
+        let record_sets = self
+            .inner
+            .list_resource_record_sets()
+            .hosted_zone_id(id.clone())
+            .send()
+            .await?
+            .resource_record_sets()
+            .to_vec();
+
+        // Filter out NS and SOA, and delete the rest
+        let changes: Vec<_> = record_sets
+            .into_iter()
+            .filter(|rrset| rrset.r#type().as_str() != "NS" && rrset.r#type().as_str() != "SOA")
+            .map(|rrset| {
+                aws_sdk_route53::types::Change::builder()
+                    .action(aws_sdk_route53::types::ChangeAction::Delete)
+                    .resource_record_set(rrset)
+                    .build()
+                    .expect("Failed to build change")
+            })
+            .collect();
+
+        if !changes.is_empty() {
+            let change_batch = aws_sdk_route53::types::ChangeBatch::builder()
+                .set_changes(Some(changes))
+                .build()?;
+
+            self.inner
+                .change_resource_record_sets()
+                .hosted_zone_id(id.clone())
+                .change_batch(change_batch)
+                .send()
+                .await?;
+
+            log::info!("Deleted non-default record sets from hosted zone {id}");
+        }
         self.inner
             .delete_hosted_zone()
             .id(id.clone())
@@ -777,7 +814,7 @@ impl Route53Impl {
         record_value: String,
         ttl: i64,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Creating DNS record for {domain_name}");
+        log::info!("Creating {record_type} record for {domain_name}");
 
         let resource_record = aws_sdk_route53::types::ResourceRecord::builder()
             .value(record_value)
@@ -806,7 +843,7 @@ impl Route53Impl {
             .send()
             .await?;
 
-        log::info!("Created DNS record for {domain_name}");
+        log::info!("Created {record_type} record for {domain_name}");
 
         Ok(())
     }
