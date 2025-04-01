@@ -30,6 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Add .local/bin to PATH
+        run: |
+          mkdir -p $HOME/.local/bin
+          echo "PATH=$PATH:$HOME/.local/bin" >> $GITHUB_ENV
+
       - name: Run opencloudtool Command
         uses: opencloudtool/oct-action@v1
         with:
