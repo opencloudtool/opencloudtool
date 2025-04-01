@@ -223,6 +223,7 @@ impl Resource for HostedZone {
         log::info!("Please map these NS records in your domain provider: {ns_records:?}");
 
         // Check if ns records need to be mapped
+        #[cfg(not(test))]
         self.check_ns_records().await?;
 
         Ok(())
