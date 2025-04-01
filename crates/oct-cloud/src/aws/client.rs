@@ -710,7 +710,6 @@ impl Route53Impl {
         Ok(response.resource_record_sets().to_vec())
     }
 
-    #[allow(dead_code)]
     pub(super) async fn create_dns_record(
         &self,
         hosted_zone_id: String,
