@@ -5,6 +5,18 @@
 
 A tool to hide the complexity of the cloud.
 
+## Install `oct-cli`
+
+```bash
+curl -LsSf https://repo.opencloudtool.com/install.sh | sh
+```
+
+or
+
+```bash
+wget -qO- https://repo.opencloudtool.com/install.sh | sh
+```
+
 ## Deployment Examples
 
 - [Multiple REST services on the same host with NGINX load balancer](./examples/projects/single-host-rest-service-with-lb/)
