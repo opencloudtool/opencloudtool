@@ -6,16 +6,16 @@ echo "Creating $HOME/.local/bin if it doesn't exist"
 
 mkdir -p $HOME/.local/bin
 
-echo "Installing oct-ctl to $HOME/.local/bin"
+echo "Installing oct-cli to $HOME/.local/bin"
 
 curl \
-    --output $HOME/.local/bin/oct-ctl \
+    --output $HOME/.local/bin/oct-cli \
     -fsSL \
-    https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl
+    https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-cli
 
-chmod +x $HOME/.local/bin/oct-ctl
+chmod +x $HOME/.local/bin/oct-cli
 
-echo "oct-ctl is available at $HOME/.local/bin/oct-ctl"
+echo "oct-cli is available at $HOME/.local/bin/oct-cli"
 
 cat <<EOF
 
