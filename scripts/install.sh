@@ -22,9 +22,9 @@ cat <<EOF
 For Linux users, to add ~/.local/bin to your PATH permanently:
 
 1. For bash users, run:
-   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+   echo 'export PATH="\$HOME/.local/bin:\$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 2. For zsh users, run:
-   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+   echo 'export PATH="\$HOME/.local/bin:\$PATH"' >> ~/.zshrc && source ~/.zshrc
 
 EOF
