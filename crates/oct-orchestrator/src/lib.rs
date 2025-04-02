@@ -324,21 +324,15 @@ impl Orchestrator {
                 ecr.region
             ));
 
-            let image_tag = format!("{}:latest", ecr.url.ok_or("No ECR url")?);
+            let ecr_url = ecr.url.ok_or("No ECR url")?;
+            let image_tag = format!("{ecr_url}:latest");
 
-            match build_image(dockerfile_path, &image_tag) {
-                Ok(()) => match push_image(&image_tag) {
-                    Ok(()) => {
-                        service.image.clone_from(&image_tag);
+            container_manager_login(&ecr_url)?;
+            build_image(dockerfile_path, &image_tag)?;
+            push_image(&image_tag)?;
 
-                        ecr_repos_cache.insert(dockerfile_path.clone(), image_tag.clone());
-                    }
-                    Err(e) => {
-                        log::error!("Failed to push image to ECR repository: {e}");
-                    }
-                },
-                Err(e) => log::error!("Failed to build an image: {e}"),
-            }
+            service.image.clone_from(&image_tag);
+            ecr_repos_cache.insert(dockerfile_path.clone(), image_tag.clone());
         }
 
         let ecr_login = match base_ecr_url {
@@ -603,13 +597,68 @@ fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::erro
         ])
         .output()?;
 
-    log::info!("Build command output: {run_container_args:?}");
-
     if !run_container_args.status.success() {
         return Err("Failed to build an image".into());
     }
 
     log::info!("Successfully built an image");
+
+    Ok(())
+}
+
+fn container_manager_login(ecr_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Logging in to ECR repository");
+
+    let container_manager = get_container_manager()?;
+
+    log::info!("Container manager: {container_manager}");
+
+    // Get the AWS ECR password
+    let aws_output = Command::new("aws")
+        .args(["ecr", "get-login-password", "--region", "us-west-2"])
+        .output()?;
+
+    if !aws_output.status.success() {
+        return Err("Failed to get ECR password".into());
+    }
+
+    // Use the password as input for the container manager login command
+    let login_process = Command::new(&container_manager)
+        .args([
+            "login",
+            "--username",
+            "AWS",
+            "--password",
+            String::from_utf8_lossy(&aws_output.stdout).as_ref(),
+            ecr_url,
+        ])
+        .output()?;
+
+    if !login_process.status.success() {
+        return Err("Failed to login to ECR repository".into());
+    }
+
+    log::info!("Logged in to ECR repository");
+
+    Ok(())
+}
+
+fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Pushing image to ECR repository");
+
+    let push_args = vec!["push", image_tag];
+
+    let container_manager = get_container_manager()?;
+
+    log::info!("Container manager: {container_manager}");
+
+    let output = Command::new(container_manager).args(push_args).output()?;
+
+    if !output.status.success() {
+        return Err("Failed to push image to ECR repository".into());
+    }
+
+    log::info!("Pushed image to ECR repository");
 
     Ok(())
 }
@@ -637,22 +686,6 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
     }
 
     Err("Docker and Podman not installed".into())
-}
-
-fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("Pushing image to ECR repository");
-
-    let push_args = vec!["push".to_string(), image_tag.to_string()];
-
-    let output = Command::new("podman").args(push_args).output()?;
-
-    if !output.status.success() {
-        return Err(format!("Failed to push image to ECR repository. {output:?}").into());
-    }
-
-    log::info!("Pushed image to ECR repository");
-
-    Ok(())
 }
 
 #[cfg(test)]
