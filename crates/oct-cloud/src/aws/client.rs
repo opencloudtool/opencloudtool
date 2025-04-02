@@ -1,10 +1,9 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
-use aws_sdk_route53::types::ResourceRecordSet;
 use uuid::Uuid;
 
-use crate::aws::types::InstanceType;
+use crate::aws::types::{InstanceType, RecordType};
 
 #[cfg(test)]
 use mockall::automock;
@@ -657,10 +656,10 @@ impl Route53Impl {
         Ok(())
     }
 
-    pub(super) async fn get_dns_record_sets(
+    pub(super) async fn get_dns_records(
         &self,
         hosted_zone_id: String,
-    ) -> Result<Vec<ResourceRecordSet>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<(String, RecordType, String, u32)>, Box<dyn std::error::Error>> {
         log::info!("Getting DNS records for {hosted_zone_id}");
 
         let response = self
@@ -670,7 +669,21 @@ impl Route53Impl {
             .send()
             .await?;
 
-        Ok(response.resource_record_sets().to_vec())
+        let resource_record_sets = response.resource_record_sets().to_vec();
+
+        let mut result = Vec::new();
+        for record_set in resource_record_sets {
+            for record in record_set.resource_records() {
+                let name = record_set.name;
+                let record_type = RecordType::from(record_set.r#type);
+                let resource_record = record.value();
+                let ttl = record_set.ttl;
+
+                result.push((name, record_type, resource_record, ttl));
+            }
+        }
+
+        Ok(result)
     }
 }
 

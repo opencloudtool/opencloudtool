@@ -123,27 +123,11 @@ impl Resource for HostedZone {
 
         log::info!("Getting DNS record sets for hosted zone");
 
-        let resource_record_sets = self
-            .client
-            .get_dns_record_sets(hosted_zone_id.clone())
-            .await?;
-
-        let dns_record_sets = resource_record_sets
-            .into_iter()
-            .map(|record_set| {
-                DNSRecordSet::new(
-                    record_set.name,
-                    RecordType::from(record_set.r#type),
-                    record_set
-                        .resource_records
-                        .map(|records| records.iter().map(|r| r.value.clone()).collect()),
-                    record_set.ttl,
-                )
-            })
-            .collect::<Vec<_>>();
+        let dns_records = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
         self.id = Some(hosted_zone_id);
-        self.dns_record_sets = Some(dns_record_sets.clone());
+        self.dns_records =
+            dns_records.map(|r| DNSRecord::new(r.name, r.record_type, r.record, r.ttl));
 
         log::info!("DNS record sets: {dns_record_sets:?}");
 
@@ -182,6 +166,16 @@ impl DNSRecordSet {
             records,
             ttl,
         }
+    }
+}
+
+impl Resource for DNSRecordSet {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
+
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
 }
 
