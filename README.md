@@ -23,6 +23,7 @@ wget -qO- https://repo.opencloudtool.com/install.sh | sh
 - [Multiple REST services on different hosts with NGINX load balancer](./examples/projects/multi-host-rest-service-with-lb/)
 - [S3 remote state storage](./examples/projects/s3-remote-state-storage/)
 - [REST service with domain](./examples/projects/rest-service-with-domain/)
+- [Single host multi services with domains](./examples/projects/single-host-multi-services-with-domains/)
 - [Ray single worker](./examples/projects/ray-single-worker/)
 - [Inject system env variables](./examples/projects/inject-system-env-var/)
 - [HTTP server with single dockerfile](./examples/projects/http-server-with-dockerfile/)
