@@ -80,7 +80,7 @@ pub struct HostedZone {
 
     // Known after creation
     pub id: Option<String>,
-    pub dns_record_sets: Option<Vec<DNSRecordSet>>,
+    pub dns_records: Option<Vec<DNSRecord>>,
 
     pub name: String,
     pub region: String,
@@ -89,7 +89,7 @@ pub struct HostedZone {
 impl HostedZone {
     pub async fn new(
         id: Option<String>,
-        dns_record_sets: Option<Vec<DNSRecordSet>>,
+        dns_records: Option<Vec<DNSRecord>>,
         name: String,
         region: String,
     ) -> Self {
@@ -110,7 +110,7 @@ impl HostedZone {
         Self {
             client: Route53::new(route53_client),
             id,
-            dns_record_sets,
+            dns_records,
             name,
             region,
         }
@@ -123,13 +123,19 @@ impl Resource for HostedZone {
 
         log::info!("Getting DNS record sets for hosted zone");
 
-        let dns_records = self.client.get_dns_records(hosted_zone_id.clone()).await?;
+        let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
+
+        let mut dns_records = Vec::new();
+        for (name, record_type, record, ttl) in dns_records_data {
+            dns_records
+                .push(DNSRecord::new(self.region.clone(), name, record_type, record, ttl).await);
+        }
 
         self.id = Some(hosted_zone_id);
-        self.dns_records =
-            dns_records.map(|r| DNSRecord::new(r.name, r.record_type, r.record, r.ttl));
 
-        log::info!("DNS record sets: {dns_record_sets:?}");
+        log::info!("DNS records: {dns_records:?}");
+
+        self.dns_records = Some(dns_records);
 
         Ok(())
     }
@@ -145,36 +151,75 @@ impl Resource for HostedZone {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DNSRecordSet {
+#[derive(Debug)]
+pub struct DNSRecord {
+    client: Route53,
+
+    pub region: String,
     pub name: String,
     pub record_type: RecordType,
-    pub records: Option<Vec<String>>,
+    pub record: String,
     pub ttl: Option<i64>,
 }
 
-impl DNSRecordSet {
-    pub fn new(
+impl DNSRecord {
+    pub async fn new(
+        region: String,
         name: String,
         record_type: RecordType,
-        records: Option<Vec<String>>,
+        record: String,
         ttl: Option<i64>,
     ) -> Self {
+        let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
+        let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .credentials_provider(
+                aws_config::profile::ProfileFileCredentialsProvider::builder()
+                    .profile_name("default")
+                    .build(),
+            )
+            .region(region_provider)
+            .load()
+            .await;
+
+        let route53_client = aws_sdk_route53::Client::new(&config);
+
         Self {
+            client: Route53::new(route53_client),
+            region,
             name,
             record_type,
-            records,
+            record,
             ttl,
         }
     }
 }
 
-impl Resource for DNSRecordSet {
+impl Resource for DNSRecord {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .create_dns_record(
+                self.region.clone(),
+                self.name.clone(),
+                self.record_type,
+                self.record.clone(),
+                self.ttl,
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .delete_dns_record(
+                self.region.clone(),
+                self.name.clone(),
+                self.record_type,
+                self.record.clone(),
+                self.ttl,
+            )
+            .await?;
+
         Ok(())
     }
 }
@@ -1065,7 +1110,6 @@ mod tests {
     use super::*;
 
     use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
-    use aws_sdk_route53::types::{ResourceRecord, ResourceRecordSet};
     use mockall::predicate::eq;
 
     async fn mock_ec2_instance(client: Ec2) -> Ec2Instance {
@@ -1171,10 +1215,12 @@ mod tests {
         HostedZone {
             client,
             id: Some("hosted-zone-id".to_string()),
-            dns_record_sets: Some(vec![DNSRecordSet {
+            dns_records: Some(vec![DNSRecord {
+                client: Route53::default(),
+                region: "us-west-2".to_string(),
                 name: "example.com".to_string(),
                 record_type: RecordType::A,
-                records: Some(vec!["test-record".to_string()]),
+                record: "test-record".to_string(),
                 ttl: Some(3600),
             }]),
             name: "example.com".to_string(),
@@ -2361,24 +2407,9 @@ mod tests {
             .return_once(|_| Ok("hosted-zone-id".to_string()));
 
         route53_impl_hosted_zone_mock
-            .expect_get_dns_record_sets()
+            .expect_get_dns_records()
             .with(eq("hosted-zone-id".to_string()))
-            .return_once(|_| {
-                Ok(vec![
-                    ResourceRecordSet::builder()
-                        .name("example.com")
-                        .r#type(aws_sdk_route53::types::RrType::A)
-                        .resource_records(
-                            ResourceRecord::builder()
-                                .value("test-record")
-                                .build()
-                                .expect("Failed to build ResourceRecord"),
-                        )
-                        .ttl(3600)
-                        .build()
-                        .expect("Failed to get DNS record sets"),
-                ])
-            });
+            .return_once(|_| Ok(vec![]));
 
         let mut hosted_zone = mock_hosted_zone(route53_impl_hosted_zone_mock).await;
 

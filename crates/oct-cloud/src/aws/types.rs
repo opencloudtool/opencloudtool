@@ -1,11 +1,14 @@
 use aws_sdk_route53::types::RrType;
 
+use std::fmt;
+
 /// Represents an AWS resource record type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum RecordType {
     A,
     NS,
     SOA,
+    TXT,
 }
 
 impl From<&str> for RecordType {
@@ -14,6 +17,7 @@ impl From<&str> for RecordType {
             "A" => Self::A,
             "NS" => Self::NS,
             "SOA" => Self::SOA,
+            "TXT" => Self::TXT,
             _ => panic!("Invalid record type: {s}"),
         }
     }
@@ -25,7 +29,19 @@ impl From<RrType> for RecordType {
             RrType::A => Self::A,
             RrType::Ns => Self::NS,
             RrType::Soa => Self::SOA,
+            RrType::Txt => Self::TXT,
             _ => panic!("Invalid record type: {rr_type}"),
+        }
+    }
+}
+
+impl From<RecordType> for RrType {
+    fn from(value: RecordType) -> Self {
+        match value {
+            RecordType::A => Self::A,
+            RecordType::NS => Self::Ns,
+            RecordType::SOA => Self::Soa,
+            RecordType::TXT => Self::Txt,
         }
     }
 }
@@ -36,7 +52,14 @@ impl RecordType {
             RecordType::A => "A",
             RecordType::NS => "NS",
             RecordType::SOA => "SOA",
+            RecordType::TXT => "TXT",
         }
+    }
+}
+
+impl fmt::Display for RecordType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 /// Represents an AWS instance type.
