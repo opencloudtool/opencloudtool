@@ -44,8 +44,10 @@ impl Orchestrator {
 
         log::info!("Number of instances required: {number_of_instances}");
 
+        let base_ecr_url = self.prepare_ecr_repos(&mut config).await?;
+
         let state = self
-            .prepare_infrastructure(&mut config, number_of_instances)
+            .prepare_infrastructure(&mut config, number_of_instances, base_ecr_url)
             .await?; // TODO(#189): pass info about required resources
 
         let mut instances = Vec::<Ec2Instance>::new();
@@ -183,8 +185,6 @@ impl Orchestrator {
 
             ecr.destroy().await?;
             state_backend.save(&state).await?;
-
-            log::info!("ECR destroyed");
         }
 
         state_backend.remove().await?;
@@ -192,11 +192,89 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Prepares ECR repositories
+    /// Clears existing ECR repositories in state
+    /// Returns base ECR URL if successful
+    async fn prepare_ecr_repos(
+        &self,
+        config: &mut config::Config,
+    ) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        let state_backend =
+            backend::get_state_backend::<state::State>(&config.project.state_backend);
+        let (mut state, _loaded) = state_backend.load().await?;
+
+        log::info!(
+            "Clearing ECR repositories. It's not optimal and the repos can be re-used, \
+            but it's ok for now. In the future, we should implement a more efficient \
+            approach that reuses existing repositories."
+        );
+
+        while let Some(ecr) = state.ecr_repos.pop() {
+            let mut ecr = ecr.new_from_state().await;
+
+            ecr.destroy().await?;
+            state_backend.save(&state).await?;
+        }
+
+        log::info!("ECR repositories cleared");
+
+        let mut base_ecr_url = None; // TODO: Make prettier
+        let mut ecr_repos_cache = HashMap::new();
+        for (service_name, service) in &mut config.project.services {
+            let Some(dockerfile_path) = &service.dockerfile_path else {
+                log::debug!("Dockerfile path not specified");
+
+                continue;
+            };
+
+            if ecr_repos_cache.contains_key(dockerfile_path) {
+                service.image.clone_from(&ecr_repos_cache[dockerfile_path]);
+
+                continue;
+            }
+
+            log::info!("Creating ECR repository for service '{service_name}'");
+
+            // TODO: Change service_name to the name connected to Dockerfile
+            let ecr_repo_name = format!("{}/{}", config.project.name, service_name);
+            let mut ecr =
+                EcrRepository::new(None, None, ecr_repo_name, "us-west-2".to_string()).await;
+
+            ecr.create().await?;
+            state.ecr_repos.push(state::ECRState::new(&ecr));
+            state_backend.save(&state).await?;
+
+            let known_base_ecr_url = format!(
+                "{}.dkr.ecr.{}.amazonaws.com",
+                ecr.id.clone().ok_or("No ECR id")?,
+                ecr.region
+            );
+
+            container_manager_login(&known_base_ecr_url)?;
+
+            log::info!("Logged in to ECR {known_base_ecr_url}");
+
+            base_ecr_url = Some(known_base_ecr_url);
+
+            let ecr_url = ecr.url.ok_or("No ECR url")?;
+            let image_tag = format!("{ecr_url}:latest");
+
+            build_image(dockerfile_path, &image_tag)?;
+            push_image(&image_tag)?;
+
+            service.image.clone_from(&image_tag);
+            ecr_repos_cache.insert(dockerfile_path.clone(), image_tag.clone());
+        }
+
+        Ok(base_ecr_url)
+    }
+
     /// Prepares L1 infrastructure (VM instances and base networking)
     async fn prepare_infrastructure(
         &self,
         config: &mut config::Config,
         number_of_instances: u32,
+        base_ecr_url: Option<String>,
     ) -> Result<state::State, Box<dyn std::error::Error>> {
         let state_backend =
             backend::get_state_backend::<state::State>(&config.project.state_backend);
@@ -294,48 +372,7 @@ impl Orchestrator {
         state.instance_profile = state::InstanceProfileState::new(&instance_profile);
         state_backend.save(&state).await?;
 
-        let mut base_ecr_url = None; // TODO: Make prettier
-        let mut ecr_repos_cache = HashMap::new();
-        for (service_name, service) in &mut config.project.services {
-            let Some(dockerfile_path) = &service.dockerfile_path else {
-                log::debug!("Dockerfile path not specified");
-
-                continue;
-            };
-
-            if ecr_repos_cache.contains_key(dockerfile_path) {
-                service.image.clone_from(&ecr_repos_cache[dockerfile_path]);
-
-                continue;
-            }
-
-            // TODO: Change service_name to the name connected to Dockerfile
-            let ecr_repo_name = format!("{}/{}", config.project.name, service_name);
-            let mut ecr =
-                EcrRepository::new(None, None, ecr_repo_name, "us-west-2".to_string()).await;
-
-            ecr.create().await?;
-            state.ecr_repos.push(state::ECRState::new(&ecr));
-            state_backend.save(&state).await?;
-
-            base_ecr_url = Some(format!(
-                "{}.dkr.ecr.{}.amazonaws.com",
-                ecr.id.clone().ok_or("No ECR id")?,
-                ecr.region
-            ));
-
-            let ecr_url = ecr.url.ok_or("No ECR url")?;
-            let image_tag = format!("{ecr_url}:latest");
-
-            container_manager_login(&ecr_url)?;
-            build_image(dockerfile_path, &image_tag)?;
-            push_image(&image_tag)?;
-
-            service.image.clone_from(&image_tag);
-            ecr_repos_cache.insert(dockerfile_path.clone(), image_tag.clone());
-        }
-
-        let ecr_login = match base_ecr_url {
+        let ecr_login_string = match base_ecr_url {
             Some(base_ecr_url) => format!(
                 r"aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {base_ecr_url}"
             ),
@@ -350,7 +387,7 @@ impl Orchestrator {
         sudo systemctl start podman
         sudo snap install aws-cli --classic
         
-        {ecr_login}
+        {ecr_login_string}
 
         curl \
             --output /home/ubuntu/oct-ctl \
@@ -582,9 +619,9 @@ fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::erro
     // TODO move to ContainerManager struct like in oct_ctl/src/main.rs
     let container_manager = get_container_manager()?;
 
-    log::info!("Container manager: {container_manager}");
+    log::info!("Building image using '{container_manager}'");
 
-    let run_container_args = Command::new(container_manager)
+    let run_container_args = Command::new(&container_manager)
         .args([
             "build",
             "-t",
@@ -601,17 +638,15 @@ fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::erro
         return Err("Failed to build an image".into());
     }
 
-    log::info!("Successfully built an image");
+    log::info!("Successfully built an image using '{container_manager}'");
 
     Ok(())
 }
 
 fn container_manager_login(ecr_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("Logging in to ECR repository");
-
     let container_manager = get_container_manager()?;
 
-    log::info!("Container manager: {container_manager}");
+    log::info!("Logging in to ECR repository using '{container_manager}'");
 
     // Get the AWS ECR password
     let aws_output = Command::new("aws")
@@ -638,27 +673,25 @@ fn container_manager_login(ecr_url: &str) -> Result<(), Box<dyn std::error::Erro
         return Err("Failed to login to ECR repository".into());
     }
 
-    log::info!("Logged in to ECR repository");
+    log::info!("Logged in to ECR repository using '{container_manager}'");
 
     Ok(())
 }
 
 fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
-    log::info!("Pushing image to ECR repository");
-
     let push_args = vec!["push", image_tag];
 
     let container_manager = get_container_manager()?;
 
-    log::info!("Container manager: {container_manager}");
+    log::info!("Pushing image to ECR repository using '{container_manager}'");
 
-    let output = Command::new(container_manager).args(push_args).output()?;
+    let output = Command::new(&container_manager).args(push_args).output()?;
 
     if !output.status.success() {
         return Err("Failed to push image to ECR repository".into());
     }
 
-    log::info!("Pushed image to ECR repository");
+    log::info!("Pushed image to ECR repository using '{container_manager}'");
 
     Ok(())
 }
