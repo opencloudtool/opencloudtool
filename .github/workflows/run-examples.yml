@@ -11,11 +11,33 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  AWS_ENDPOINT_URL: http://localhost:4566
+  AWS_REGION: us-west-2
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+
 jobs:
   test-example-project:
     runs-on: ubuntu-latest
 
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        env:
+          SERVICES: ec2,s3,iam,route53
+        ports:
+          - 4566:4566
+          - 4571:4571
+        options: >-
+          --name=localstack
+          --health-cmd="curl -sS http://localhost:4566/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
     strategy:
+      fail-fast: false
       matrix:
         project:
           - http-server-with-dockerfile
@@ -33,6 +55,13 @@ jobs:
 
       - name: Add .local/bin to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Configure AWS
+        run: |
+          aws configure set endpoint_url $AWS_ENDPOINT_URL
+          aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+          aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+          aws configure set region $AWS_REGION
 
       - name: Run opencloudtool Command
         uses: opencloudtool/oct-action@v1
