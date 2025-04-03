@@ -12,3 +12,5 @@ path = "./user_state.json"
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 cpus = 250
 memory = 64
+internal_port = 8000
+external_port = 80

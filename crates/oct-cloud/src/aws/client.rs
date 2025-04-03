@@ -4,7 +4,7 @@ use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
 use aws_sdk_route53::types::ResourceRecordSet;
 use uuid::Uuid;
 
-use crate::aws::types::InstanceType;
+use crate::aws::types::{InstanceType, RecordType};
 
 #[cfg(test)]
 use mockall::automock;
@@ -646,6 +646,43 @@ impl Route53Impl {
         id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting Route53 hosted zone {id}");
+        // List all record sets
+        let record_sets = self
+            .inner
+            .list_resource_record_sets()
+            .hosted_zone_id(id.clone())
+            .send()
+            .await?
+            .resource_record_sets()
+            .to_vec();
+
+        // Filter out NS and SOA, and delete the rest
+        let changes: Vec<_> = record_sets
+            .into_iter()
+            .filter(|rrset| rrset.r#type().as_str() != "NS" && rrset.r#type().as_str() != "SOA")
+            .map(|rrset| {
+                aws_sdk_route53::types::Change::builder()
+                    .action(aws_sdk_route53::types::ChangeAction::Delete)
+                    .resource_record_set(rrset)
+                    .build()
+                    .expect("Failed to build change")
+            })
+            .collect();
+
+        if !changes.is_empty() {
+            let change_batch = aws_sdk_route53::types::ChangeBatch::builder()
+                .set_changes(Some(changes))
+                .build()?;
+
+            self.inner
+                .change_resource_record_sets()
+                .hosted_zone_id(id.clone())
+                .change_batch(change_batch)
+                .send()
+                .await?;
+
+            log::info!("Deleted non-default record sets from hosted zone {id}");
+        }
         self.inner
             .delete_hosted_zone()
             .id(id.clone())
@@ -671,6 +708,48 @@ impl Route53Impl {
             .await?;
 
         Ok(response.resource_record_sets().to_vec())
+    }
+
+    pub(super) async fn create_dns_record(
+        &self,
+        hosted_zone_id: String,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: i64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Creating {record_type} record for {domain_name}");
+
+        let resource_record = aws_sdk_route53::types::ResourceRecord::builder()
+            .value(record_value)
+            .build()?;
+
+        let record_set = aws_sdk_route53::types::ResourceRecordSet::builder()
+            .name(domain_name.clone())
+            .r#type(record_type.into())
+            .ttl(ttl)
+            .resource_records(resource_record)
+            .build()?;
+
+        let change = aws_sdk_route53::types::Change::builder()
+            .action(aws_sdk_route53::types::ChangeAction::Create)
+            .resource_record_set(record_set)
+            .build()?;
+
+        let changes = aws_sdk_route53::types::ChangeBatch::builder()
+            .changes(change)
+            .build()?;
+
+        self.inner
+            .change_resource_record_sets()
+            .hosted_zone_id(hosted_zone_id)
+            .change_batch(changes)
+            .send()
+            .await?;
+
+        log::info!("Created {record_type} record for {domain_name}");
+
+        Ok(())
     }
 }
 
