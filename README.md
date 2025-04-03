@@ -17,6 +17,20 @@ or
 wget -qO- https://repo.opencloudtool.com/install.sh | sh
 ```
 
+## Log in to AWS
+
+Basic login ([docs](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/configure/index.html)):
+
+```bash
+aws configure
+```
+
+Using AWS SSO ([docs](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/configure/sso.html)):
+
+```bash
+aws configure sso
+```
+
 ## Deployment Examples
 
 - [Multiple REST services on the same host with NGINX load balancer](./examples/projects/single-host-rest-service-with-lb/)
