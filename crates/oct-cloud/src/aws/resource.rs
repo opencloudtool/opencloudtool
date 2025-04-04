@@ -80,7 +80,7 @@ pub struct HostedZone {
 
     // Known after creation
     pub id: Option<String>,
-    pub dns_records: Option<Vec<DNSRecord>>,
+    pub dns_records: Vec<DNSRecord>,
 
     pub name: String,
     pub region: String,
@@ -89,7 +89,7 @@ pub struct HostedZone {
 impl HostedZone {
     pub async fn new(
         id: Option<String>,
-        dns_records: Option<Vec<DNSRecord>>,
+        dns_records: Vec<DNSRecord>,
         name: String,
         region: String,
     ) -> Self {
@@ -126,13 +126,13 @@ impl Resource for HostedZone {
         let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
         let mut dns_records = Vec::new();
-        for (name, record_type, record, ttl) in dns_records_data {
+        for (name, record_type, value, ttl) in dns_records_data {
             dns_records.push(
                 DNSRecord::new(
                     hosted_zone_id.clone(),
                     name,
                     record_type,
-                    record,
+                    value,
                     ttl,
                     self.region.clone(),
                 )
@@ -140,11 +140,10 @@ impl Resource for HostedZone {
             );
         }
 
-        self.id = Some(hosted_zone_id);
-
         log::info!("DNS records: {dns_records:?}");
 
-        self.dns_records = Some(dns_records);
+        self.id = Some(hosted_zone_id);
+        self.dns_records = dns_records;
 
         Ok(())
     }
@@ -167,7 +166,7 @@ pub struct DNSRecord {
     pub hosted_zone_id: String,
     pub name: String,
     pub record_type: RecordType,
-    pub record: String,
+    pub value: String,
     pub ttl: Option<i64>,
     pub region: String,
 }
@@ -177,7 +176,7 @@ impl DNSRecord {
         hosted_zone_id: String,
         name: String,
         record_type: RecordType,
-        record: String,
+        value: String,
         ttl: Option<i64>,
         region: String,
     ) -> Self {
@@ -199,7 +198,7 @@ impl DNSRecord {
             hosted_zone_id,
             name,
             record_type,
-            record,
+            value,
             ttl,
             region,
         }
@@ -213,7 +212,7 @@ impl Resource for DNSRecord {
                 self.hosted_zone_id.clone(),
                 self.name.clone(),
                 self.record_type,
-                self.record.clone(),
+                self.value.clone(),
                 self.ttl,
             )
             .await?;
@@ -227,7 +226,7 @@ impl Resource for DNSRecord {
                 self.hosted_zone_id.clone(),
                 self.name.clone(),
                 self.record_type,
-                self.record.clone(),
+                self.value.clone(),
                 self.ttl,
             )
             .await?;
@@ -1227,15 +1226,15 @@ mod tests {
         HostedZone {
             client,
             id: Some("hosted-zone-id".to_string()),
-            dns_records: Some(vec![DNSRecord {
+            dns_records: vec![DNSRecord {
                 client: Route53::default(),
                 hosted_zone_id: "hosted-zone-id".to_string(),
                 name: "example.com".to_string(),
                 record_type: RecordType::A,
-                record: "test-record".to_string(),
+                value: "test-record".to_string(),
                 ttl: Some(3600),
                 region: "us-west-2".to_string(),
-            }]),
+            }],
             name: "example.com".to_string(),
             region: "us-west-2".to_string(),
         }
@@ -1247,7 +1246,7 @@ mod tests {
             hosted_zone_id: "hosted-zone-id".to_string(),
             name: "example.com".to_string(),
             record_type: RecordType::A,
-            record: "test-record".to_string(),
+            value: "test-record".to_string(),
             ttl: Some(3600),
             region: "us-west-2".to_string(),
         }
@@ -2545,5 +2544,53 @@ mod tests {
 
         // Assert
         assert!(create_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_dns_record() {
+        // Arrange
+        let mut route53_impl_dns_record_mock = Route53::default();
+        route53_impl_dns_record_mock
+            .expect_delete_dns_record()
+            .with(
+                eq("hosted-zone-id".to_string()),
+                eq("example.com".to_string()),
+                eq(RecordType::A),
+                eq("test-record".to_string()),
+                eq(Some(3600)),
+            )
+            .return_once(|_, _, _, _, _| Ok(()));
+
+        let mut dns_record = mock_dns_record(route53_impl_dns_record_mock).await;
+
+        // Act
+        let destroy_result = dns_record.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_dns_record_error() {
+        // Arrange
+        let mut route53_impl_dns_record_mock = Route53::default();
+        route53_impl_dns_record_mock
+            .expect_delete_dns_record()
+            .with(
+                eq("hosted-zone-id".to_string()),
+                eq("example.com".to_string()),
+                eq(RecordType::A),
+                eq("test-record".to_string()),
+                eq(Some(3600)),
+            )
+            .return_once(|_, _, _, _, _| Err("Failed to delete DNS record".into()));
+
+        let mut dns_record = mock_dns_record(route53_impl_dns_record_mock).await;
+
+        // Act
+        let destroy_result = dns_record.destroy().await;
+
+        // Assert
+        assert!(destroy_result.is_err());
     }
 }
