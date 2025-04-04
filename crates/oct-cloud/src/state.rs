@@ -63,15 +63,17 @@ mod mocks {
         pub record_type: RecordType,
         pub record: String,
         pub ttl: Option<i64>,
+        pub hosted_zone_id: String,
     }
 
     impl MockDNSRecord {
         pub async fn new(
-            region: String,
+            hosted_zone_id: String,
             name: String,
             record_type: RecordType,
             record: String,
             ttl: Option<i64>,
+            region: String,
         ) -> Self {
             Self {
                 name,
@@ -79,6 +81,7 @@ mod mocks {
                 record_type,
                 record,
                 ttl,
+                hosted_zone_id,
             }
         }
     }
@@ -403,31 +406,34 @@ impl HostedZoneState {
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, PartialEq, Eq)]
 pub struct DNSRecordState {
-    pub region: String,
+    pub hosted_zone_id: String,
     pub name: String,
     pub record_type: String,
     pub record: String,
     pub ttl: Option<i64>,
+    pub region: String,
 }
 
 impl DNSRecordState {
     pub fn new(dns_record: &DNSRecord) -> Self {
         Self {
-            region: dns_record.region.clone(),
+            hosted_zone_id: dns_record.hosted_zone_id.clone(),
             name: dns_record.name.clone(),
             record_type: dns_record.record_type.as_str().to_string(),
             record: dns_record.record.clone(),
             ttl: dns_record.ttl,
+            region: dns_record.region.clone(),
         }
     }
 
     pub async fn new_from_state(&self) -> DNSRecord {
         DNSRecord::new(
-            self.region.clone(),
+            self.hosted_zone_id.clone(),
             self.name.clone(),
             RecordType::from(self.record_type.as_str()),
             self.record.clone(),
             self.ttl,
+            self.region.clone(),
         )
         .await
     }
@@ -841,6 +847,7 @@ mod tests {
                     record_type: RecordType::A.as_str().to_string(),
                     record: "record".to_string(),
                     ttl: Some(300),
+                    hosted_zone_id: "hosted_zone_id".to_string(),
                 }],
                 name: "name".to_string(),
                 region: "region".to_string(),
@@ -1462,6 +1469,7 @@ mod tests {
                     RecordType::A,
                     "1.1.1.1".to_string(),
                     Some(3600),
+                    "hosted_zone_id".to_string(),
                 )
                 .await,
             ]),
@@ -1490,6 +1498,7 @@ mod tests {
                 record_type: RecordType::A.as_str().to_string(),
                 record: "1.1.1.1".to_string(),
                 ttl: Some(3600),
+                hosted_zone_id: "hosted_zone_id".to_string(),
             }],
             name: "name".to_string(),
             region: "region".to_string(),
@@ -1508,11 +1517,12 @@ mod tests {
     async fn test_dns_record_state() {
         // Arrange
         let record = DNSRecord::new(
-            "region".to_string(),
+            "hosted_zone_id".to_string(),
             "name".to_string(),
             RecordType::A,
             "1.1.1.1".to_string(),
             Some(3600),
+            "region".to_string(),
         )
         .await;
 
@@ -1536,6 +1546,7 @@ mod tests {
             record_type: RecordType::A.as_str().to_string(),
             record: "1.1.1.1".to_string(),
             ttl: Some(3600),
+            hosted_zone_id: "hosted_zone_id".to_string(),
         };
 
         // Act

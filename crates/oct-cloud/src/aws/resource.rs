@@ -127,8 +127,17 @@ impl Resource for HostedZone {
 
         let mut dns_records = Vec::new();
         for (name, record_type, record, ttl) in dns_records_data {
-            dns_records
-                .push(DNSRecord::new(self.region.clone(), name, record_type, record, ttl).await);
+            dns_records.push(
+                DNSRecord::new(
+                    hosted_zone_id.clone(),
+                    name,
+                    record_type,
+                    record,
+                    ttl,
+                    self.region.clone(),
+                )
+                .await,
+            );
         }
 
         self.id = Some(hosted_zone_id);
@@ -155,20 +164,22 @@ impl Resource for HostedZone {
 pub struct DNSRecord {
     client: Route53,
 
-    pub region: String,
+    pub hosted_zone_id: String,
     pub name: String,
     pub record_type: RecordType,
     pub record: String,
     pub ttl: Option<i64>,
+    pub region: String,
 }
 
 impl DNSRecord {
     pub async fn new(
-        region: String,
+        hosted_zone_id: String,
         name: String,
         record_type: RecordType,
         record: String,
         ttl: Option<i64>,
+        region: String,
     ) -> Self {
         let region_provider = aws_sdk_ec2::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
@@ -185,11 +196,12 @@ impl DNSRecord {
 
         Self {
             client: Route53::new(route53_client),
-            region,
+            hosted_zone_id,
             name,
             record_type,
             record,
             ttl,
+            region,
         }
     }
 }
@@ -198,7 +210,7 @@ impl Resource for DNSRecord {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
             .create_dns_record(
-                self.region.clone(),
+                self.hosted_zone_id.clone(),
                 self.name.clone(),
                 self.record_type,
                 self.record.clone(),
@@ -212,7 +224,7 @@ impl Resource for DNSRecord {
     async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.client
             .delete_dns_record(
-                self.region.clone(),
+                self.hosted_zone_id.clone(),
                 self.name.clone(),
                 self.record_type,
                 self.record.clone(),
@@ -1217,13 +1229,26 @@ mod tests {
             id: Some("hosted-zone-id".to_string()),
             dns_records: Some(vec![DNSRecord {
                 client: Route53::default(),
-                region: "us-west-2".to_string(),
+                hosted_zone_id: "hosted-zone-id".to_string(),
                 name: "example.com".to_string(),
                 record_type: RecordType::A,
                 record: "test-record".to_string(),
                 ttl: Some(3600),
+                region: "us-west-2".to_string(),
             }]),
             name: "example.com".to_string(),
+            region: "us-west-2".to_string(),
+        }
+    }
+
+    async fn mock_dns_record(client: Route53) -> DNSRecord {
+        DNSRecord {
+            client,
+            hosted_zone_id: "hosted-zone-id".to_string(),
+            name: "example.com".to_string(),
+            record_type: RecordType::A,
+            record: "test-record".to_string(),
+            ttl: Some(3600),
             region: "us-west-2".to_string(),
         }
     }
@@ -2472,5 +2497,53 @@ mod tests {
 
         // Assert
         assert!(destroy_result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_dns_record() {
+        // Arrange
+        let mut route53_impl_dns_record_mock = Route53::default();
+        route53_impl_dns_record_mock
+            .expect_create_dns_record()
+            .with(
+                eq("hosted-zone-id".to_string()),
+                eq("example.com".to_string()),
+                eq(RecordType::A),
+                eq("test-record".to_string()),
+                eq(Some(3600)),
+            )
+            .return_once(|_, _, _, _, _| Ok(()));
+
+        let mut dns_record = mock_dns_record(route53_impl_dns_record_mock).await;
+
+        // Act
+        let create_result = dns_record.create().await;
+
+        // Assert
+        assert!(create_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_dns_record_error() {
+        // Arrange
+        let mut route53_impl_dns_record_mock = Route53::default();
+        route53_impl_dns_record_mock
+            .expect_create_dns_record()
+            .with(
+                eq("hosted-zone-id".to_string()),
+                eq("example.com".to_string()),
+                eq(RecordType::A),
+                eq("test-record".to_string()),
+                eq(Some(3600)),
+            )
+            .return_once(|_, _, _, _, _| Err("Failed to create DNS record".into()));
+
+        let mut dns_record = mock_dns_record(route53_impl_dns_record_mock).await;
+
+        // Act
+        let create_result = dns_record.create().await;
+
+        // Assert
+        assert!(create_result.is_err());
     }
 }
