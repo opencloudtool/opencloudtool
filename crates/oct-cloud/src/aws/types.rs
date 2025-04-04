@@ -1,11 +1,14 @@
 use aws_sdk_route53::types::RrType;
 
+use std::fmt;
+
 /// Represents an AWS resource record type.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum RecordType {
     A,
     NS,
     SOA,
+    TXT,
 }
 
 impl From<&str> for RecordType {
@@ -14,6 +17,7 @@ impl From<&str> for RecordType {
             "A" => Self::A,
             "NS" => Self::NS,
             "SOA" => Self::SOA,
+            "TXT" => Self::TXT,
             _ => panic!("Invalid record type: {s}"),
         }
     }
@@ -25,7 +29,19 @@ impl From<RrType> for RecordType {
             RrType::A => Self::A,
             RrType::Ns => Self::NS,
             RrType::Soa => Self::SOA,
+            RrType::Txt => Self::TXT,
             _ => panic!("Invalid record type: {rr_type}"),
+        }
+    }
+}
+
+impl From<RecordType> for RrType {
+    fn from(value: RecordType) -> Self {
+        match value {
+            RecordType::A => Self::A,
+            RecordType::NS => Self::Ns,
+            RecordType::SOA => Self::Soa,
+            RecordType::TXT => Self::Txt,
         }
     }
 }
@@ -36,7 +52,14 @@ impl RecordType {
             RecordType::A => "A",
             RecordType::NS => "NS",
             RecordType::SOA => "SOA",
+            RecordType::TXT => "TXT",
         }
+    }
+}
+
+impl fmt::Display for RecordType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 /// Represents an AWS instance type.
@@ -78,10 +101,30 @@ impl From<&str> for InstanceType {
 #[cfg(test)]
 mod tests {
     use super::{InstanceType, RecordType};
+    use aws_sdk_route53::types::RrType;
+
+    #[test]
+    fn test_display() {
+        assert_eq!(RecordType::A.to_string(), "A");
+        assert_eq!(RecordType::NS.to_string(), "NS");
+        assert_eq!(RecordType::SOA.to_string(), "SOA");
+        assert_eq!(RecordType::TXT.to_string(), "TXT");
+    }
+
+    #[test]
+    fn test_rr_type_from_record_type() {
+        assert_eq!(RrType::from(RecordType::A), RrType::A);
+        assert_eq!(RrType::from(RecordType::NS), RrType::Ns);
+        assert_eq!(RrType::from(RecordType::SOA), RrType::Soa);
+        assert_eq!(RrType::from(RecordType::TXT), RrType::Txt);
+    }
 
     #[test]
     fn test_record_type_from_str() {
         assert_eq!(RecordType::from("A"), RecordType::A);
+        assert_eq!(RecordType::from("NS"), RecordType::NS);
+        assert_eq!(RecordType::from("SOA"), RecordType::SOA);
+        assert_eq!(RecordType::from("TXT"), RecordType::TXT);
     }
 
     #[test]
@@ -96,6 +139,18 @@ mod tests {
             RecordType::from(aws_sdk_route53::types::RrType::A),
             RecordType::A
         );
+        assert_eq!(
+            RecordType::from(aws_sdk_route53::types::RrType::Ns),
+            RecordType::NS
+        );
+        assert_eq!(
+            RecordType::from(aws_sdk_route53::types::RrType::Soa),
+            RecordType::SOA
+        );
+        assert_eq!(
+            RecordType::from(aws_sdk_route53::types::RrType::Txt),
+            RecordType::TXT
+        );
     }
     #[test]
     #[should_panic(expected = "Invalid record type: AAAA")]
@@ -106,6 +161,9 @@ mod tests {
     #[test]
     fn test_record_type_as_str() {
         assert_eq!(RecordType::A.as_str(), "A");
+        assert_eq!(RecordType::NS.as_str(), "NS");
+        assert_eq!(RecordType::SOA.as_str(), "SOA");
+        assert_eq!(RecordType::TXT.as_str(), "TXT");
     }
 
     #[test]

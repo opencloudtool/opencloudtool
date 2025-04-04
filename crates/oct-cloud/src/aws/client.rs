@@ -1,10 +1,10 @@
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
-use aws_sdk_route53::types::ResourceRecordSet;
+use aws_sdk_route53::types::ChangeAction;
 use uuid::Uuid;
 
-use crate::aws::types::InstanceType;
+use crate::aws::types::{InstanceType, RecordType};
 
 #[cfg(test)]
 use mockall::automock;
@@ -657,10 +657,10 @@ impl Route53Impl {
         Ok(())
     }
 
-    pub(super) async fn get_dns_record_sets(
+    pub(super) async fn get_dns_records(
         &self,
         hosted_zone_id: String,
-    ) -> Result<Vec<ResourceRecordSet>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<(String, RecordType, String, Option<i64>)>, Box<dyn std::error::Error>> {
         log::info!("Getting DNS records for {hosted_zone_id}");
 
         let response = self
@@ -670,7 +670,102 @@ impl Route53Impl {
             .send()
             .await?;
 
-        Ok(response.resource_record_sets().to_vec())
+        let resource_record_sets = response.resource_record_sets().to_vec();
+
+        let mut result = Vec::new();
+        for record_set in resource_record_sets {
+            for record in record_set.resource_records() {
+                let name = record_set.name().to_string();
+                let record_type = RecordType::from(record_set.r#type().clone());
+                let value = record.value().to_string();
+                let ttl = record_set.ttl;
+
+                result.push((name, record_type, value, ttl));
+            }
+        }
+
+        Ok(result)
+    }
+
+    async fn change_dns_record(
+        &self,
+        hosted_zone_id: String,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: Option<i64>,
+        action: ChangeAction,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("{action} {record_type} record for {domain_name}");
+
+        let resource_record = aws_sdk_route53::types::ResourceRecord::builder()
+            .value(record_value)
+            .build()?;
+
+        let record_set = aws_sdk_route53::types::ResourceRecordSet::builder()
+            .name(domain_name.clone())
+            .r#type(record_type.into())
+            .ttl(ttl.unwrap_or(3600))
+            .resource_records(resource_record)
+            .build()?;
+
+        let change = aws_sdk_route53::types::Change::builder()
+            .action(action.clone())
+            .resource_record_set(record_set)
+            .build()?;
+
+        let changes = aws_sdk_route53::types::ChangeBatch::builder()
+            .changes(change)
+            .build()?;
+
+        self.inner
+            .change_resource_record_sets()
+            .hosted_zone_id(hosted_zone_id)
+            .change_batch(changes)
+            .send()
+            .await?;
+
+        log::info!("{action} {record_type} record for {domain_name}");
+
+        Ok(())
+    }
+
+    pub(super) async fn create_dns_record(
+        &self,
+        hosted_zone_id: String,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: Option<i64>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.change_dns_record(
+            hosted_zone_id,
+            domain_name,
+            record_type,
+            record_value,
+            ttl,
+            ChangeAction::Create,
+        )
+        .await
+    }
+
+    pub(super) async fn delete_dns_record(
+        &self,
+        hosted_zone_id: String,
+        domain_name: String,
+        record_type: RecordType,
+        record_value: String,
+        ttl: Option<i64>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.change_dns_record(
+            hosted_zone_id,
+            domain_name,
+            record_type,
+            record_value,
+            ttl,
+            ChangeAction::Delete,
+        )
+        .await
     }
 }
 
