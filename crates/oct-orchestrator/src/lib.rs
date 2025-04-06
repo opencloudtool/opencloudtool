@@ -288,7 +288,7 @@ impl Orchestrator {
 
         if let Some(domain_name) = config.project.domain.clone() {
             let mut hosted_zone =
-                HostedZone::new(None, None, domain_name, "us-west-2".to_string()).await;
+                HostedZone::new(None, vec![], domain_name, "us-west-2".to_string()).await;
 
             hosted_zone.create().await?;
             state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
