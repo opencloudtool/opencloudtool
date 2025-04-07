@@ -117,7 +117,6 @@ impl HostedZone {
         }
     }
 
-    #[allow(dead_code)]
     async fn check_ns_records(&self) -> Result<(), Box<dyn std::error::Error>> {
         let verification_id = Uuid::new_v4().simple().to_string();
         let subdomain = format!("_verify.{}", self.name);
@@ -527,9 +526,6 @@ impl Resource for Ec2Instance {
         if self.public_ip.is_none() || self.public_dns.is_none() {
             return Err("Failed to retrieve instance metadata after retries".into());
         }
-
-        // Assign domanin {instance_id}.test.opencloudtool.com
-        // create DNS record
 
         Ok(())
     }

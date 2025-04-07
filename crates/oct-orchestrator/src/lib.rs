@@ -397,7 +397,7 @@ impl Orchestrator {
             && /home/ubuntu/oct-ctl &
         "#,
         );
-        // TODO pass HZ
+
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
                 None,
