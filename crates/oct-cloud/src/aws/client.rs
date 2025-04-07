@@ -659,19 +659,16 @@ impl Route53Impl {
         // Filter out NS and SOA, and delete the rest
         for record_set in record_sets {
             if record_set.r#type().as_str() != "NS" && record_set.r#type().as_str() != "SOA" {
-                self.delete_dns_record(
-                    id.clone(),
-                    record_set.name().to_string(),
-                    RecordType::from(record_set.r#type().clone()),
-                    record_set
-                        .resource_records()
-                        .first()
-                        .expect("Failed to retrieve resource record")
-                        .value()
-                        .to_string(),
-                    record_set.ttl(),
-                )
-                .await?;
+                for record in record_set.resource_records() {
+                    self.delete_dns_record(
+                        id.clone(),
+                        record_set.name().to_string(),
+                        RecordType::from(record_set.r#type().clone()),
+                        record.value().to_string(),
+                        record_set.ttl(),
+                    )
+                    .await?;
+                }
             }
         }
 
