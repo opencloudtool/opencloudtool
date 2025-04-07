@@ -3,10 +3,10 @@ use std::path::Path;
 use std::process::Command;
 
 use oct_cloud::aws::resource::{
-    Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
+    DNSRecord, Ec2Instance, EcrRepository, HostedZone, InboundRule, InstanceProfile, InstanceRole,
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
-use oct_cloud::aws::types::InstanceType;
+use oct_cloud::aws::types::{InstanceType, RecordType};
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -403,6 +403,7 @@ impl Orchestrator {
                 None,
                 None,
                 None,
+                None,
                 "us-west-2".to_string(),
                 "ami-04dd23e62ed049936".to_string(),
                 Self::INSTANCE_TYPE,
@@ -417,8 +418,34 @@ impl Orchestrator {
             instance.create().await?;
 
             let instance_id = instance.id.clone().ok_or("No instance id")?;
+            let instance_public_ip = instance.public_ip.clone().ok_or("No instance public ip")?;
 
             log::info!("Instance created: {instance_id}");
+
+            if let Some(hosted_zone) = state.hosted_zone.as_ref() {
+                let hosted_zone_id = hosted_zone.id.clone();
+                let hosted_zone_name = hosted_zone.name.clone();
+
+                let subdomain = format!("{instance_id}.{hosted_zone_name}");
+
+                let mut dns_record = DNSRecord::new(
+                    hosted_zone_id,
+                    subdomain.clone(),
+                    RecordType::A,
+                    instance_public_ip.clone(),
+                    Some(3600),
+                    instance.region.clone(),
+                )
+                .await;
+
+                dns_record.create().await?;
+
+                instance.dns_record = Some(dns_record);
+
+                log::info!(
+                    "Instance {instance_id} will be available at http://{subdomain}, once host is ready."
+                );
+            }
 
             state
                 .instances

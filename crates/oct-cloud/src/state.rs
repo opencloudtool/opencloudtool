@@ -20,6 +20,7 @@ pub struct Ec2InstanceState {
     pub id: String,
     pub public_ip: String,
     pub public_dns: String,
+    pub dns_record: Option<DNSRecordState>,
     pub region: String,
     pub ami: String,
     pub instance_type: String,
@@ -113,6 +114,7 @@ mod mocks {
         pub id: Option<String>,
         pub public_ip: Option<String>,
         pub public_dns: Option<String>,
+        pub dns_record: Option<MockDNSRecord>,
         pub region: String,
         pub ami: String,
         pub instance_type: InstanceType,
@@ -128,6 +130,7 @@ mod mocks {
             id: Option<String>,
             public_ip: Option<String>,
             public_dns: Option<String>,
+            dns_record: Option<MockDNSRecord>,
             region: String,
             ami: String,
             instance_type: InstanceType,
@@ -141,6 +144,7 @@ mod mocks {
                 id,
                 public_ip,
                 public_dns,
+                dns_record,
                 region,
                 ami,
                 instance_type,
@@ -480,6 +484,7 @@ impl Ec2InstanceState {
                 .public_dns
                 .clone()
                 .expect("Public dns is not set"),
+            dns_record: ec2_instance.dns_record.as_ref().map(DNSRecordState::new),
             region: ec2_instance.region.clone(),
             ami: ec2_instance.ami.clone(),
             instance_type: ec2_instance.instance_type.name.to_string(),
@@ -492,10 +497,15 @@ impl Ec2InstanceState {
     }
 
     pub async fn new_from_state(&self) -> Result<Ec2Instance, Box<dyn std::error::Error>> {
+        let dns_record = match &self.dns_record {
+            Some(dns_record) => Some(dns_record.new_from_state().await),
+            None => None,
+        };
         Ok(Ec2Instance::new(
             Some(self.id.clone()),
             Some(self.public_ip.clone()),
             Some(self.public_dns.clone()),
+            dns_record,
             self.region.clone(),
             self.ami.clone(),
             InstanceType::from(self.instance_type.as_str()),
@@ -830,6 +840,14 @@ mod tests {
                 id: "id".to_string(),
                 public_ip: "public_ip".to_string(),
                 public_dns: "public_dns".to_string(),
+                dns_record: Some(DNSRecordState {
+                    region: "region".to_string(),
+                    name: "name".to_string(),
+                    record_type: RecordType::A.as_str().to_string(),
+                    value: "record".to_string(),
+                    ttl: Some(300),
+                    hosted_zone_id: "hosted_zone_id".to_string(),
+                }),
                 region: "region".to_string(),
                 ami: "ami".to_string(),
                 instance_type: "t2.micro".to_string(),
@@ -865,6 +883,17 @@ mod tests {
             Some("id".to_string()),
             Some("public_ip".to_string()),
             Some("public_dns".to_string()),
+            Some(
+                DNSRecord::new(
+                    "region".to_string(),
+                    "name".to_string(),
+                    RecordType::A,
+                    "record".to_string(),
+                    Some(300),
+                    "hosted_zone_id".to_string(),
+                )
+                .await,
+            ),
             "region".to_string(),
             "ami".to_string(),
             InstanceType::T2_MICRO,
@@ -900,6 +929,14 @@ mod tests {
             id: "id".to_string(),
             public_ip: "public_ip".to_string(),
             public_dns: "public_dns".to_string(),
+            dns_record: Some(DNSRecordState {
+                region: "region".to_string(),
+                name: "name".to_string(),
+                record_type: RecordType::A.as_str().to_string(),
+                value: "record".to_string(),
+                ttl: Some(300),
+                hosted_zone_id: "hosted_zone_id".to_string(),
+            }),
             region: "region".to_string(),
             ami: "ami".to_string(),
             instance_type: "t2.micro".to_string(),

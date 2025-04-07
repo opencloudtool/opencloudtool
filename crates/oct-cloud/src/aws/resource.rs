@@ -117,7 +117,8 @@ impl HostedZone {
         }
     }
 
-    pub async fn check_ns_records(&self) -> Result<(), Box<dyn std::error::Error>> {
+    #[allow(dead_code)]
+    async fn check_ns_records(&self) -> Result<(), Box<dyn std::error::Error>> {
         let verification_id = Uuid::new_v4().simple().to_string();
         let subdomain = format!("_verify.{}", self.name);
 
@@ -127,7 +128,7 @@ impl HostedZone {
                 subdomain.clone(),
                 RecordType::TXT,
                 format!("\"{verification_id}\""),
-                300,
+                Some(300),
             )
             .await?;
 
@@ -167,26 +168,6 @@ impl HostedZone {
 
         Err("Failed to verify record".into())
     }
-
-    pub async fn create_dns_record(
-        &mut self,
-        domain_name: String,
-        record_type: RecordType,
-        record_value: String,
-        ttl: i64,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.client
-            .create_dns_record(
-                self.id.clone().ok_or("No hosted zone id")?,
-                domain_name,
-                record_type,
-                record_value,
-                ttl,
-            )
-            .await?;
-
-        Ok(())
-    }
 }
 
 impl Resource for HostedZone {
@@ -197,30 +178,35 @@ impl Resource for HostedZone {
 
         let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
-        let dns_record_sets = resource_record_sets
-            .into_iter()
-            .map(|record_set| {
-                DNSRecordSet::new(
-                    record_set.name,
-                    RecordType::from(record_set.r#type),
-                    record_set
-                        .resource_records
-                        .map(|records| records.iter().map(|r| r.value.clone()).collect()),
-                    record_set.ttl,
+        let mut dns_records = Vec::new();
+        for (name, record_type, value, ttl) in dns_records_data {
+            dns_records.push(
+                DNSRecord::new(
+                    hosted_zone_id.clone(),
+                    name,
+                    record_type,
+                    value,
+                    ttl,
+                    self.region.clone(),
                 )
-            })
-            .collect::<Vec<_>>();
-
-        let ns_records = dns_record_sets
-            .iter()
-            .filter(|r| r.record_type == RecordType::NS)
-            .cloned()
-            .collect::<Vec<_>>();
+                .await,
+            );
+        }
 
         self.id = Some(hosted_zone_id);
-        self.dns_record_sets = Some(dns_record_sets);
+        self.dns_records = dns_records;
 
-        log::info!("Please map these NS records in your domain provider: {ns_records:?}");
+        let ns_records = self
+            .dns_records
+            .iter()
+            .filter(|r| r.record_type == RecordType::NS)
+            .collect::<Vec<_>>();
+
+        log::info!("Please map these NS records in your domain provider:");
+
+        for record in ns_records {
+            log::info!("{}", record.value);
+        }
 
         // Check if ns records need to be mapped
         #[cfg(not(test))]
@@ -388,6 +374,7 @@ pub struct Ec2Instance {
 
     pub public_ip: Option<String>,
     pub public_dns: Option<String>,
+    pub dns_record: Option<DNSRecord>,
 
     // Known before creation
     pub region: String,
@@ -409,6 +396,7 @@ impl Ec2Instance {
         id: Option<String>,
         public_ip: Option<String>,
         public_dns: Option<String>,
+        dns_record: Option<DNSRecord>,
         region: String,
         ami: String,
         instance_type: InstanceType,
@@ -439,6 +427,7 @@ impl Ec2Instance {
             id,
             public_ip,
             public_dns,
+            dns_record,
             region,
             ami,
             instance_type,
@@ -1214,6 +1203,7 @@ mod tests {
             id: None,
             public_ip: None,
             public_dns: None,
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
@@ -1760,6 +1750,7 @@ mod tests {
             id: Some("id".to_string()),
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
@@ -1794,6 +1785,7 @@ mod tests {
             id: None,
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
