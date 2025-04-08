@@ -627,18 +627,88 @@ impl Route53Impl {
         let response = self
             .inner
             .create_hosted_zone()
-            .name(domain_name)
+            .name(domain_name.clone())
             .caller_reference(Uuid::new_v4().to_string())
             .send()
             .await?;
 
         log::info!("Created Route53 hosted zone");
 
-        Ok(response
+        let hosted_zone_id = response
             .hosted_zone()
-            .expect("Failed to retrieve hosted zone")
+            .ok_or("Failed to retrieve hosted zone")?
             .id()
-            .to_string())
+            .to_string();
+
+        log::info!("Getting DNS records for hosted zone");
+
+        let dns_records_data = self.get_dns_records(hosted_zone_id.clone()).await?;
+
+        log::info!("Please map these NS records in your domain provider:");
+
+        for (_name, record_type, value, _ttl) in dns_records_data {
+            if record_type == RecordType::NS {
+                log::info!("{value}");
+            }
+        }
+
+        self.check_ns_records(&domain_name, &hosted_zone_id).await?;
+
+        Ok(hosted_zone_id)
+    }
+
+    async fn check_ns_records(
+        &self,
+        domain_name: &str,
+        hosted_zone_id: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let verification_id = Uuid::new_v4().simple().to_string();
+        let subdomain = format!("_verify.{domain_name}");
+
+        self.create_dns_record(
+            hosted_zone_id.to_string(),
+            subdomain.clone(),
+            RecordType::TXT,
+            format!("\"{verification_id}\""),
+            Some(300),
+        )
+        .await?;
+
+        log::info!("Record created: {subdomain} - {verification_id}");
+
+        log::info!("Checking record...");
+
+        let mut attempts = 0;
+        let max_attempts = 70;
+        let sleep_duration_s = 5;
+
+        while attempts < max_attempts {
+            let output = std::process::Command::new("dig")
+                .arg("-t")
+                .arg("TXT")
+                .arg(subdomain.clone())
+                .arg("+short")
+                .output()?;
+
+            if output.status.success() {
+                let output = String::from_utf8_lossy(&output.stdout);
+                if output.contains(&verification_id) {
+                    log::info!("Record verified");
+
+                    return Ok(());
+                }
+            }
+
+            log::info!(
+                "Record not verified. \
+                Retrying in {sleep_duration_s} seconds..."
+            );
+
+            attempts += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+        }
+
+        Err("Failed to verify record".into())
     }
 
     pub(super) async fn delete_hosted_zone(

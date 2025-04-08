@@ -1,5 +1,4 @@
 use base64::{Engine as _, engine::general_purpose};
-use uuid::Uuid;
 
 use aws_sdk_ec2::types::InstanceStateName;
 
@@ -116,65 +115,11 @@ impl HostedZone {
             region,
         }
     }
-
-    #[allow(dead_code)]
-    async fn check_ns_records(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let verification_id = Uuid::new_v4().simple().to_string();
-        let subdomain = format!("_verify.{}", self.name);
-
-        self.client
-            .create_dns_record(
-                self.id.clone().ok_or("No hosted zone id")?,
-                subdomain.clone(),
-                RecordType::TXT,
-                format!("\"{verification_id}\""),
-                Some(300),
-            )
-            .await?;
-
-        log::info!("Record created: {subdomain} - {verification_id}");
-
-        log::info!("Checking record...");
-
-        let mut attempts = 0;
-        let max_attempts = 70;
-        let sleep_duration_s = 5;
-
-        while attempts < max_attempts {
-            let output = std::process::Command::new("dig")
-                .arg("-t")
-                .arg("TXT")
-                .arg(subdomain.clone())
-                .arg("+short")
-                .output()?;
-
-            if output.status.success() {
-                let output = String::from_utf8_lossy(&output.stdout);
-                if output.contains(&verification_id) {
-                    log::info!("Record verified");
-
-                    return Ok(());
-                }
-            }
-
-            log::info!(
-                "Record not verified. \
-                Retrying in {sleep_duration_s} seconds..."
-            );
-
-            attempts += 1;
-            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
-        }
-
-        Err("Failed to verify record".into())
-    }
 }
 
 impl Resource for HostedZone {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let hosted_zone_id = self.client.create_hosted_zone(self.name.clone()).await?;
-
-        log::info!("Getting DNS record sets for hosted zone");
 
         let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
@@ -195,22 +140,6 @@ impl Resource for HostedZone {
 
         self.id = Some(hosted_zone_id);
         self.dns_records = dns_records;
-
-        let ns_records = self
-            .dns_records
-            .iter()
-            .filter(|r| r.record_type == RecordType::NS)
-            .collect::<Vec<_>>();
-
-        log::info!("Please map these NS records in your domain provider:");
-
-        for record in ns_records {
-            log::info!("{}", record.value);
-        }
-
-        // Check if ns records need to be mapped
-        #[cfg(not(test))]
-        self.check_ns_records().await?;
 
         Ok(())
     }
