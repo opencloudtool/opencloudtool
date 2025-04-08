@@ -1,5 +1,4 @@
 use aws_sdk_route53::types::RrType;
-
 use std::fmt;
 
 /// Represents an AWS resource record type.
@@ -62,6 +61,7 @@ impl fmt::Display for RecordType {
         f.write_str(self.as_str())
     }
 }
+
 /// Represents an AWS instance type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceType {

@@ -121,8 +121,6 @@ impl Resource for HostedZone {
     async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let hosted_zone_id = self.client.create_hosted_zone(self.name.clone()).await?;
 
-        log::info!("Getting DNS record sets for hosted zone");
-
         let dns_records_data = self.client.get_dns_records(hosted_zone_id.clone()).await?;
 
         let mut dns_records = Vec::new();
@@ -139,8 +137,6 @@ impl Resource for HostedZone {
                 .await,
             );
         }
-
-        log::info!("DNS records: {dns_records:?}");
 
         self.id = Some(hosted_zone_id);
         self.dns_records = dns_records;
@@ -307,6 +303,7 @@ pub struct Ec2Instance {
 
     pub public_ip: Option<String>,
     pub public_dns: Option<String>,
+    pub dns_record: Option<DNSRecord>,
 
     // Known before creation
     pub region: String,
@@ -321,12 +318,14 @@ pub struct Ec2Instance {
     pub instance_profile_name: String,
     pub subnet_id: String,
     pub security_group_id: String,
+    // Add HostedZone
 }
 impl Ec2Instance {
     pub async fn new(
         id: Option<String>,
         public_ip: Option<String>,
         public_dns: Option<String>,
+        dns_record: Option<DNSRecord>,
         region: String,
         ami: String,
         instance_type: InstanceType,
@@ -357,6 +356,7 @@ impl Ec2Instance {
             id,
             public_ip,
             public_dns,
+            dns_record,
             region,
             ami,
             instance_type,
@@ -1129,6 +1129,7 @@ mod tests {
             id: None,
             public_ip: None,
             public_dns: None,
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
@@ -1675,6 +1676,7 @@ mod tests {
             id: Some("id".to_string()),
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
@@ -1709,6 +1711,7 @@ mod tests {
             id: None,
             public_ip: Some("1.1.1.1".to_string()),
             public_dns: Some("example.com".to_string()),
+            dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
             instance_type: InstanceType::T2_MICRO,
