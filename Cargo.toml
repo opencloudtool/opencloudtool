@@ -23,7 +23,7 @@ serde_derive = "1.0.213"
 serde_json = "1.0.140"
 tempfile = "3.19.1"
 tera = { git = "https://github.com/minev-dev/tera.git", rev = "1e36d2f8ba66833ce9ad2b46044e21f8240b5299" } # Contains custom logic to render variables ignoring unknown variables
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 mockall = "0.13.1"
 mockito = "1.7.0"
 uuid = { version = "1.16.0", features = ["v4"] }
