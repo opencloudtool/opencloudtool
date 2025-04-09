@@ -51,9 +51,9 @@ aws configure sso
 
 Each version of OpenCloudTool has a mini-project to prove the design and implementation.
 
-### v0.4.0 "Production usage PoC"
+### v0.5.0 "Refactor: Deployment speed and scalability"
 
-![v0.4.0](./docs/v0.4.0.excalidraw.png)
+![v0.5.0](./docs/v0.5.0.excalidraw.png)
 
 ## Development
 
