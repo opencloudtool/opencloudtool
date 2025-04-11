@@ -144,31 +144,34 @@ impl Orchestrator {
         }
 
         // Destroy infrastructure
-        for i in (0..state.instances.len()).rev() {
-            let mut instance = state.instances[i].new_from_state().await?;
+        while let Some(instance) = state.instances.pop() {
+            let mut instance = instance.new_from_state().await?;
 
             instance.destroy().await?;
-            state.instances.remove(i);
             state_backend.save(&state).await?;
         }
 
         log::info!("Instances destroyed");
 
-        let mut vpc = state.vpc.new_from_state().await;
+        if let Some(vpc) = state.vpc {
+            let mut vpc = vpc.new_from_state().await;
 
-        vpc.destroy().await?;
-        state.vpc = state::VPCState::default();
-        state_backend.save(&state).await?;
+            vpc.destroy().await?;
+            state.vpc = None;
+            state_backend.save(&state).await?;
 
-        log::info!("VPC destroyed");
+            log::info!("VPC destroyed");
+        }
 
-        let mut instance_profile = state.instance_profile.new_from_state().await;
+        if let Some(instance_profile) = state.instance_profile {
+            let mut instance_profile = instance_profile.new_from_state().await;
 
-        instance_profile.destroy().await?;
-        state.instance_profile = state::InstanceProfileState::default();
-        state_backend.save(&state).await?;
+            instance_profile.destroy().await?;
+            state.instance_profile = None;
+            state_backend.save(&state).await?;
 
-        log::info!("Instance profile destroyed");
+            log::info!("Instance profile destroyed");
+        }
 
         if let Some(hosted_zone) = state.hosted_zone {
             let mut hosted_zone = hosted_zone.new_from_state().await;
@@ -278,88 +281,83 @@ impl Orchestrator {
     ) -> Result<state::State, Box<dyn std::error::Error>> {
         let state_backend =
             backend::get_state_backend::<state::State>(&config.project.state_backend);
-        let (mut state, loaded) = state_backend.load().await?;
-
-        if loaded {
-            log::info!("State file already exists");
-
-            return Ok(state);
-        }
+        let (mut state, _loaded) = state_backend.load().await?;
 
         if let Some(domain_name) = config.project.domain.clone() {
             let mut hosted_zone =
                 HostedZone::new(None, vec![], domain_name, "us-west-2".to_string()).await;
 
-            hosted_zone.create().await?;
-            state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
-            state_backend.save(&state).await?;
+            if state.hosted_zone.is_none() {
+                hosted_zone.create().await?;
+                state.hosted_zone = Some(state::HostedZoneState::new(&hosted_zone));
+                state_backend.save(&state).await?;
+            } else {
+                log::info!("Hosted zone already exists");
+            }
         }
 
-        let inbound_rules = vec![
-            InboundRule {
-                cidr_block: "0.0.0.0/0".to_string(),
-                protocol: "tcp".to_string(),
-                port: 80,
-            },
-            InboundRule {
-                cidr_block: "0.0.0.0/0".to_string(),
-                protocol: "tcp".to_string(),
-                port: 31888,
-            },
-            InboundRule {
-                cidr_block: "0.0.0.0/0".to_string(),
-                protocol: "tcp".to_string(),
-                port: 22,
-            },
-        ];
+        if state.vpc.is_none() {
+            let inbound_rules = vec![
+                InboundRule {
+                    cidr_block: "0.0.0.0/0".to_string(),
+                    protocol: "tcp".to_string(),
+                    port: 80,
+                },
+                InboundRule {
+                    cidr_block: "0.0.0.0/0".to_string(),
+                    protocol: "tcp".to_string(),
+                    port: 31888,
+                },
+                InboundRule {
+                    cidr_block: "0.0.0.0/0".to_string(),
+                    protocol: "tcp".to_string(),
+                    port: 22,
+                },
+            ];
 
-        let security_group = SecurityGroup::new(
-            None,
-            "ct-app-security-group".to_string(),
-            None,
-            "ct-app-security-group".to_string(),
-            "us-west-2".to_string(),
-            inbound_rules,
-        )
-        .await;
+            let security_group = SecurityGroup::new(
+                None,
+                "ct-app-security-group".to_string(),
+                None,
+                "ct-app-security-group".to_string(),
+                "us-west-2".to_string(),
+                inbound_rules,
+            )
+            .await;
 
-        let route_table = RouteTable::new(None, None, None, "us-west-2".to_string()).await;
+            let route_table = RouteTable::new(None, None, None, "us-west-2".to_string()).await;
 
-        let internet_gateway =
-            InternetGateway::new(None, None, None, None, "us-west-2".to_string()).await;
+            let internet_gateway =
+                InternetGateway::new(None, None, None, None, "us-west-2".to_string()).await;
 
-        let subnet = Subnet::new(
-            None,
-            "us-west-2".to_string(),
-            "10.0.0.0/24".to_string(),
-            "us-west-2a".to_string(),
-            None,
-            "ct-app-subnet".to_string(),
-        )
-        .await;
+            let subnet = Subnet::new(
+                None,
+                "us-west-2".to_string(),
+                "10.0.0.0/24".to_string(),
+                "us-west-2a".to_string(),
+                None,
+                "ct-app-subnet".to_string(),
+            )
+            .await;
 
-        let mut vpc = VPC::new(
-            None,
-            "us-west-2".to_string(),
-            "10.0.0.0/16".to_string(),
-            "ct-app-vpc".to_string(),
-            subnet,
-            Some(internet_gateway),
-            route_table,
-            security_group,
-        )
-        .await;
+            let mut vpc = VPC::new(
+                None,
+                "us-west-2".to_string(),
+                "10.0.0.0/16".to_string(),
+                "ct-app-vpc".to_string(),
+                subnet,
+                Some(internet_gateway),
+                route_table,
+                security_group,
+            )
+            .await;
 
-        vpc.create().await?;
-        state.vpc = state::VPCState::new(&vpc);
-        state_backend.save(&state).await?;
-
-        let subnet_id = vpc.subnet.id.clone().ok_or("No subnet id")?;
-        let security_group_id = vpc
-            .security_group
-            .id
-            .clone()
-            .ok_or("No security group id")?;
+            vpc.create().await?;
+            state.vpc = Some(state::VPCState::new(&vpc));
+            state_backend.save(&state).await?;
+        } else {
+            log::info!("VPC already exists");
+        }
 
         let mut instance_profile = InstanceProfile::new(
             "oct-instance-profile".to_string(),
@@ -368,9 +366,13 @@ impl Orchestrator {
         )
         .await;
 
-        instance_profile.create().await?;
-        state.instance_profile = state::InstanceProfileState::new(&instance_profile);
-        state_backend.save(&state).await?;
+        if state.instance_profile.is_none() {
+            instance_profile.create().await?;
+            state.instance_profile = Some(state::InstanceProfileState::new(&instance_profile));
+            state_backend.save(&state).await?;
+        } else {
+            log::info!("Instance profile already exists");
+        }
 
         let ecr_login_string = match base_ecr_url {
             Some(base_ecr_url) => format!(
@@ -397,6 +399,30 @@ impl Orchestrator {
             && /home/ubuntu/oct-ctl &
         "#,
         );
+
+        if state.instances.len() == number_of_instances as usize {
+            log::info!("All instances are already created");
+
+            return Ok(state);
+        }
+
+        log::info!("Removing existing instances");
+
+        while let Some(instance) = state.instances.pop() {
+            let mut instance = instance.new_from_state().await?;
+
+            instance.destroy().await?;
+            state_backend.save(&state).await?;
+        }
+
+        let subnet_id = state.vpc.as_ref().ok_or("No VPC")?.subnet.id.clone();
+        let security_group_id = state
+            .vpc
+            .as_ref()
+            .ok_or("No VPC")?
+            .security_group
+            .id
+            .clone();
 
         for _ in 0..number_of_instances {
             let mut instance = Ec2Instance::new(
@@ -715,7 +741,11 @@ fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(&container_manager).args(push_args).output()?;
 
     if !output.status.success() {
-        return Err("Failed to push image to ECR repository".into());
+        return Err(format!(
+            "Failed to push image to ECR repository. Error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
 
     log::info!("Pushed image to ECR repository using '{container_manager}'");

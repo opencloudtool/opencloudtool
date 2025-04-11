@@ -4,11 +4,11 @@ use crate::aws::types::{InstanceType, RecordType};
 
 #[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct State {
-    pub vpc: VPCState,
+    pub vpc: Option<VPCState>,
 
     pub ecr_repos: Vec<ECRState>,
 
-    pub instance_profile: InstanceProfileState,
+    pub instance_profile: Option<InstanceProfileState>,
 
     pub instances: Vec<Ec2InstanceState>,
 
@@ -791,7 +791,7 @@ mod tests {
     async fn test_state() {
         // Arrange
         let state = State {
-            vpc: VPCState {
+            vpc: Some(VPCState {
                 id: "id".to_string(),
                 region: "region".to_string(),
                 cidr_block: "test_cidr_block".to_string(),
@@ -819,14 +819,14 @@ mod tests {
                     region: "region".to_string(),
                     inbound_rules: vec![],
                 },
-            },
+            }),
             ecr_repos: vec![ECRState {
                 id: "id".to_string(),
                 url: "url".to_string(),
                 name: "name".to_string(),
                 region: "region".to_string(),
             }],
-            instance_profile: InstanceProfileState {
+            instance_profile: Some(InstanceProfileState {
                 name: "instance_profile_name".to_string(),
                 region: "region".to_string(),
                 instance_roles: vec![InstanceRoleState {
@@ -835,7 +835,7 @@ mod tests {
                     assume_role_policy: "assume_role_policy".to_string(),
                     policy_arns: vec!["policy_arns".to_string()],
                 }],
-            },
+            }),
             instances: vec![Ec2InstanceState {
                 id: "id".to_string(),
                 public_ip: "public_ip".to_string(),
@@ -873,7 +873,7 @@ mod tests {
         };
 
         // Assert
-        assert_eq!(state.vpc.id, "id".to_string());
+        assert_eq!(state.vpc.unwrap().id, "id".to_string());
         assert_eq!(state.instances.len(), 1);
     }
 
