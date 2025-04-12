@@ -59,7 +59,7 @@ impl Orchestrator {
             let Some(public_ip) = instance.public_ip.clone() else {
                 log::error!("Instance {:?} has no public IP", instance.id);
 
-                continue;
+                return Err("Instance has no public IP".into());
             };
 
             let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
@@ -68,7 +68,7 @@ impl Orchestrator {
             if host_health.is_err() {
                 log::error!("Failed to check '{public_ip}' host health");
 
-                continue;
+                return Err("Failed to check host health".into());
             }
 
             // Add missing instances to state
