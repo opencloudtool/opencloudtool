@@ -106,7 +106,7 @@ impl S3Impl {
 
 /// AWS EC2 client implementation
 #[derive(Debug)]
-pub(super) struct Ec2Impl {
+pub struct Ec2Impl {
     inner: aws_sdk_ec2::Client,
 }
 
@@ -114,12 +114,12 @@ pub(super) struct Ec2Impl {
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl Ec2Impl {
-    pub(super) fn new(inner: aws_sdk_ec2::Client) -> Self {
+    pub fn new(inner: aws_sdk_ec2::Client) -> Self {
         Self { inner }
     }
 
     /// Create VPC
-    pub(super) async fn create_vpc(
+    pub async fn create_vpc(
         &self,
         cidr_block: String,
         name: String,
@@ -156,10 +156,7 @@ impl Ec2Impl {
     }
 
     /// Delete VPC
-    pub(super) async fn delete_vpc(
-        &self,
-        vpc_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_vpc(&self, vpc_id: String) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting VPC");
 
         self.inner
@@ -201,6 +198,27 @@ impl Ec2Impl {
         Ok(security_group_id)
     }
 
+    /// Describe Security Group
+    pub async fn get_default_security_group_id(
+        &self,
+        vpc_id: String,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let response = self
+            .inner
+            .get_security_groups_for_vpc()
+            .vpc_id(vpc_id)
+            .send()
+            .await?;
+
+        Ok(response
+            .security_group_for_vpcs()
+            .first()
+            .expect("Failed to get the default security group as the first element")
+            .group_id()
+            .ok_or("Failed to get security group id")?
+            .to_string())
+    }
+
     /// Delete Security Group
     pub(super) async fn delete_security_group(
         &self,
@@ -220,7 +238,7 @@ impl Ec2Impl {
     }
 
     /// Allow inbound traffic for security group
-    pub(super) async fn allow_inbound_traffic_for_security_group(
+    pub async fn allow_inbound_traffic_for_security_group(
         &self,
         security_group_id: String,
         protocol: String,
@@ -251,7 +269,7 @@ impl Ec2Impl {
     }
 
     /// Create Subnet
-    pub(super) async fn create_subnet(
+    pub async fn create_subnet(
         &self,
         vpc_id: String,
         cidr_block: String,
@@ -292,10 +310,7 @@ impl Ec2Impl {
     }
 
     /// Delete Subnet
-    pub(super) async fn delete_subnet(
-        &self,
-        subnet_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_subnet(&self, subnet_id: String) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting subnet");
 
         self.inner
@@ -310,7 +325,7 @@ impl Ec2Impl {
     }
 
     /// Create Internet Gateway
-    pub(super) async fn create_internet_gateway(
+    pub async fn create_internet_gateway(
         &self,
         vpc_id: String,
     ) -> Result<String, Box<dyn std::error::Error>> {
@@ -339,7 +354,7 @@ impl Ec2Impl {
     }
 
     /// Delete Internet Gateway
-    pub(super) async fn delete_internet_gateway(
+    pub async fn delete_internet_gateway(
         &self,
         internet_gateway_id: String,
         vpc_id: String,
@@ -368,7 +383,7 @@ impl Ec2Impl {
     }
 
     /// Create Route Table
-    pub(super) async fn create_route_table(
+    pub async fn create_route_table(
         &self,
         vpc_id: String,
     ) -> Result<String, Box<dyn std::error::Error>> {
@@ -392,7 +407,7 @@ impl Ec2Impl {
     }
 
     /// Delete Route Table
-    pub(super) async fn delete_route_table(
+    pub async fn delete_route_table(
         &self,
         route_table_id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -410,7 +425,7 @@ impl Ec2Impl {
     }
 
     /// Add public route to Route Table
-    pub(super) async fn add_public_route(
+    pub async fn add_public_route(
         &self,
         route_table_id: String,
         igw_id: String,
@@ -430,7 +445,7 @@ impl Ec2Impl {
     }
 
     /// Associate Route Table with Subnet
-    pub(super) async fn associate_route_table_with_subnet(
+    pub async fn associate_route_table_with_subnet(
         &self,
         route_table_id: String,
         subnet_id: String,
@@ -450,7 +465,7 @@ impl Ec2Impl {
     }
 
     /// Disassociate Route Table with Subnet
-    pub(super) async fn disassociate_route_table_with_subnet(
+    pub async fn disassociate_route_table_with_subnet(
         &self,
         route_table_id: String,
         subnet_id: String,
@@ -515,7 +530,7 @@ impl Ec2Impl {
     }
 
     /// Enable auto-assignment of public IP addresses for subnet
-    pub(super) async fn enable_auto_assign_ip_addresses_for_subnet(
+    pub async fn enable_auto_assign_ip_addresses_for_subnet(
         &self,
         subnet_id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -534,7 +549,7 @@ impl Ec2Impl {
     }
 
     /// Retrieve metadata about specific EC2 instance
-    pub(super) async fn describe_instances(
+    pub async fn describe_instances(
         &self,
         instance_id: String,
     ) -> Result<aws_sdk_ec2::types::Instance, Box<dyn std::error::Error>> {
@@ -557,41 +572,47 @@ impl Ec2Impl {
     }
 
     // TODO: Return Instance instead of response
-    pub(super) async fn run_instances(
+    pub async fn run_instances(
         &self,
         instance_type: InstanceType,
         ami: String,
         user_data_base64: String,
-        instance_profile_name: String,
+        instance_profile_name: Option<String>, // TODO: Remove `Option`
         subnet_id: String,
-        security_group_id: String,
+        security_group_id: Option<String>, // TODO: Remove `Option`
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
-        let response = self
+        let mut request = self
             .inner
             .run_instances()
             .instance_type(instance_type.as_str().into())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
-            .iam_instance_profile(
+            .subnet_id(subnet_id)
+            .min_count(1)
+            .max_count(1);
+
+        if let Some(instance_profile_name) = instance_profile_name {
+            request = request.iam_instance_profile(
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
                     .name(instance_profile_name)
                     .build(),
-            )
-            .min_count(1)
-            .max_count(1)
-            .subnet_id(subnet_id)
-            .security_group_ids(security_group_id)
-            .send()
-            .await?;
+            );
+        }
+
+        if let Some(security_group_id) = security_group_id {
+            request = request.security_group_ids(security_group_id);
+        }
+
+        let response = request.send().await?;
 
         log::info!("Created EC2 instance");
 
         Ok(response)
     }
 
-    pub(super) async fn terminate_instance(
+    pub async fn terminate_instance(
         &self,
         instance_id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1078,9 +1099,9 @@ pub(super) use MockS3Impl as S3;
 pub(super) use S3Impl as S3;
 
 #[cfg(not(test))]
-pub(super) use Ec2Impl as Ec2;
+pub use Ec2Impl as Ec2;
 #[cfg(test)]
-pub(super) use MockEc2Impl as Ec2;
+pub use MockEc2Impl as Ec2;
 
 #[cfg(not(test))]
 pub(super) use IAMImpl as IAM;
