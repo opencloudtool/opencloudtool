@@ -1,4 +1,4 @@
 pub mod resource;
 pub mod types;
 
-mod client;
+pub mod client;

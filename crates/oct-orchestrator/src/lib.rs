@@ -7,6 +7,7 @@ use oct_cloud::aws::resource::{
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::{InstanceType, RecordType};
+use oct_cloud::graph;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -15,6 +16,104 @@ mod config;
 mod oct_ctl_sdk;
 mod scheduler;
 mod user_state;
+
+pub struct OrchestratorWithGraph;
+
+impl OrchestratorWithGraph {
+    const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
+
+    pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config = config::Config::new(None)?;
+
+        let infra_state_backend =
+            backend::get_state_backend::<graph::State>(&config.project.state_backend);
+        // let (mut infra_state, _loaded) = state_backend.load().await?;
+
+        let user_state_backend =
+            backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
+        let (mut user_state, _loaded) = user_state_backend.load().await?;
+
+        let (services_to_create, services_to_remove, services_to_update) =
+            get_user_services_to_create_and_delete(&config, &user_state);
+
+        log::info!("Services to create: {services_to_create:?}");
+        log::info!("Services to remove: {services_to_remove:?}");
+        log::info!("Services to update: {services_to_update:?}");
+
+        let number_of_instances = get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
+
+        let spec_graph =
+            graph::GraphManager::get_spec_graph(number_of_instances, &Self::INSTANCE_TYPE);
+
+        let graph_manager = graph::GraphManager::new().await;
+        let (resource_graph, vms) = graph_manager.deploy(&spec_graph).await;
+
+        let state = graph::State::from_graph(&resource_graph);
+        let () = infra_state_backend.save(&state).await?;
+
+        for vm in &vms {
+            let oct_ctl_client = oct_ctl_sdk::Client::new(vm.public_ip.clone());
+
+            let host_health = check_host_health(&oct_ctl_client).await;
+            if host_health.is_err() {
+                return Err("Failed to check host health".into());
+            }
+
+            // Add missing instances to state
+            // TODO: Handle removing instances
+            if user_state.instances.contains_key(&vm.public_ip) {
+                continue;
+            }
+
+            let instance_info = vm.instance_type.get_info();
+
+            user_state.instances.insert(
+                vm.public_ip.clone(),
+                user_state::Instance {
+                    cpus: instance_info.cpus,
+                    memory: instance_info.memory,
+                    services: HashMap::new(),
+                },
+            );
+        }
+
+        // All instances are healthy and ready to serve user services
+        let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
+
+        deploy_user_services(
+            &config,
+            &mut scheduler,
+            &services_to_create,
+            &services_to_remove,
+            &services_to_update,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config = config::Config::new(None)?;
+
+        let infra_state_backend =
+            backend::get_state_backend::<graph::State>(&config.project.state_backend);
+        let (infra_state, _loaded) = infra_state_backend.load().await?;
+
+        let user_state_backend =
+            backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
+        let (_user_state, _loaded) = user_state_backend.load().await?;
+
+        let resource_graph = infra_state.to_graph();
+
+        let graph_manager = graph::GraphManager::new().await;
+        graph_manager.destroy(&resource_graph).await;
+
+        infra_state_backend.remove().await?;
+        user_state_backend.remove().await?;
+
+        Ok(())
+    }
+}
 
 /// Orchestrates the deployment and destruction of user services while managing the underlying
 /// cloud infrastructure resources such as instances, networking, and container repositories
@@ -33,7 +132,7 @@ impl Orchestrator {
         let (mut user_state, _loaded) = user_state_backend.load().await?;
 
         let (services_to_create, services_to_remove, services_to_update) =
-            Self::get_user_services_to_create_and_delete(&config, &user_state);
+            get_user_services_to_create_and_delete(&config, &user_state);
 
         log::info!("Services to create: {services_to_create:?}");
         log::info!("Services to remove: {services_to_remove:?}");
@@ -63,7 +162,7 @@ impl Orchestrator {
 
             let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
 
-            let host_health = self.check_host_health(&oct_ctl_client).await;
+            let host_health = check_host_health(&oct_ctl_client).await;
             if host_health.is_err() {
                 log::error!("Failed to check '{public_ip}' host health");
 
@@ -91,7 +190,7 @@ impl Orchestrator {
         // All instances are healthy and ready to serve user services
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
-        self.deploy_user_services(
+        deploy_user_services(
             &config,
             &mut scheduler,
             &services_to_create,
@@ -485,156 +584,6 @@ impl Orchestrator {
 
         Ok(state)
     }
-
-    /// Waits for a host to be healthy
-    async fn check_host_health(
-        &self,
-        oct_ctl_client: &oct_ctl_sdk::Client,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let public_ip = &oct_ctl_client.public_ip;
-
-        let max_tries = 24;
-        let sleep_duration_s = 5;
-
-        log::info!("Waiting for host '{public_ip}' to be ready");
-
-        for _ in 0..max_tries {
-            match oct_ctl_client.health_check().await {
-                Ok(()) => {
-                    log::info!("Host '{public_ip}' is ready");
-
-                    return Ok(());
-                }
-                Err(err) => {
-                    log::info!(
-                        "Host '{public_ip}' responded with error: {err}. \
-                        Retrying in {sleep_duration_s} sec..."
-                    );
-
-                    tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
-                }
-            }
-        }
-
-        Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
-    }
-
-    /// Gets list of services to remove/create/update
-    /// The order of created services depends on `depends_on` field in the config,
-    /// dependencies are created first
-    fn get_user_services_to_create_and_delete(
-        config: &config::Config,
-        user_state: &user_state::UserState,
-    ) -> (Vec<String>, Vec<String>, Vec<String>) {
-        let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
-
-        let user_state_services: Vec<String> = user_state
-            .instances
-            .values()
-            .flat_map(|instance| instance.services.keys())
-            .cloned()
-            .collect();
-
-        let expected_services_dependencies: Vec<String> = expected_services
-            .iter()
-            .filter_map(|service| config.project.services[service].depends_on.clone())
-            .flatten()
-            .filter(|service| !user_state_services.contains(service))
-            .collect();
-
-        let services_to_create: Vec<String> = expected_services
-            .iter()
-            .filter(|service| {
-                !user_state_services.contains(service)
-                    && !expected_services_dependencies.contains(service)
-            })
-            .cloned()
-            .collect();
-
-        let services_to_remove: Vec<String> = user_state_services
-            .iter()
-            .filter(|service| !expected_services.contains(service))
-            .cloned()
-            .collect();
-
-        let services_to_update_dependencies: Vec<String> = expected_services
-            .iter()
-            .filter(|service| user_state_services.contains(service))
-            .filter_map(|service| config.project.services[service].depends_on.clone())
-            .flatten()
-            .collect();
-
-        let services_to_update: Vec<String> = expected_services
-            .iter()
-            .filter(|service| {
-                user_state_services.contains(service)
-                    && !services_to_update_dependencies.contains(service)
-            })
-            .cloned()
-            .collect();
-
-        (
-            expected_services_dependencies
-                .iter()
-                .chain(services_to_create.iter())
-                .cloned()
-                .collect(),
-            services_to_remove,
-            services_to_update_dependencies
-                .iter()
-                .chain(services_to_update.iter())
-                .cloned()
-                .collect(),
-        )
-    }
-
-    /// Deploys and destroys user services
-    /// TODO: Use it in `destroy`. Needs some modifications to correctly handle state file removal
-    async fn deploy_user_services(
-        &self,
-        config: &config::Config,
-        scheduler: &mut scheduler::Scheduler<'_>, // TODO: Figure out why lifetime is needed
-        services_to_create: &[String],
-        services_to_remove: &[String],
-        services_to_update: &[String],
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        for service_name in services_to_remove {
-            log::info!("Stopping container for service: {service_name}");
-
-            let _ = scheduler.stop(service_name).await;
-        }
-
-        for service_name in services_to_create {
-            let service = config.project.services.get(service_name);
-            let Some(service) = service else {
-                log::error!("Service '{service_name}' not found in config");
-
-                continue;
-            };
-
-            log::info!("Running service: {service_name}");
-
-            let _ = scheduler.run(service_name, service).await;
-        }
-
-        for service_name in services_to_update {
-            log::info!("Updating service: {service_name}");
-
-            let service = config.project.services.get(service_name);
-            let Some(service) = service else {
-                log::error!("Service '{service_name}' not found in config");
-
-                continue;
-            };
-
-            log::info!("Recreating container for service: {service_name}");
-
-            let _ = scheduler.stop(service_name).await;
-            let _ = scheduler.run(service_name, service).await;
-        }
-
-        Ok(())
-    }
 }
 
 /// Calculates the number of instances needed to run the services
@@ -664,6 +613,154 @@ fn get_number_of_needed_instances(config: &config::Config, instance_type: &Insta
         needed_instances_count_by_cpus,
         u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
     )
+}
+
+/// Gets list of services to remove/create/update
+/// The order of created services depends on `depends_on` field in the config,
+/// dependencies are created first
+fn get_user_services_to_create_and_delete(
+    config: &config::Config,
+    user_state: &user_state::UserState,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
+    let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
+
+    let user_state_services: Vec<String> = user_state
+        .instances
+        .values()
+        .flat_map(|instance| instance.services.keys())
+        .cloned()
+        .collect();
+
+    let expected_services_dependencies: Vec<String> = expected_services
+        .iter()
+        .filter_map(|service| config.project.services[service].depends_on.clone())
+        .flatten()
+        .filter(|service| !user_state_services.contains(service))
+        .collect();
+
+    let services_to_create: Vec<String> = expected_services
+        .iter()
+        .filter(|service| {
+            !user_state_services.contains(service)
+                && !expected_services_dependencies.contains(service)
+        })
+        .cloned()
+        .collect();
+
+    let services_to_remove: Vec<String> = user_state_services
+        .iter()
+        .filter(|service| !expected_services.contains(service))
+        .cloned()
+        .collect();
+
+    let services_to_update_dependencies: Vec<String> = expected_services
+        .iter()
+        .filter(|service| user_state_services.contains(service))
+        .filter_map(|service| config.project.services[service].depends_on.clone())
+        .flatten()
+        .collect();
+
+    let services_to_update: Vec<String> = expected_services
+        .iter()
+        .filter(|service| {
+            user_state_services.contains(service)
+                && !services_to_update_dependencies.contains(service)
+        })
+        .cloned()
+        .collect();
+
+    (
+        expected_services_dependencies
+            .iter()
+            .chain(services_to_create.iter())
+            .cloned()
+            .collect(),
+        services_to_remove,
+        services_to_update_dependencies
+            .iter()
+            .chain(services_to_update.iter())
+            .cloned()
+            .collect(),
+    )
+}
+
+/// Waits for a host to be healthy
+async fn check_host_health(
+    oct_ctl_client: &oct_ctl_sdk::Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let public_ip = &oct_ctl_client.public_ip;
+
+    let max_tries = 24;
+    let sleep_duration_s = 5;
+
+    log::info!("Waiting for host '{public_ip}' to be ready");
+
+    for _ in 0..max_tries {
+        match oct_ctl_client.health_check().await {
+            Ok(()) => {
+                log::info!("Host '{public_ip}' is ready");
+
+                return Ok(());
+            }
+            Err(err) => {
+                log::info!(
+                    "Host '{public_ip}' responded with error: {err}. \
+                        Retrying in {sleep_duration_s} sec..."
+                );
+
+                tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+            }
+        }
+    }
+
+    Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
+}
+
+/// Deploys and destroys user services
+/// TODO: Use it in `destroy`. Needs some modifications to correctly handle state file removal
+async fn deploy_user_services(
+    config: &config::Config,
+    scheduler: &mut scheduler::Scheduler<'_>, // TODO: Figure out why lifetime is needed
+    services_to_create: &[String],
+    services_to_remove: &[String],
+    services_to_update: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    for service_name in services_to_remove {
+        log::info!("Stopping container for service: {service_name}");
+
+        let _ = scheduler.stop(service_name).await;
+    }
+
+    for service_name in services_to_create {
+        let service = config.project.services.get(service_name);
+        let Some(service) = service else {
+            log::error!("Service '{service_name}' not found in config");
+
+            continue;
+        };
+
+        log::info!("Running service: {service_name}");
+
+        let _ = scheduler.run(service_name, service).await;
+    }
+
+    for service_name in services_to_update {
+        log::info!("Updating service: {service_name}");
+
+        let service = config.project.services.get(service_name);
+        let Some(service) = service else {
+            log::error!("Service '{service_name}' not found in config");
+
+            continue;
+        };
+
+        log::info!("Recreating container for service: {service_name}");
+
+        let _ = scheduler.stop(service_name).await;
+        let _ = scheduler.run(service_name, service).await;
+    }
+
+    Ok(())
 }
 
 fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::error::Error>> {

@@ -411,9 +411,9 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
-                self.instance_profile_name.clone(),
+                Some(self.instance_profile_name.clone()),
                 self.subnet_id.clone(),
-                self.security_group_id.clone(),
+                Some(self.security_group_id.clone()),
             )
             .await?;
 
@@ -1577,9 +1577,9 @@ mod tests {
                 eq(InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq("instance_profile".to_string()),
+                eq(Some("instance_profile".to_string())),
                 eq("subnet-12345".to_string()),
-                eq("sg-12345".to_string()),
+                eq(Some("sg-12345".to_string())),
             )
             .return_once(|_, _, _, _, _, _| {
                 Ok(RunInstancesOutput::builder()
@@ -1630,9 +1630,9 @@ mod tests {
                 eq(InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
-                eq("instance_profile".to_string()),
+                eq(Some("instance_profile".to_string())),
                 eq("subnet-12345".to_string()),
-                eq("sg-12345".to_string()),
+                eq(Some("sg-12345".to_string())),
             )
             .return_once(|_, _, _, _, _, _| Ok(RunInstancesOutput::builder().build()));
 
