@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let orchestrator = oct_orchestrator::Orchestrator;
 
     match &cli.command {
-        Commands::Deploy => orchestrator.deploy().await?,
+        Commands::Deploy => Box::pin(orchestrator.deploy()).await?,
         Commands::Destroy => orchestrator.destroy().await?,
     }
 
