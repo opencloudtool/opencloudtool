@@ -1,4 +1,5 @@
 use aws_sdk_route53::types::RrType;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Represents an AWS resource record type.
@@ -63,25 +64,34 @@ impl fmt::Display for RecordType {
 }
 
 /// Represents an AWS instance type.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InstanceType {
-    /// The name of the instance type.
-    pub name: &'static str,
-
+#[derive(Debug, PartialEq, Eq)]
+pub struct InstanceInfo {
     /// The number of CPUs for the instance type.
     pub cpus: u32,
     /// The amount of memory (in MB) for the instance type.
     pub memory: u64,
 }
 
-impl InstanceType {
-    /// Represents the `t2.micro` instance type.
-    pub const T2_MICRO: Self = Self {
-        name: "t2.micro",
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstanceType {
+    T2Micro,
+}
 
-        cpus: 1000,
-        memory: 1024,
-    };
+impl InstanceType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            InstanceType::T2Micro => "t2.micro",
+        }
+    }
+
+    pub fn get_info(&self) -> InstanceInfo {
+        match self {
+            InstanceType::T2Micro => InstanceInfo {
+                cpus: 1000,
+                memory: 1024,
+            },
+        }
+    }
 }
 
 impl From<&str> for InstanceType {
@@ -92,7 +102,7 @@ impl From<&str> for InstanceType {
     /// Panics if the string is not a valid instance type.
     fn from(value: &str) -> Self {
         match value {
-            "t2.micro" => Self::T2_MICRO,
+            "t2.micro" => InstanceType::T2Micro,
             _ => panic!("Invalid instance type: {value}"),
         }
     }
@@ -100,8 +110,9 @@ impl From<&str> for InstanceType {
 
 #[cfg(test)]
 mod tests {
-    use super::{InstanceType, RecordType};
     use aws_sdk_route53::types::RrType;
+
+    use super::*;
 
     #[test]
     fn test_display() {
@@ -167,8 +178,24 @@ mod tests {
     }
 
     #[test]
+    fn test_instance_type_as_str() {
+        assert_eq!(InstanceType::T2Micro.as_str(), "t2.micro");
+    }
+
+    #[test]
+    fn test_instance_type_get_info() {
+        assert_eq!(
+            InstanceType::T2Micro.get_info(),
+            InstanceInfo {
+                cpus: 1000,
+                memory: 1024
+            }
+        );
+    }
+
+    #[test]
     fn test_instance_type_from_str() {
-        assert_eq!(InstanceType::from("t2.micro"), InstanceType::T2_MICRO);
+        assert_eq!(InstanceType::from("t2.micro"), InstanceType::T2Micro);
     }
 
     #[test]

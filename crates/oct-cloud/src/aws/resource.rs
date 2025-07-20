@@ -1132,7 +1132,7 @@ mod tests {
             dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: InstanceType::T2_MICRO,
+            instance_type: InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -1574,7 +1574,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(InstanceType::T2_MICRO),
+                eq(InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq("instance_profile".to_string()),
@@ -1612,7 +1612,7 @@ mod tests {
         assert_eq!(instance.public_dns, Some("example.com".to_string()));
         assert_eq!(instance.region, "us-west-2");
         assert_eq!(instance.ami, "ami-830c94e3");
-        assert_eq!(instance.instance_type, InstanceType::T2_MICRO);
+        assert_eq!(instance.instance_type, InstanceType::T2Micro);
         assert_eq!(instance.name, "test");
         assert_eq!(instance.user_data, "test");
         assert_eq!(instance.user_data_base64, "test");
@@ -1627,7 +1627,7 @@ mod tests {
         ec2_impl_mock
             .expect_run_instances()
             .with(
-                eq(InstanceType::T2_MICRO),
+                eq(InstanceType::T2Micro),
                 eq("ami-830c94e3".to_string()),
                 eq("test".to_string()),
                 eq("instance_profile".to_string()),
@@ -1679,7 +1679,7 @@ mod tests {
             dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: InstanceType::T2_MICRO,
+            instance_type: InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),
@@ -1714,7 +1714,7 @@ mod tests {
             dns_record: None,
             region: "us-west-2".to_string(),
             ami: "ami-830c94e3".to_string(),
-            instance_type: InstanceType::T2_MICRO,
+            instance_type: InstanceType::T2Micro,
             name: "test".to_string(),
             user_data: "test".to_string(),
             user_data_base64: "test".to_string(),

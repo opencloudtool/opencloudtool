@@ -571,7 +571,7 @@ impl Ec2Impl {
         let response = self
             .inner
             .run_instances()
-            .instance_type(instance_type.name.into())
+            .instance_type(instance_type.as_str().into())
             .image_id(ami.clone())
             .user_data(user_data_base64.clone())
             .iam_instance_profile(
