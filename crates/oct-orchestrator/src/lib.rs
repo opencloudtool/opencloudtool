@@ -224,9 +224,6 @@ impl Orchestrator {
 
         log::info!("Starting container manager");
 
-        // TODO: Skip when no services use dockerfile
-        run_container_manager()?;
-
         let mut base_ecr_url = None; // TODO: Make prettier
         let mut ecr_repos_cache = HashMap::new();
         for (service_name, service) in &mut config.project.services {
@@ -638,43 +635,6 @@ impl Orchestrator {
 
         Ok(())
     }
-}
-
-/// Runs container manager
-/// Only `podman` is supported, `docker` should be run manually
-fn run_container_manager() -> Result<(), Box<dyn std::error::Error>> {
-    let container_manager = get_container_manager()?;
-
-    log::info!("Running '{container_manager}' container manager");
-
-    if container_manager == "docker" {
-        log::warn!("Container manager 'docker' is not supported. Please run it manually.");
-
-        return Ok(());
-    }
-
-    let run_container_args = Command::new(&container_manager)
-        .args(["machine", "start"])
-        .output()?;
-
-    if !run_container_args.status.success() {
-        let stderr = String::from_utf8_lossy(&run_container_args.stderr);
-
-        if stderr.contains("VM already running or starting") {
-            log::info!("Container manager '{container_manager}' is already running");
-
-            return Ok(());
-        }
-
-        return Err(format!(
-            "Failed to start '{container_manager}' container manager. Error: {stderr}"
-        )
-        .into());
-    }
-
-    log::info!("Successfully started '{container_manager}' container manager");
-
-    Ok(())
 }
 
 /// Calculates the number of instances needed to run the services
