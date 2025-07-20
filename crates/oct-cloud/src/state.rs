@@ -487,7 +487,7 @@ impl Ec2InstanceState {
             dns_record: ec2_instance.dns_record.as_ref().map(DNSRecordState::new),
             region: ec2_instance.region.clone(),
             ami: ec2_instance.ami.clone(),
-            instance_type: ec2_instance.instance_type.name.to_string(),
+            instance_type: ec2_instance.instance_type.as_str().into(),
             name: ec2_instance.name.clone(),
             instance_profile_name: ec2_instance.instance_profile_name.clone(),
             subnet_id: ec2_instance.subnet_id.clone(),
@@ -896,7 +896,7 @@ mod tests {
             ),
             "region".to_string(),
             "ami".to_string(),
-            InstanceType::T2_MICRO,
+            InstanceType::T2Micro,
             "name".to_string(),
             "instance_profile_name".to_string(),
             "subnet_id".to_string(),
@@ -956,7 +956,7 @@ mod tests {
         assert_eq!(ec2_instance.public_dns, Some("public_dns".to_string()));
         assert_eq!(ec2_instance.region, "region".to_string());
         assert_eq!(ec2_instance.ami, "ami".to_string());
-        assert_eq!(ec2_instance.instance_type, InstanceType::T2_MICRO);
+        assert_eq!(ec2_instance.instance_type, InstanceType::T2Micro);
         assert_eq!(ec2_instance.name, "name".to_string());
         assert_eq!(
             ec2_instance.instance_profile_name,

@@ -21,7 +21,7 @@ mod user_state;
 pub struct Orchestrator;
 
 impl Orchestrator {
-    const INSTANCE_TYPE: InstanceType = InstanceType::T2_MICRO;
+    const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Put into Orchestrator struct field
@@ -39,8 +39,7 @@ impl Orchestrator {
         log::info!("Services to remove: {services_to_remove:?}");
         log::info!("Services to update: {services_to_update:?}");
 
-        let number_of_instances =
-            Self::get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
+        let number_of_instances = get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
 
         log::info!("Number of instances required: {number_of_instances}");
 
@@ -77,11 +76,13 @@ impl Orchestrator {
                 continue;
             }
 
+            let instance_info = instance.instance_type.get_info();
+
             user_state.instances.insert(
                 public_ip.clone(),
                 user_state::Instance {
-                    cpus: instance.instance_type.cpus,
-                    memory: instance.instance_type.memory,
+                    cpus: instance_info.cpus,
+                    memory: instance_info.memory,
                     services: HashMap::new(),
                 },
             );
@@ -587,36 +588,6 @@ impl Orchestrator {
         )
     }
 
-    /// Calculates the number of instances needed to run the services
-    /// For now we expect that an individual service required resources will not exceed
-    /// a single EC2 instance capacity
-    fn get_number_of_needed_instances(
-        config: &config::Config,
-        instance_type: &InstanceType,
-    ) -> u32 {
-        let total_services_cpus = config
-            .project
-            .services
-            .values()
-            .map(|service| service.cpus)
-            .sum::<u32>();
-
-        let total_services_memory = config
-            .project
-            .services
-            .values()
-            .map(|service| service.memory)
-            .sum::<u64>();
-
-        let needed_instances_count_by_cpus = total_services_cpus.div_ceil(instance_type.cpus);
-        let needed_instances_count_by_memory = total_services_memory.div_ceil(instance_type.memory);
-
-        std::cmp::max(
-            needed_instances_count_by_cpus,
-            u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
-        )
-    }
-
     /// Deploys and destroys user services
     /// TODO: Use it in `destroy`. Needs some modifications to correctly handle state file removal
     async fn deploy_user_services(
@@ -664,6 +635,35 @@ impl Orchestrator {
 
         Ok(())
     }
+}
+
+/// Calculates the number of instances needed to run the services
+/// For now we expect that an individual service required resources will not exceed
+/// a single EC2 instance capacity
+fn get_number_of_needed_instances(config: &config::Config, instance_type: &InstanceType) -> u32 {
+    let total_services_cpus = config
+        .project
+        .services
+        .values()
+        .map(|service| service.cpus)
+        .sum::<u32>();
+
+    let total_services_memory = config
+        .project
+        .services
+        .values()
+        .map(|service| service.memory)
+        .sum::<u64>();
+
+    let instance_info = instance_type.get_info();
+
+    let needed_instances_count_by_cpus = total_services_cpus.div_ceil(instance_info.cpus);
+    let needed_instances_count_by_memory = total_services_memory.div_ceil(instance_info.memory);
+
+    std::cmp::max(
+        needed_instances_count_by_cpus,
+        u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
+    )
 }
 
 fn build_image(dockerfile_path: &str, tag: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -757,6 +757,7 @@ fn push_image(image_tag: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Return podman or docker string depends on what is installed
 fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
+    // TODO: Fix OS "Not found" error when `podman` is not installed
     let podman_exists = Command::new("podman")
         .args(["--version"])
         .output()?
