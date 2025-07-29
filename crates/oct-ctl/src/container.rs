@@ -122,10 +122,13 @@ impl ContainerEngine {
         ];
 
         if let (Some(external_port), Some(internal_port)) = (external_port, internal_port) {
-            let port_mapping = format!("{external_port}:{internal_port}");
+            let port_mapping_tcp = format!("{external_port}:{internal_port}/tcp");
+            let port_mapping_udp = format!("{external_port}:{internal_port}/udp");
 
             run_container_args.push("-p".to_string());
-            run_container_args.push(port_mapping);
+            run_container_args.push(port_mapping_tcp);
+            run_container_args.push("-p".to_string());
+            run_container_args.push(port_mapping_udp);
         }
 
         for (key, value) in envs {
