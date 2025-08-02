@@ -75,12 +75,14 @@ pub struct InstanceInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InstanceType {
     T2Micro,
+    T3Medium,
 }
 
 impl InstanceType {
     pub fn as_str(&self) -> &str {
         match self {
             InstanceType::T2Micro => "t2.micro",
+            InstanceType::T3Medium => "t3.medium",
         }
     }
 
@@ -89,6 +91,10 @@ impl InstanceType {
             InstanceType::T2Micro => InstanceInfo {
                 cpus: 1000,
                 memory: 1024,
+            },
+            InstanceType::T3Medium => InstanceInfo {
+                cpus: 2000,
+                memory: 4096,
             },
         }
     }
@@ -103,6 +109,7 @@ impl From<&str> for InstanceType {
     fn from(value: &str) -> Self {
         match value {
             "t2.micro" => InstanceType::T2Micro,
+            "t3.medium" => InstanceType::T3Medium,
             _ => panic!("Invalid instance type: {value}"),
         }
     }
@@ -180,6 +187,7 @@ mod tests {
     #[test]
     fn test_instance_type_as_str() {
         assert_eq!(InstanceType::T2Micro.as_str(), "t2.micro");
+        assert_eq!(InstanceType::T3Medium.as_str(), "t3.medium");
     }
 
     #[test]
@@ -191,11 +199,19 @@ mod tests {
                 memory: 1024
             }
         );
+        assert_eq!(
+            InstanceType::T3Medium.get_info(),
+            InstanceInfo {
+                cpus: 2000,
+                memory: 4096
+            }
+        );
     }
 
     #[test]
     fn test_instance_type_from_str() {
         assert_eq!(InstanceType::from("t2.micro"), InstanceType::T2Micro);
+        assert_eq!(InstanceType::from("t3.medium"), InstanceType::T3Medium);
     }
 
     #[test]
