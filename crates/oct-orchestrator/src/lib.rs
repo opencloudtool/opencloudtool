@@ -120,7 +120,7 @@ impl OrchestratorWithGraph {
 pub struct Orchestrator;
 
 impl Orchestrator {
-    const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
+    const INSTANCE_TYPE: InstanceType = InstanceType::T3Medium;
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Put into Orchestrator struct field
