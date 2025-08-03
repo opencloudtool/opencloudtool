@@ -420,21 +420,32 @@ impl State {
     pub fn from_graph(graph: &Graph<Node, String>) -> Self {
         let mut resource_states: Vec<ResourceState> = Vec::new();
 
-        let mut queue: VecDeque<(NodeIndex, NodeIndex)> = VecDeque::new();
-        let root_node = graph.from_index(0);
-        for node_index in graph.neighbors(root_node) {
-            queue.push_back((node_index, root_node));
+        let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
+
+        let mut queue: VecDeque<NodeIndex> = VecDeque::new();
+        let root_index = graph.from_index(0);
+        for node_index in graph.neighbors(root_index) {
+            queue.push_back(node_index);
+
+            parents
+                .entry(node_index)
+                .or_insert_with(Vec::new)
+                .push(root_index);
         }
 
-        while let Some((node_index, parent_node_index)) = queue.pop_front() {
-            let parent_node = graph
-                .node_weight(parent_node_index)
-                .expect("Failed to get parent");
-
-            let dependencies = match parent_node {
-                Node::Root => Vec::new(),
-                Node::Resource(parent_resource_type) => vec![parent_resource_type.name()],
+        while let Some(node_index) = queue.pop_front() {
+            let parent_node_indexes = match parents.get(&node_index) {
+                Some(parent_node_indexes) => parent_node_indexes.clone(),
+                None => Vec::new(),
             };
+            let parent_nodes = parent_node_indexes
+                .iter()
+                .filter_map(|x| graph.node_weight(*x))
+                .filter_map(|x| match x {
+                    Node::Root => None,
+                    Node::Resource(parent_resource_type) => Some(parent_resource_type.name()),
+                })
+                .collect();
 
             if let Some(Node::Resource(resource_type)) = graph.node_weight(node_index) {
                 log::info!("Add to state {resource_type:?}");
@@ -442,11 +453,16 @@ impl State {
                 resource_states.push(ResourceState {
                     name: resource_type.name(),
                     resource: resource_type.clone(),
-                    dependencies,
+                    dependencies: parent_nodes,
                 });
 
                 for neighbor_node_index in graph.neighbors(node_index) {
-                    queue.push_back((neighbor_node_index, node_index));
+                    queue.push_back(neighbor_node_index);
+
+                    parents
+                        .entry(neighbor_node_index)
+                        .or_insert_with(Vec::new)
+                        .push(node_index);
                 }
             }
         }
@@ -473,11 +489,10 @@ impl State {
                 .get(&resource_state.name)
                 .expect("Missed resource value in resource_map");
 
-            let dependency = resource_state.dependencies.first();
-
-            match dependency {
-                None => edges.push((root, *resource, String::new())),
-                Some(dependency_name) => {
+            if resource_state.dependencies.is_empty() {
+                edges.push((root, *resource, String::new()));
+            } else {
+                for dependency_name in &resource_state.dependencies {
                     let dependency_resource = resources_map
                         .get(dependency_name)
                         .expect("Missed dependency resource value in resource_map");
@@ -583,20 +598,32 @@ impl GraphManager {
     pub async fn deploy(&self, graph: &Graph<SpecNode, String>) -> (Graph<Node, String>, Vec<Vm>) {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
-        let root = resource_graph.add_node(Node::Root);
+        let root_index = resource_graph.add_node(Node::Root);
 
-        let mut queue: VecDeque<(NodeIndex, NodeIndex)> = VecDeque::new();
+        let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
+
+        let mut queue: VecDeque<NodeIndex> = VecDeque::new();
         let root_node = graph.from_index(0);
         for node_index in graph.neighbors(root_node) {
-            queue.push_back((node_index, root));
+            queue.push_back(node_index);
+
+            parents
+                .entry(node_index)
+                .or_insert_with(Vec::new)
+                .push(root_index);
         }
 
         let mut vms: Vec<Vm> = Vec::new();
 
-        while let Some((node_index, parent_node_index)) = queue.pop_front() {
-            let parent_node = resource_graph
-                .node_weight(parent_node_index)
-                .expect("Failed to get parent");
+        while let Some(node_index) = queue.pop_front() {
+            let parent_node_indexes = match parents.get(&node_index) {
+                Some(parent_node_indexes) => parent_node_indexes.clone(),
+                None => Vec::new(),
+            };
+            let parent_nodes = parent_node_indexes
+                .iter()
+                .filter_map(|x| resource_graph.node_weight(*x))
+                .collect();
 
             if let Some(elem) = graph.node_weight(node_index) {
                 let created_resource_node_index = match elem {
@@ -606,18 +633,20 @@ impl GraphManager {
                             let manager = VpcManager {
                                 client: &self.ec2_client,
                             };
-                            let output_vpc = manager.create(resource, vec![parent_node]).await;
+                            let output_vpc = manager.create(resource, parent_nodes).await;
 
                             match output_vpc {
                                 Ok(output_vpc) => {
                                     log::info!(
-                                        "Deployed {output_vpc:?}, parent - {parent_node_index:?}"
+                                        "Deployed {output_vpc:?}, parents - {parent_node_indexes:?}"
                                     );
 
                                     let node = Node::Resource(ResourceType::Vpc(output_vpc));
                                     let vpc_index = resource_graph.add_node(node.clone());
 
-                                    edges.push((parent_node_index, vpc_index, String::new()));
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((parent_node_index, vpc_index, String::new()));
+                                    }
 
                                     Some(vpc_index)
                                 }
@@ -628,18 +657,24 @@ impl GraphManager {
                             let manager = SubnetManager {
                                 client: &self.ec2_client,
                             };
-                            let output_subnet = manager.create(resource, vec![parent_node]).await;
+                            let output_subnet = manager.create(resource, parent_nodes).await;
 
                             match output_subnet {
                                 Ok(output_subnet) => {
                                     log::info!(
-                                        "Deployed {output_subnet:?}, parent - {parent_node_index:?}"
+                                        "Deployed {output_subnet:?}, parents - {parent_node_indexes:?}"
                                     );
 
                                     let node = Node::Resource(ResourceType::Subnet(output_subnet));
                                     let subnet_index = resource_graph.add_node(node.clone());
 
-                                    edges.push((parent_node_index, subnet_index, String::new()));
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            subnet_index,
+                                            String::new(),
+                                        ));
+                                    }
 
                                     Some(subnet_index)
                                 }
@@ -650,18 +685,20 @@ impl GraphManager {
                             let manager = VmManager {
                                 client: &self.ec2_client,
                             };
-                            let output_vm = manager.create(resource, vec![parent_node]).await;
+                            let output_vm = manager.create(resource, parent_nodes).await;
 
                             match output_vm {
                                 Ok(output_vm) => {
                                     log::info!(
-                                        "Deployed {output_vm:?}, parent - {parent_node_index:?}"
+                                        "Deployed {output_vm:?}, parents - {parent_node_indexes:?}"
                                     );
 
                                     let node = Node::Resource(ResourceType::Vm(output_vm.clone()));
                                     let vm_index = resource_graph.add_node(node.clone());
 
-                                    edges.push((parent_node_index, vm_index, String::new()));
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((parent_node_index, vm_index, String::new()));
+                                    }
 
                                     vms.push(output_vm);
 
@@ -681,7 +718,12 @@ impl GraphManager {
                 };
 
                 for neighbor_index in graph.neighbors(node_index) {
-                    queue.push_back((neighbor_index, created_resource_node_index));
+                    queue.push_back(neighbor_index);
+
+                    parents
+                        .entry(neighbor_index)
+                        .or_insert_with(Vec::new)
+                        .push(created_resource_node_index);
                 }
             }
         }
