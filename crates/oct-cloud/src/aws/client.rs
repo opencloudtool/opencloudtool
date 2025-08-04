@@ -591,7 +591,19 @@ impl Ec2Impl {
             .user_data(user_data_base64.clone())
             .subnet_id(subnet_id)
             .min_count(1)
-            .max_count(1);
+            .max_count(1)
+            .block_device_mappings(
+                aws_sdk_ec2::types::BlockDeviceMapping::builder()
+                    .device_name("/dev/sda1")
+                    .ebs(
+                        aws_sdk_ec2::types::EbsBlockDevice::builder()
+                            .volume_size(100)
+                            .volume_type(aws_sdk_ec2::types::VolumeType::Gp3)
+                            .delete_on_termination(true)
+                            .build(),
+                    )
+                    .build(),
+            );
 
         if let Some(instance_profile_name) = instance_profile_name {
             request = request.iam_instance_profile(
