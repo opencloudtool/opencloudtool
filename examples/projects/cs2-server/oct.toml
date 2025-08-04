@@ -1,0 +1,45 @@
+[project]
+name = "cs2-server"
+
+[project.state_backend.local]
+path = "./state.json"
+
+[project.user_state_backend.local]
+path = "./user_state.json"
+
+[project.services.cs2]
+image = "docker.io/joedwards32/cs2"
+cpus = 2000
+memory = 2048
+internal_port = 27015
+external_port = 80
+
+[project.services.cs2.envs]
+SRCDS_TOKEN = "{{ env.SRCDS_TOKEN }}"
+STEAMAPPVALIDATE = "0"
+CS2_SERVERNAME = "OpenCloudTool Server"
+CS2_CHEATS = "0"
+CS2_PORT = "27015"
+CS2_RCON_PORT = "28015"
+CS2_SERVER_HIBERNATE = "0"
+CS2_LAN = "0"
+CS2_RCONPW = "changeme"
+CS2_MAXPLAYERS = "32"
+CS2_ADDITIONAL_ARGS = ""
+CS2_GAMETYPE = "0"
+CS2_GAMEMODE = "1"
+CS2_MAPGROUP = "mg_active"
+CS2_STARTMAP = "de_inferno"
+CS2_HOST_WORKSHOP_COLLECTION = "3422169295"
+CS2_HOST_WORKSHOP_MAP = "3248665045"
+TV_AUTORECORD = "0"
+TV_ENABLE = "0"
+TV_PORT = "27020"
+TV_PW = "changeme"
+TV_RELAY_PW = "changeme"
+TV_MAXRATE = "0"
+TV_DELAY = "0"
+CS2_LOG = "on"
+CS2_LOG_MONEY = "0"
+CS2_LOG_DETAIL = "0"
+CS2_LOG_ITEMS = "0"
