@@ -157,6 +157,62 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
 }
 
 #[derive(Debug)]
+pub struct RouteTableSpec;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteTable {
+    id: String,
+}
+
+struct RouteTableManager<'a> {
+    client: &'a client::Ec2,
+}
+
+impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
+    async fn create(
+        &self,
+        _input: &'_ RouteTableSpec,
+        parents: Vec<&'_ Node>,
+    ) -> Result<RouteTable, Box<dyn std::error::Error>> {
+        let vpc_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
+
+        let vpc = if let Some(Node::Resource(ResourceType::Vpc(vpc))) = vpc_node {
+            Ok(vpc.clone())
+        } else {
+            Err("RouteTable expects VPC as a parent")
+        }?;
+
+        let igw_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::InternetGateway(_))));
+
+        let igw = if let Some(Node::Resource(ResourceType::InternetGateway(igw))) = igw_node {
+            Ok(igw.clone())
+        } else {
+            Err("RouteTable expects IGW as a parent")
+        }?;
+
+        let id = self.client.create_route_table(vpc.id.clone()).await?;
+
+        self.client
+            .add_public_route(id.clone(), igw.id.clone())
+            .await?;
+
+        Ok(RouteTable { id })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ RouteTable,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.delete_route_table(input.id.clone()).await
+    }
+}
+
+#[derive(Debug)]
 pub struct SubnetSpec {
     name: String,
     cidr_block: String,
@@ -170,8 +226,6 @@ pub struct Subnet {
     name: String,
     cidr_block: String,
     availability_zone: String,
-
-    route_table_id: String,
 }
 
 struct SubnetManager<'a> {
@@ -194,15 +248,16 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
             Err("Subnet expects VPC as a parent")
         }?;
 
-        let igw_node = parents
+        let route_table_node = parents
             .iter()
-            .find(|parent| matches!(parent, Node::Resource(ResourceType::InternetGateway(_))));
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::RouteTable(_))));
 
-        let igw = if let Some(Node::Resource(ResourceType::InternetGateway(igw))) = igw_node {
-            Ok(igw.clone())
-        } else {
-            Err("Subnet expects IGW as a parent")
-        }?;
+        let route_table =
+            if let Some(Node::Resource(ResourceType::RouteTable(route_table))) = route_table_node {
+                Ok(route_table.clone())
+            } else {
+                Err("Subnet expects RouteTable as a parent")
+            }?;
 
         let subnet_id = self
             .client
@@ -218,14 +273,8 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
             .enable_auto_assign_ip_addresses_for_subnet(subnet_id.clone())
             .await?;
 
-        let route_table_id = self.client.create_route_table(vpc.id.clone()).await?;
-
         self.client
-            .associate_route_table_with_subnet(route_table_id.clone(), subnet_id.clone())
-            .await?;
-
-        self.client
-            .add_public_route(route_table_id.clone(), igw.id.clone())
+            .associate_route_table_with_subnet(route_table.id.clone(), subnet_id.clone())
             .await?;
 
         Ok(Subnet {
@@ -233,21 +282,27 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
             name: input.name.clone(),
             cidr_block: input.cidr_block.clone(),
             availability_zone: input.availability_zone.clone(),
-            route_table_id: route_table_id.clone(),
         })
     }
 
     async fn destroy(
         &self,
         input: &'_ Subnet,
-        _parents: Vec<&Node>,
+        parents: Vec<&Node>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.client
-            .disassociate_route_table_with_subnet(input.route_table_id.clone(), input.id.clone())
-            .await?;
+        let route_table_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::RouteTable(_))));
+
+        let route_table =
+            if let Some(Node::Resource(ResourceType::RouteTable(route_table))) = route_table_node {
+                Ok(route_table.clone())
+            } else {
+                Err("Subnet expects RouteTable as a parent")
+            }?;
 
         self.client
-            .delete_route_table(input.route_table_id.clone())
+            .disassociate_route_table_with_subnet(route_table.id.clone(), input.id.clone())
             .await?;
 
         self.client.delete_subnet(input.id.clone()).await
@@ -392,6 +447,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
 pub enum ResourceSpecType {
     Vpc(VpcSpec),
     InternetGateway(InternetGatewaySpec),
+    RouteTable(RouteTableSpec),
     Subnet(SubnetSpec),
     Vm(VmSpec),
 }
@@ -416,6 +472,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::InternetGateway(_resource) => {
                     write!(f, "spec IGW")
                 }
+                ResourceSpecType::RouteTable(_resource) => {
+                    write!(f, "spec RouteTable")
+                }
                 ResourceSpecType::Subnet(resource) => {
                     write!(f, "spec {}", resource.cidr_block)
                 }
@@ -434,6 +493,7 @@ pub enum ResourceType {
 
     Vpc(Vpc),
     InternetGateway(InternetGateway),
+    RouteTable(RouteTable),
     Subnet(Subnet),
     Vm(Vm),
 }
@@ -443,6 +503,7 @@ impl ResourceType {
         match self {
             ResourceType::Vpc(vpc) => format!("vpc.{}", vpc.name),
             ResourceType::InternetGateway(igw) => format!("igw.{}", igw.id),
+            ResourceType::RouteTable(route_table) => format!("route_table.{}", route_table.id),
             ResourceType::Subnet(subnet) => format!("subnet.{}", subnet.name),
             ResourceType::Vm(vm) => format!("vm.{}", vm.id),
             ResourceType::None => String::from("none"),
@@ -465,13 +526,16 @@ impl std::fmt::Display for Node {
             Node::Root => write!(f, "Root"),
             Node::Resource(resource_type) => match resource_type {
                 ResourceType::Vpc(resource) => {
-                    write!(f, "cloud {}", resource.name)
+                    write!(f, "cloud VPC {}", resource.name)
                 }
                 ResourceType::InternetGateway(resource) => {
-                    write!(f, "cloud {}", resource.id)
+                    write!(f, "cloud IGW {}", resource.id)
+                }
+                ResourceType::RouteTable(resource) => {
+                    write!(f, "cloud RouteTable {}", resource.id)
                 }
                 ResourceType::Subnet(resource) => {
-                    write!(f, "cloud {}", resource.cidr_block)
+                    write!(f, "cloud Subnet {}", resource.cidr_block)
                 }
                 ResourceType::Vm(resource) => {
                     write!(f, "cloud VM {}", resource.id)
@@ -627,6 +691,10 @@ impl GraphManager {
             InternetGatewaySpec,
         )));
 
+        let route_table_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::RouteTable(
+            RouteTableSpec,
+        )));
+
         let subnet_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::Subnet(SubnetSpec {
             name: String::from("vpc-1-subnet"),
             cidr_block: String::from("10.0.1.0/24"),
@@ -665,10 +733,12 @@ impl GraphManager {
         // Nodes within the same parent are traversed from
         // the latest to the first
         let mut edges = vec![
-            (root, vpc_1, String::new()),     // 0
-            (vpc_1, subnet_1, String::new()), // 2
-            (vpc_1, igw_1, String::new()),    // 1
-            (igw_1, subnet_1, String::new()), // 3
+            (root, vpc_1, String::new()),             // 0
+            (vpc_1, subnet_1, String::new()),         // 3
+            (vpc_1, route_table_1, String::new()),    // 2
+            (vpc_1, igw_1, String::new()),            // 1
+            (igw_1, route_table_1, String::new()),    // 4
+            (route_table_1, subnet_1, String::new()), // 5
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
@@ -762,6 +832,36 @@ impl GraphManager {
                                     }
 
                                     Ok(igw_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
+                        ResourceSpecType::RouteTable(resource) => {
+                            let manager = RouteTableManager {
+                                client: &self.ec2_client,
+                            };
+                            let output_route_table = manager.create(resource, parent_nodes).await;
+
+                            match output_route_table {
+                                Ok(output_route_table) => {
+                                    log::info!(
+                                        "Deployed {output_route_table:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node = Node::Resource(ResourceType::RouteTable(
+                                        output_route_table,
+                                    ));
+                                    let route_table_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            route_table_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(route_table_index)
                                 }
                                 Err(e) => Err(Box::new(e)),
                             }
@@ -911,6 +1011,14 @@ impl GraphManager {
                         }
                         ResourceType::InternetGateway(resource) => {
                             let manager = InternetGatewayManager {
+                                client: &self.ec2_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::RouteTable(resource) => {
+                            let manager = RouteTableManager {
                                 client: &self.ec2_client,
                             };
                             let _ = manager.destroy(resource, parent_nodes).await;
