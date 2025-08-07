@@ -26,6 +26,7 @@ where
     fn destroy(
         &self,
         input: &'a O,
+        parents: Vec<&'a Node>,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
 }
 
@@ -43,7 +44,6 @@ pub struct Vpc {
     region: String,
     cidr_block: String,
     name: String,
-    igw_id: String,
 }
 
 struct VpcManager<'a> {
@@ -60,8 +60,6 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
             .client
             .create_vpc(input.cidr_block.clone(), input.name.clone())
             .await?;
-
-        let igw_id = self.client.create_internet_gateway(vpc_id.clone()).await?;
 
         let default_security_group_id = self
             .client
@@ -90,16 +88,71 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
             region: input.region.clone(),
             cidr_block: input.cidr_block.clone(),
             name: input.name.clone(),
-            igw_id,
         })
     }
 
-    async fn destroy(&self, input: &'_ Vpc) -> Result<(), Box<dyn std::error::Error>> {
+    async fn destroy(
+        &self,
+        input: &'_ Vpc,
+        _parents: Vec<&Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.delete_vpc(input.id.clone()).await
+    }
+}
+
+#[derive(Debug)]
+pub struct InternetGatewaySpec;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InternetGateway {
+    id: String,
+}
+
+struct InternetGatewayManager<'a> {
+    client: &'a client::Ec2,
+}
+
+impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManager<'_> {
+    async fn create(
+        &self,
+        _input: &'_ InternetGatewaySpec,
+        parents: Vec<&'_ Node>,
+    ) -> Result<InternetGateway, Box<dyn std::error::Error>> {
+        let vpc_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
+
+        let vpc = if let Some(Node::Resource(ResourceType::Vpc(vpc))) = vpc_node {
+            Ok(vpc.clone())
+        } else {
+            Err("Igw expects VPC as a parent")
+        }?;
+
+        let igw_id = self.client.create_internet_gateway(vpc.id.clone()).await?;
+
+        Ok(InternetGateway { id: igw_id })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ InternetGateway,
+        parents: Vec<&Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let vpc_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
+
+        let vpc = if let Some(Node::Resource(ResourceType::Vpc(vpc))) = vpc_node {
+            Ok(vpc.clone())
+        } else {
+            Err("Igw expects VPC as a parent")
+        }?;
+
         self.client
-            .delete_internet_gateway(input.igw_id.clone(), input.id.clone())
+            .delete_internet_gateway(input.id.clone(), vpc.id.clone())
             .await?;
 
-        self.client.delete_vpc(input.id.clone()).await
+        Ok(())
     }
 }
 
@@ -138,7 +191,17 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
         let vpc = if let Some(Node::Resource(ResourceType::Vpc(vpc))) = vpc_node {
             Ok(vpc.clone())
         } else {
-            Err("Unexpected parent")
+            Err("Subnet expects VPC as a parent")
+        }?;
+
+        let igw_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::InternetGateway(_))));
+
+        let igw = if let Some(Node::Resource(ResourceType::InternetGateway(igw))) = igw_node {
+            Ok(igw.clone())
+        } else {
+            Err("Subnet expects IGW as a parent")
         }?;
 
         let subnet_id = self
@@ -162,7 +225,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
             .await?;
 
         self.client
-            .add_public_route(route_table_id.clone(), vpc.igw_id.clone())
+            .add_public_route(route_table_id.clone(), igw.id.clone())
             .await?;
 
         Ok(Subnet {
@@ -174,7 +237,11 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
         })
     }
 
-    async fn destroy(&self, input: &'_ Subnet) -> Result<(), Box<dyn std::error::Error>> {
+    async fn destroy(
+        &self,
+        input: &'_ Subnet,
+        _parents: Vec<&Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.client
             .disassociate_route_table_with_subnet(input.route_table_id.clone(), input.id.clone())
             .await?;
@@ -271,7 +338,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
         let subnet_id = if let Some(Node::Resource(ResourceType::Subnet(subnet))) = subnet_node {
             Ok(subnet.id.clone())
         } else {
-            Err("Unexpected parent")
+            Err("VM expects Subnet as a parent")
         };
 
         let user_data_base64 = general_purpose::STANDARD.encode(input.user_data.clone());
@@ -310,7 +377,11 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
         })
     }
 
-    async fn destroy(&self, input: &'_ Vm) -> Result<(), Box<dyn std::error::Error>> {
+    async fn destroy(
+        &self,
+        input: &'_ Vm,
+        _parents: Vec<&Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.client.terminate_instance(input.id.clone()).await?;
 
         self.is_terminated(input.id.clone()).await
@@ -320,6 +391,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
 #[derive(Debug)]
 pub enum ResourceSpecType {
     Vpc(VpcSpec),
+    InternetGateway(InternetGatewaySpec),
     Subnet(SubnetSpec),
     Vm(VmSpec),
 }
@@ -341,6 +413,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::Vpc(resource) => {
                     write!(f, "spec {}", resource.name)
                 }
+                ResourceSpecType::InternetGateway(_resource) => {
+                    write!(f, "spec IGW")
+                }
                 ResourceSpecType::Subnet(resource) => {
                     write!(f, "spec {}", resource.cidr_block)
                 }
@@ -358,6 +433,7 @@ pub enum ResourceType {
     None,
 
     Vpc(Vpc),
+    InternetGateway(InternetGateway),
     Subnet(Subnet),
     Vm(Vm),
 }
@@ -366,6 +442,7 @@ impl ResourceType {
     fn name(&self) -> String {
         match self {
             ResourceType::Vpc(vpc) => format!("vpc.{}", vpc.name),
+            ResourceType::InternetGateway(igw) => format!("igw.{}", igw.id),
             ResourceType::Subnet(subnet) => format!("subnet.{}", subnet.name),
             ResourceType::Vm(vm) => format!("vm.{}", vm.id),
             ResourceType::None => String::from("none"),
@@ -389,6 +466,9 @@ impl std::fmt::Display for Node {
             Node::Resource(resource_type) => match resource_type {
                 ResourceType::Vpc(resource) => {
                     write!(f, "cloud {}", resource.name)
+                }
+                ResourceType::InternetGateway(resource) => {
+                    write!(f, "cloud {}", resource.id)
                 }
                 ResourceType::Subnet(resource) => {
                     write!(f, "cloud {}", resource.cidr_block)
@@ -434,11 +514,20 @@ impl State {
         }
 
         while let Some(node_index) = queue.pop_front() {
-            let parent_node_indexes = match parents.get(&node_index) {
-                Some(parent_node_indexes) => parent_node_indexes.clone(),
-                None => Vec::new(),
-            };
-            let parent_nodes = parent_node_indexes
+            for neighbor_node_index in graph.neighbors(node_index) {
+                if !parents.contains_key(&neighbor_node_index) {
+                    queue.push_back(neighbor_node_index);
+                }
+
+                parents
+                    .entry(neighbor_node_index)
+                    .or_insert_with(Vec::new)
+                    .push(node_index);
+            }
+        }
+
+        for (child_index, parents) in &parents {
+            let parent_node_names = parents
                 .iter()
                 .filter_map(|x| graph.node_weight(*x))
                 .filter_map(|x| match x {
@@ -447,23 +536,14 @@ impl State {
                 })
                 .collect();
 
-            if let Some(Node::Resource(resource_type)) = graph.node_weight(node_index) {
+            if let Some(Node::Resource(resource_type)) = graph.node_weight(*child_index) {
                 log::info!("Add to state {resource_type:?}");
 
                 resource_states.push(ResourceState {
                     name: resource_type.name(),
                     resource: resource_type.clone(),
-                    dependencies: parent_nodes,
+                    dependencies: parent_node_names,
                 });
-
-                for neighbor_node_index in graph.neighbors(node_index) {
-                    queue.push_back(neighbor_node_index);
-
-                    parents
-                        .entry(neighbor_node_index)
-                        .or_insert_with(Vec::new)
-                        .push(node_index);
-                }
             }
         }
 
@@ -543,6 +623,10 @@ impl GraphManager {
             name: String::from("vpc-1"),
         })));
 
+        let igw_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::InternetGateway(
+            InternetGatewaySpec,
+        )));
+
         let subnet_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::Subnet(SubnetSpec {
             name: String::from("vpc-1-subnet"),
             cidr_block: String::from("10.0.1.0/24"),
@@ -577,9 +661,14 @@ impl GraphManager {
                 })))
             });
 
+        // Order of the edges matters in this implementation
+        // Nodes within the same parent are traversed from
+        // the latest to the first
         let mut edges = vec![
-            (root, vpc_1, String::new()),
-            (vpc_1, subnet_1, String::new()),
+            (root, vpc_1, String::new()),     // 0
+            (vpc_1, subnet_1, String::new()), // 2
+            (vpc_1, igw_1, String::new()),    // 1
+            (igw_1, subnet_1, String::new()), // 3
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
@@ -594,7 +683,6 @@ impl GraphManager {
     ///
     /// Temporarily also returns a list of VMs to be used for user
     /// services deployment
-    /// TODO: Implement graph manager
     pub async fn deploy(&self, graph: &Graph<SpecNode, String>) -> (Graph<Node, String>, Vec<Vm>) {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
@@ -627,7 +715,7 @@ impl GraphManager {
 
             if let Some(elem) = graph.node_weight(node_index) {
                 let created_resource_node_index = match elem {
-                    SpecNode::Root => Some(resource_graph.add_node(Node::Root)),
+                    SpecNode::Root => Ok(resource_graph.add_node(Node::Root)),
                     SpecNode::Resource(resource_type) => match resource_type {
                         ResourceSpecType::Vpc(resource) => {
                             let manager = VpcManager {
@@ -648,9 +736,34 @@ impl GraphManager {
                                         edges.push((parent_node_index, vpc_index, String::new()));
                                     }
 
-                                    Some(vpc_index)
+                                    Ok(vpc_index)
                                 }
-                                Err(_) => None,
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
+                        ResourceSpecType::InternetGateway(resource) => {
+                            let manager = InternetGatewayManager {
+                                client: &self.ec2_client,
+                            };
+                            let output_igw = manager.create(resource, parent_nodes).await;
+
+                            match output_igw {
+                                Ok(output_igw) => {
+                                    log::info!(
+                                        "Deployed {output_igw:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node =
+                                        Node::Resource(ResourceType::InternetGateway(output_igw));
+                                    let igw_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((parent_node_index, igw_index, String::new()));
+                                    }
+
+                                    Ok(igw_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
                             }
                         }
                         ResourceSpecType::Subnet(resource) => {
@@ -676,9 +789,9 @@ impl GraphManager {
                                         ));
                                     }
 
-                                    Some(subnet_index)
+                                    Ok(subnet_index)
                                 }
-                                Err(_) => None,
+                                Err(e) => Err(Box::new(e)),
                             }
                         }
                         ResourceSpecType::Vm(resource) => {
@@ -702,23 +815,25 @@ impl GraphManager {
 
                                     vms.push(output_vm);
 
-                                    Some(vm_index)
+                                    Ok(vm_index)
                                 }
-                                Err(_) => None,
+                                Err(e) => Err(Box::new(e)),
                             }
                         }
                     },
                 };
 
-                let Some(created_resource_node_index) = created_resource_node_index else {
+                let Ok(created_resource_node_index) = created_resource_node_index else {
                     //TODO: Handle failed resource creation
-                    log::error!("Failed to create a resource");
+                    log::error!("Failed to create a resource {created_resource_node_index:?}");
 
                     continue;
                 };
 
                 for neighbor_index in graph.neighbors(node_index) {
-                    queue.push_back(neighbor_index);
+                    if !parents.contains_key(&neighbor_index) {
+                        queue.push_back(neighbor_index);
+                    }
 
                     parents
                         .entry(neighbor_index)
@@ -738,12 +853,19 @@ impl GraphManager {
     pub async fn destroy(&self, graph: &Graph<Node, String>) {
         log::info!("Graph to delete {}", Dot::new(&graph));
 
+        let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
+
         // Remove resources
         let mut queue_to_destroy: VecDeque<NodeIndex> = VecDeque::new();
         let mut queue_to_traverse: VecDeque<NodeIndex> = VecDeque::new();
-        let root_node = graph.from_index(0);
-        for node_index in graph.neighbors(root_node) {
+        let root_index = graph.from_index(0);
+        for node_index in graph.neighbors(root_index) {
             queue_to_traverse.push_back(node_index);
+
+            parents
+                .entry(node_index)
+                .or_insert_with(Vec::new)
+                .push(root_index);
         }
 
         // Prepare queue to destroy
@@ -752,13 +874,29 @@ impl GraphManager {
                 queue_to_destroy.push_back(node_index);
 
                 for neighbor_index in graph.neighbors(node_index) {
-                    queue_to_traverse.push_back(neighbor_index);
+                    if !parents.contains_key(&neighbor_index) {
+                        queue_to_traverse.push_back(neighbor_index);
+                    }
+
+                    parents
+                        .entry(neighbor_index)
+                        .or_insert_with(Vec::new)
+                        .push(node_index);
                 }
             }
         }
 
         // Destroy resources from back
         while let Some(node_index) = queue_to_destroy.pop_back() {
+            let parent_node_indexes = match parents.get(&node_index) {
+                Some(parent_node_indexes) => parent_node_indexes.clone(),
+                None => Vec::new(),
+            };
+            let parent_nodes = parent_node_indexes
+                .iter()
+                .filter_map(|x| graph.node_weight(*x))
+                .collect();
+
             if let Some(elem) = graph.node_weight(node_index) {
                 match elem {
                     Node::Root => {}
@@ -767,7 +905,15 @@ impl GraphManager {
                             let manager = VpcManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource).await;
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::InternetGateway(resource) => {
+                            let manager = InternetGatewayManager {
+                                client: &self.ec2_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
 
                             log::info!("Destroyed {resource:?}");
                         }
@@ -775,7 +921,7 @@ impl GraphManager {
                             let manager = SubnetManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource).await;
+                            let _ = manager.destroy(resource, parent_nodes).await;
 
                             log::info!("Destroyed {resource:?}");
                         }
@@ -783,7 +929,7 @@ impl GraphManager {
                             let manager = VmManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource).await;
+                            let _ = manager.destroy(resource, parent_nodes).await;
 
                             log::info!("Destroyed {resource:?}");
                         }
