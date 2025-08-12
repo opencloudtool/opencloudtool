@@ -171,7 +171,7 @@ impl Ec2Impl {
     }
 
     /// Create Security Group
-    pub(super) async fn create_security_group(
+    pub async fn create_security_group(
         &self,
         vpc_id: String,
         name: String,
@@ -220,7 +220,7 @@ impl Ec2Impl {
     }
 
     /// Delete Security Group
-    pub(super) async fn delete_security_group(
+    pub async fn delete_security_group(
         &self,
         security_group_id: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
