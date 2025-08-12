@@ -309,6 +309,84 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboundRule {
+    protocol: String,
+    port: i32,
+    cidr_block: String,
+}
+
+#[derive(Debug)]
+pub struct SecurityGroupSpec {
+    name: String,
+    inbound_rules: Vec<InboundRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityGroup {
+    id: String,
+
+    name: String,
+    inbound_rules: Vec<InboundRule>,
+}
+
+struct SecurityGroupManager<'a> {
+    client: &'a client::Ec2,
+}
+
+impl Manager<'_, SecurityGroupSpec, SecurityGroup> for SecurityGroupManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ SecurityGroupSpec,
+        parents: Vec<&Node>,
+    ) -> Result<SecurityGroup, Box<dyn std::error::Error>> {
+        let vpc_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
+
+        let vpc = if let Some(Node::Resource(ResourceType::Vpc(vpc))) = vpc_node {
+            Ok(vpc.clone())
+        } else {
+            Err("SecurityGroup expects VPC as a parent")
+        }?;
+
+        let security_group_id = self
+            .client
+            .create_security_group(
+                vpc.id.clone(),
+                input.name.clone(),
+                String::from("No description"),
+            )
+            .await?;
+
+        for rule in &input.inbound_rules {
+            self.client
+                .allow_inbound_traffic_for_security_group(
+                    security_group_id.clone(),
+                    rule.protocol.clone(),
+                    rule.port,
+                    rule.cidr_block.clone(),
+                )
+                .await?;
+        }
+
+        Ok(SecurityGroup {
+            id: security_group_id.clone(),
+
+            name: input.name.clone(),
+            inbound_rules: input.inbound_rules.clone(),
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ SecurityGroup,
+        _parents: Vec<&Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.delete_security_group(input.id.clone()).await
+    }
+}
+
 #[derive(Debug)]
 pub struct VmSpec {
     instance_type: types::InstanceType,
@@ -449,6 +527,7 @@ pub enum ResourceSpecType {
     InternetGateway(InternetGatewaySpec),
     RouteTable(RouteTableSpec),
     Subnet(SubnetSpec),
+    SecurityGroup(SecurityGroupSpec),
     Vm(VmSpec),
 }
 
@@ -478,6 +557,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::Subnet(resource) => {
                     write!(f, "spec {}", resource.cidr_block)
                 }
+                ResourceSpecType::SecurityGroup(resource) => {
+                    write!(f, "spec SecurityGroup {}", resource.name)
+                }
                 ResourceSpecType::Vm(_resource) => {
                     write!(f, "spec VM")
                 }
@@ -495,17 +577,19 @@ pub enum ResourceType {
     InternetGateway(InternetGateway),
     RouteTable(RouteTable),
     Subnet(Subnet),
+    SecurityGroup(SecurityGroup),
     Vm(Vm),
 }
 
 impl ResourceType {
     fn name(&self) -> String {
         match self {
-            ResourceType::Vpc(vpc) => format!("vpc.{}", vpc.name),
-            ResourceType::InternetGateway(igw) => format!("igw.{}", igw.id),
-            ResourceType::RouteTable(route_table) => format!("route_table.{}", route_table.id),
-            ResourceType::Subnet(subnet) => format!("subnet.{}", subnet.name),
-            ResourceType::Vm(vm) => format!("vm.{}", vm.id),
+            ResourceType::Vpc(resource) => format!("vpc.{}", resource.name),
+            ResourceType::InternetGateway(resource) => format!("igw.{}", resource.id),
+            ResourceType::RouteTable(resource) => format!("route_table.{}", resource.id),
+            ResourceType::Subnet(resource) => format!("subnet.{}", resource.name),
+            ResourceType::SecurityGroup(resource) => format!("security_group.{}", resource.id),
+            ResourceType::Vm(resource) => format!("vm.{}", resource.id),
             ResourceType::None => String::from("none"),
         }
     }
@@ -536,6 +620,9 @@ impl std::fmt::Display for Node {
                 }
                 ResourceType::Subnet(resource) => {
                     write!(f, "cloud Subnet {}", resource.cidr_block)
+                }
+                ResourceType::SecurityGroup(resource) => {
+                    write!(f, "cloud SecurityGroup {}", resource.id)
                 }
                 ResourceType::Vm(resource) => {
                     write!(f, "cloud VM {}", resource.id)
@@ -701,6 +788,29 @@ impl GraphManager {
             availability_zone: String::from("us-west-2a"),
         })));
 
+        let security_group_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::SecurityGroup(
+            SecurityGroupSpec {
+                name: String::from("vpc-1-security-group"),
+                inbound_rules: vec![
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 80,
+                    },
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 31888,
+                    },
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 22,
+                    },
+                ],
+            },
+        )));
+
         let user_data = String::from(
             r#"#!/bin/bash
         set -e
@@ -734,11 +844,12 @@ impl GraphManager {
         // the latest to the first
         let mut edges = vec![
             (root, vpc_1, String::new()),             // 0
+            (vpc_1, security_group_1, String::new()), // 4
             (vpc_1, subnet_1, String::new()),         // 3
             (vpc_1, route_table_1, String::new()),    // 2
             (vpc_1, igw_1, String::new()),            // 1
-            (igw_1, route_table_1, String::new()),    // 4
-            (route_table_1, subnet_1, String::new()), // 5
+            (igw_1, route_table_1, String::new()),    // 5
+            (route_table_1, subnet_1, String::new()), // 6
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
@@ -894,6 +1005,38 @@ impl GraphManager {
                                 Err(e) => Err(Box::new(e)),
                             }
                         }
+                        ResourceSpecType::SecurityGroup(resource) => {
+                            let manager = SecurityGroupManager {
+                                client: &self.ec2_client,
+                            };
+                            let output_security_group =
+                                manager.create(resource, parent_nodes).await;
+
+                            match output_security_group {
+                                Ok(output_security_group) => {
+                                    log::info!(
+                                        "Deployed {output_security_group:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node = Node::Resource(ResourceType::SecurityGroup(
+                                        output_security_group,
+                                    ));
+                                    let security_group_index =
+                                        resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            security_group_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(security_group_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
                         ResourceSpecType::Vm(resource) => {
                             let manager = VmManager {
                                 client: &self.ec2_client,
@@ -1027,6 +1170,14 @@ impl GraphManager {
                         }
                         ResourceType::Subnet(resource) => {
                             let manager = SubnetManager {
+                                client: &self.ec2_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::SecurityGroup(resource) => {
+                            let manager = SecurityGroupManager {
                                 client: &self.ec2_client,
                             };
                             let _ = manager.destroy(resource, parent_nodes).await;
