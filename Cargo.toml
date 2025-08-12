@@ -8,15 +8,15 @@ oct-orchestrator = { path = "crates/oct-orchestrator" }
 
 assert_cmd = "2.0.17"
 async-trait = "0.1.88"
-aws-config = "1.8.3"
-aws-sdk-ec2 = "1.154.0"
-aws-sdk-ecr = "1.87.0"
-aws-sdk-iam = "1.83.0"
-aws-sdk-route53 = "1.88.0"
-aws-sdk-s3 = "1.100.0"
+aws-config = "1.8.4"
+aws-sdk-ec2 = "1.157.0"
+aws-sdk-ecr = "1.88.0"
+aws-sdk-iam = "1.84.0"
+aws-sdk-route53 = "1.89.0"
+aws-sdk-s3 = "1.101.0"
 axum = "0.8.4"
 base64 = "0.22.1"
-clap = { version = "4.5.42", features = ["derive"] }
+clap = { version = "4.5.44", features = ["derive"] }
 petgraph = "0.8.1"
 predicates = "3.1.3"
 serde = "1.0.219"
@@ -27,7 +27,7 @@ tera = { git = "https://github.com/minev-dev/tera.git", rev = "1e36d2f8ba66833ce
 tokio = { version = "1.47.1", features = ["full"] }
 mockall = "0.13.1"
 mockito = "1.7.0"
-uuid = { version = "1.17.0", features = ["v4"] }
+uuid = { version = "1.18.0", features = ["v4"] }
 log = "0.4.27"
 env_logger = "0.11.6"
 toml = "0.8.23"
