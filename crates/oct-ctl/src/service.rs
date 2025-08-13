@@ -202,12 +202,12 @@ mod tests {
                             memory: 64,
                             envs: HashMap::new(),
                         })
-                        .unwrap(),
+                        .expect("Failed to dump JSON"),
                     ))
-                    .unwrap(),
+                    .expect("Failed to prepare body"),
             )
             .await
-            .unwrap();
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::CREATED);
     }
@@ -237,12 +237,12 @@ mod tests {
                             memory: 64,
                             envs: HashMap::new(),
                         })
-                        .unwrap(),
+                        .expect("Failed to dump JSON"),
                     ))
-                    .unwrap(),
+                    .expect("Failed to prepare body"),
             )
             .await
-            .unwrap();
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -265,12 +265,12 @@ mod tests {
                         serde_json::to_string_pretty(&RemoveContainerPayload {
                             name: "test".to_string(),
                         })
-                        .unwrap(),
+                        .expect("Failed to dump JSON"),
                     ))
-                    .unwrap(),
+                    .expect("Failed to prepare body"),
             )
             .await
-            .unwrap();
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::OK);
     }
@@ -293,12 +293,12 @@ mod tests {
                         serde_json::to_string_pretty(&RemoveContainerPayload {
                             name: "test".to_string(),
                         })
-                        .unwrap(),
+                        .expect("Failed to dump JSON"),
                     ))
-                    .unwrap(),
+                    .expect("Failed to prepare body"),
             )
             .await
-            .unwrap();
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -313,9 +313,13 @@ mod tests {
             .with_state(server_config);
 
         let response = app
-            .oneshot(Request::get("/health-check").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::get("/health-check")
+                    .body(Body::empty())
+                    .expect("Failed to prepare body"),
+            )
             .await
-            .unwrap();
+            .expect("Failed to get response");
 
         assert_eq!(response.status(), StatusCode::OK);
     }

@@ -46,9 +46,10 @@ mod tests {
         // Assert
         assert!(output.is_ok());
 
-        let unwrapped_output = output.unwrap();
+        let unwrapped_output = output.expect("Failed to get output");
 
-        assert_eq!(unwrapped_output.status.success(), true);
+        assert!(unwrapped_output.status.success());
+
         assert_eq!(unwrapped_output.stdout, b"hello\n");
         assert_eq!(unwrapped_output.stderr, b"");
     }
