@@ -40,7 +40,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Run clippy linter
-        run: cargo clippy --no-deps
+        run: cargo clippy --workspace --all-targets --all-features --no-deps
 
       - name: Check for unused dependencies
         uses: bnjbvr/cargo-machete@main
@@ -74,19 +74,13 @@ jobs:
       - name: Prepare coverage
         run: cargo llvm-cov clean --workspace
 
-      - name: Compile for tests
-        run: cargo test --no-run --locked
-
       # Binaries needs to be compiled separately because
       # CLI tests call these binaries.
       - name: Compile debug binaries for tests
         run: cargo build --bin oct-cli
 
-      - name: Run tests and generate coverage data
-        run: cargo test --no-fail-fast --verbose
-
       - name: Report coverage
-        run: cargo llvm-cov report --lcov --output-path ./coverage.lcov
+        run: cargo llvm-cov --workspace --lcov --output-path ./coverage.lcov
 
       - name: Upload coverage report
         if: ${{ github.event_name != 'merge_group' }}
@@ -95,4 +89,5 @@ jobs:
           files: ./coverage.lcov
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: opencloudtool/opencloudtool
+          fail_ci_if_error: true
 
