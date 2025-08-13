@@ -40,7 +40,7 @@ jobs:
       #   uses: bnjbvr/cargo-machete@main
 
       - name: Compile for tests
-        run: cargo +nightly test --no-run --locked
+        run: cargo +nightly -Zprofile-hint-mostly-unused test --no-run --locked
 
       # Binaries needs to be compiled separately because
       # CLI tests call these binaries.
