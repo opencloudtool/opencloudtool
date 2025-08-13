@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +54,13 @@ jobs:
       - name: Restore cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Build all targets for tests
-        run: cargo test --no-run
+      - name: Compile for tests
+        run: cargo test --no-run --locked
+
+      # Binaries needs to be compiled separately because
+      # CLI tests call these binaries.
+      - name: Compile debug binaries for tests
+        run: cargo build --bin oct-cli
 
       - name: Run tests and generate coverage data
         run: cargo test --no-fail-fast --verbose
