@@ -94,7 +94,5 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.lcov
-          token: ${{ secrets.CODECOV_TOKEN }}
           slug: opencloudtool/opencloudtool
           fail_ci_if_error: true
-
