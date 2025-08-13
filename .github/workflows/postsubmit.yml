@@ -6,6 +6,9 @@ on:
   pull_request:
   merge_group:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   # RUSTFLAGS are used by all cargo commands (build, test, clippy)
