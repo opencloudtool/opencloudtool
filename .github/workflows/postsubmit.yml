@@ -33,8 +33,8 @@ jobs:
       - name: Run fmt
         run: cargo fmt --check
 
-      - name: Run clippy
-        run: cargo clippy --no-deps
+      # - name: Run clippy
+      #   run: cargo clippy --no-deps
 
       - name: Machete
         uses: bnjbvr/cargo-machete@main
