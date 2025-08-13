@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      RUSTFLAGS: -Dwarnings -Cinstrument-coverage
+      RUSTFLAGS: -Dwarnings -Cinstrument-coverage -Zprofile-hint-mostly-unused
       LLVM_PROFILE_FILE: "coverage/%p-%m.profraw"
 
     steps:
@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@nightly
         with:
           components: "llvm-tools-preview,clippy"
 
