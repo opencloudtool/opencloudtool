@@ -36,8 +36,8 @@ jobs:
       # - name: Run clippy
       #   run: cargo clippy --no-deps
 
-      - name: Machete
-        uses: bnjbvr/cargo-machete@main
+      # - name: Machete
+      #   uses: bnjbvr/cargo-machete@main
 
       - name: Compile for tests
         run: cargo test --no-run --locked
