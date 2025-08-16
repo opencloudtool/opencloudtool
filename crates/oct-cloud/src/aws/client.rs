@@ -902,7 +902,7 @@ impl Route53Impl {
 
 /// AWS IAM client implementation
 #[derive(Debug)]
-pub(super) struct IAMImpl {
+pub struct IAMImpl {
     inner: aws_sdk_iam::Client,
 }
 
@@ -910,11 +910,11 @@ pub(super) struct IAMImpl {
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl IAMImpl {
-    pub(super) fn new(inner: aws_sdk_iam::Client) -> Self {
+    pub fn new(inner: aws_sdk_iam::Client) -> Self {
         Self { inner }
     }
 
-    pub(super) async fn create_instance_iam_role(
+    pub async fn create_instance_iam_role(
         &self,
         name: String,
         assume_role_policy: String,
@@ -948,7 +948,7 @@ impl IAMImpl {
         Ok(())
     }
 
-    pub(super) async fn delete_instance_iam_role(
+    pub async fn delete_instance_iam_role(
         &self,
         name: String,
         policy_arns: Vec<String>,
@@ -1116,9 +1116,9 @@ pub use Ec2Impl as Ec2;
 pub use MockEc2Impl as Ec2;
 
 #[cfg(not(test))]
-pub(super) use IAMImpl as IAM;
+pub use IAMImpl as IAM;
 #[cfg(test)]
-pub(super) use MockIAMImpl as IAM;
+pub use MockIAMImpl as IAM;
 
 #[cfg(not(test))]
 pub(super) use ECRImpl as ECR;
