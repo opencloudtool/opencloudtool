@@ -388,6 +388,57 @@ impl Manager<'_, SecurityGroupSpec, SecurityGroup> for SecurityGroupManager<'_> 
 }
 
 #[derive(Debug)]
+pub struct InstanceRoleSpec {
+    name: String,
+    assume_role_policy: String,
+    policy_arns: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceRole {
+    name: String,
+    assume_role_policy: String,
+    policy_arns: Vec<String>,
+}
+
+struct InstanceRoleManager<'a> {
+    client: &'a client::IAM,
+}
+
+impl Manager<'_, InstanceRoleSpec, InstanceRole> for InstanceRoleManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ InstanceRoleSpec,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<InstanceRole, Box<dyn std::error::Error>> {
+        let () = self
+            .client
+            .create_instance_iam_role(
+                input.name.clone(),
+                input.assume_role_policy.clone(),
+                input.policy_arns.clone(),
+            )
+            .await?;
+
+        Ok(InstanceRole {
+            name: input.name.clone(),
+            assume_role_policy: input.assume_role_policy.clone(),
+            policy_arns: input.policy_arns.clone(),
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ InstanceRole,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client
+            .delete_instance_iam_role(input.name.clone(), input.policy_arns.clone())
+            .await
+    }
+}
+
+#[derive(Debug)]
 pub struct VmSpec {
     instance_type: types::InstanceType,
     ami: String,
@@ -528,6 +579,7 @@ pub enum ResourceSpecType {
     RouteTable(RouteTableSpec),
     Subnet(SubnetSpec),
     SecurityGroup(SecurityGroupSpec),
+    InstanceRole(InstanceRoleSpec),
     Vm(VmSpec),
 }
 
@@ -560,6 +612,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::SecurityGroup(resource) => {
                     write!(f, "spec SecurityGroup {}", resource.name)
                 }
+                ResourceSpecType::InstanceRole(resource) => {
+                    write!(f, "spec InstanceRole {}", resource.name)
+                }
                 ResourceSpecType::Vm(_resource) => {
                     write!(f, "spec VM")
                 }
@@ -578,6 +633,7 @@ pub enum ResourceType {
     RouteTable(RouteTable),
     Subnet(Subnet),
     SecurityGroup(SecurityGroup),
+    InstanceRole(InstanceRole),
     Vm(Vm),
 }
 
@@ -589,6 +645,7 @@ impl ResourceType {
             ResourceType::RouteTable(resource) => format!("route_table.{}", resource.id),
             ResourceType::Subnet(resource) => format!("subnet.{}", resource.name),
             ResourceType::SecurityGroup(resource) => format!("security_group.{}", resource.id),
+            ResourceType::InstanceRole(resource) => format!("instance_role.{}", resource.name),
             ResourceType::Vm(resource) => format!("vm.{}", resource.id),
             ResourceType::None => String::from("none"),
         }
@@ -623,6 +680,9 @@ impl std::fmt::Display for Node {
                 }
                 ResourceType::SecurityGroup(resource) => {
                     write!(f, "cloud SecurityGroup {}", resource.id)
+                }
+                ResourceType::InstanceRole(resource) => {
+                    write!(f, "cloud InstanceRole {}", resource.name)
                 }
                 ResourceType::Vm(resource) => {
                     write!(f, "cloud VM {}", resource.id)
@@ -741,6 +801,7 @@ impl State {
 
 pub struct GraphManager {
     ec2_client: client::Ec2,
+    iam_client: client::IAM,
 }
 
 impl GraphManager {
@@ -757,8 +818,12 @@ impl GraphManager {
             .await;
 
         let ec2_client = client::Ec2::new(aws_sdk_ec2::Client::new(&config));
+        let iam_client = client::IAM::new(aws_sdk_iam::Client::new(&config));
 
-        Self { ec2_client }
+        Self {
+            ec2_client,
+            iam_client,
+        }
     }
 
     pub fn get_spec_graph(
@@ -811,6 +876,29 @@ impl GraphManager {
             },
         )));
 
+        let instance_role_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::InstanceRole(
+            InstanceRoleSpec {
+                name: String::from("instance-role-1"),
+                assume_role_policy: String::from(
+                    r#"{
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "ec2.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole"
+                            }
+                        ]
+                    }"#,
+                ),
+                policy_arns: vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )],
+            },
+        )));
+
         let user_data = String::from(
             r#"#!/bin/bash
         set -e
@@ -843,16 +931,18 @@ impl GraphManager {
         // Nodes within the same parent are traversed from
         // the latest to the first
         let mut edges = vec![
+            (root, instance_role_1, String::new()),   // 1
             (root, vpc_1, String::new()),             // 0
-            (vpc_1, security_group_1, String::new()), // 4
-            (vpc_1, subnet_1, String::new()),         // 3
-            (vpc_1, route_table_1, String::new()),    // 2
-            (vpc_1, igw_1, String::new()),            // 1
-            (igw_1, route_table_1, String::new()),    // 5
-            (route_table_1, subnet_1, String::new()), // 6
+            (vpc_1, security_group_1, String::new()), // 5
+            (vpc_1, subnet_1, String::new()),         // 4
+            (vpc_1, route_table_1, String::new()),    // 3
+            (vpc_1, igw_1, String::new()),            // 2
+            (igw_1, route_table_1, String::new()),    // 6
+            (route_table_1, subnet_1, String::new()), // 7
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
+            edges.push((instance_role_1, instance, String::new()));
         }
 
         deps.extend_with_edges(&edges);
@@ -1037,6 +1127,36 @@ impl GraphManager {
                                 Err(e) => Err(Box::new(e)),
                             }
                         }
+                        ResourceSpecType::InstanceRole(resource) => {
+                            let manager = InstanceRoleManager {
+                                client: &self.iam_client,
+                            };
+                            let output_instance_role = manager.create(resource, parent_nodes).await;
+
+                            match output_instance_role {
+                                Ok(output_instance_role) => {
+                                    log::info!(
+                                        "Deployed {output_instance_role:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node = Node::Resource(ResourceType::InstanceRole(
+                                        output_instance_role,
+                                    ));
+                                    let instance_role_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            instance_role_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(instance_role_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
                         ResourceSpecType::Vm(resource) => {
                             let manager = VmManager {
                                 client: &self.ec2_client,
@@ -1179,6 +1299,14 @@ impl GraphManager {
                         ResourceType::SecurityGroup(resource) => {
                             let manager = SecurityGroupManager {
                                 client: &self.ec2_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::InstanceRole(resource) => {
+                            let manager = InstanceRoleManager {
+                                client: &self.iam_client,
                             };
                             let _ = manager.destroy(resource, parent_nodes).await;
 
