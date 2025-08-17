@@ -439,6 +439,66 @@ impl Manager<'_, InstanceRoleSpec, InstanceRole> for InstanceRoleManager<'_> {
 }
 
 #[derive(Debug)]
+pub struct InstanceProfileSpec {
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceProfile {
+    name: String,
+}
+
+struct InstanceProfileManager<'a> {
+    client: &'a client::IAM,
+}
+
+impl Manager<'_, InstanceProfileSpec, InstanceProfile> for InstanceProfileManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ InstanceProfileSpec,
+        parents: Vec<&'_ Node>,
+    ) -> Result<InstanceProfile, Box<dyn std::error::Error>> {
+        let instance_role_names = parents
+            .iter()
+            .filter_map(|parent| match parent {
+                Node::Resource(ResourceType::InstanceRole(instance_role)) => {
+                    Some(instance_role.name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+
+        self.client
+            .create_instance_profile(input.name.clone(), instance_role_names)
+            .await?;
+
+        Ok(InstanceProfile {
+            name: input.name.clone(),
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ InstanceProfile,
+        parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let instance_role_names = parents
+            .iter()
+            .filter_map(|parent| match parent {
+                Node::Resource(ResourceType::InstanceRole(instance_role)) => {
+                    Some(instance_role.name.clone())
+                }
+                _ => None,
+            })
+            .collect();
+
+        self.client
+            .delete_instance_profile(input.name.clone(), instance_role_names)
+            .await
+    }
+}
+
+#[derive(Debug)]
 pub struct VmSpec {
     instance_type: types::InstanceType,
     ami: String,
@@ -525,6 +585,19 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
             Err("VM expects Subnet as a parent")
         };
 
+        let instance_profile_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::InstanceProfile(_))));
+
+        let instance_profile_name =
+            if let Some(Node::Resource(ResourceType::InstanceProfile(instance_profile))) =
+                instance_profile_node
+            {
+                Ok(instance_profile.name.clone())
+            } else {
+                Err("VM expects InstanceProfile as a parent")
+            };
+
         let user_data_base64 = general_purpose::STANDARD.encode(input.user_data.clone());
 
         let response = self
@@ -533,7 +606,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
                 input.instance_type.clone(),
                 input.ami.clone(),
                 user_data_base64,
-                None,
+                instance_profile_name?,
                 subnet_id?,
                 None,
             )
@@ -580,6 +653,7 @@ pub enum ResourceSpecType {
     Subnet(SubnetSpec),
     SecurityGroup(SecurityGroupSpec),
     InstanceRole(InstanceRoleSpec),
+    InstanceProfile(InstanceProfileSpec),
     Vm(VmSpec),
 }
 
@@ -615,6 +689,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::InstanceRole(resource) => {
                     write!(f, "spec InstanceRole {}", resource.name)
                 }
+                ResourceSpecType::InstanceProfile(resource) => {
+                    write!(f, "spec InstanceProfile {}", resource.name)
+                }
                 ResourceSpecType::Vm(_resource) => {
                     write!(f, "spec VM")
                 }
@@ -634,6 +711,7 @@ pub enum ResourceType {
     Subnet(Subnet),
     SecurityGroup(SecurityGroup),
     InstanceRole(InstanceRole),
+    InstanceProfile(InstanceProfile),
     Vm(Vm),
 }
 
@@ -646,6 +724,9 @@ impl ResourceType {
             ResourceType::Subnet(resource) => format!("subnet.{}", resource.name),
             ResourceType::SecurityGroup(resource) => format!("security_group.{}", resource.id),
             ResourceType::InstanceRole(resource) => format!("instance_role.{}", resource.name),
+            ResourceType::InstanceProfile(resource) => {
+                format!("instance_profile.{}", resource.name)
+            }
             ResourceType::Vm(resource) => format!("vm.{}", resource.id),
             ResourceType::None => String::from("none"),
         }
@@ -683,6 +764,9 @@ impl std::fmt::Display for Node {
                 }
                 ResourceType::InstanceRole(resource) => {
                     write!(f, "cloud InstanceRole {}", resource.name)
+                }
+                ResourceType::InstanceProfile(resource) => {
+                    write!(f, "cloud InstanceProfile {}", resource.name)
                 }
                 ResourceType::Vm(resource) => {
                     write!(f, "cloud VM {}", resource.id)
@@ -899,6 +983,12 @@ impl GraphManager {
             },
         )));
 
+        let instance_profile_1 = deps.add_node(SpecNode::Resource(
+            ResourceSpecType::InstanceProfile(InstanceProfileSpec {
+                name: String::from("instance_profile_1"),
+            }),
+        ));
+
         let user_data = String::from(
             r#"#!/bin/bash
         set -e
@@ -931,18 +1021,19 @@ impl GraphManager {
         // Nodes within the same parent are traversed from
         // the latest to the first
         let mut edges = vec![
-            (root, instance_role_1, String::new()),   // 1
-            (root, vpc_1, String::new()),             // 0
-            (vpc_1, security_group_1, String::new()), // 5
-            (vpc_1, subnet_1, String::new()),         // 4
-            (vpc_1, route_table_1, String::new()),    // 3
-            (vpc_1, igw_1, String::new()),            // 2
-            (igw_1, route_table_1, String::new()),    // 6
-            (route_table_1, subnet_1, String::new()), // 7
+            (root, instance_role_1, String::new()),               // 1
+            (root, vpc_1, String::new()),                         // 0
+            (vpc_1, security_group_1, String::new()),             // 5
+            (vpc_1, subnet_1, String::new()),                     // 4
+            (vpc_1, route_table_1, String::new()),                // 3
+            (vpc_1, igw_1, String::new()),                        // 2
+            (igw_1, route_table_1, String::new()),                // 6
+            (route_table_1, subnet_1, String::new()),             // 7
+            (instance_role_1, instance_profile_1, String::new()), // 8
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
-            edges.push((instance_role_1, instance, String::new()));
+            edges.push((instance_profile_1, instance, String::new()));
         }
 
         deps.extend_with_edges(&edges);
@@ -1157,6 +1248,36 @@ impl GraphManager {
                                 Err(e) => Err(Box::new(e)),
                             }
                         }
+                        ResourceSpecType::InstanceProfile(resource) => {
+                            let manager = InstanceProfileManager {
+                                client: &self.iam_client,
+                            };
+                            let output_resource = manager.create(resource, parent_nodes).await;
+
+                            match output_resource {
+                                Ok(output_resource) => {
+                                    log::info!(
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node = Node::Resource(ResourceType::InstanceProfile(
+                                        output_resource,
+                                    ));
+                                    let resource_node_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            resource_node_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(resource_node_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
                         ResourceSpecType::Vm(resource) => {
                             let manager = VmManager {
                                 client: &self.ec2_client,
@@ -1306,6 +1427,14 @@ impl GraphManager {
                         }
                         ResourceType::InstanceRole(resource) => {
                             let manager = InstanceRoleManager {
+                                client: &self.iam_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::InstanceProfile(resource) => {
+                            let manager = InstanceProfileManager {
                                 client: &self.iam_client,
                             };
                             let _ = manager.destroy(resource, parent_nodes).await;
