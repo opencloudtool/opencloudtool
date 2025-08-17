@@ -499,6 +499,47 @@ impl Manager<'_, InstanceProfileSpec, InstanceProfile> for InstanceProfileManage
 }
 
 #[derive(Debug)]
+pub struct EcrSpec {
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ecr {
+    id: String,
+    uri: String,
+
+    name: String,
+}
+
+struct EcrManager<'a> {
+    client: &'a client::ECR,
+}
+
+impl Manager<'_, EcrSpec, Ecr> for EcrManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ EcrSpec,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<Ecr, Box<dyn std::error::Error>> {
+        let (id, uri) = self.client.create_repository(input.name.clone()).await?;
+
+        Ok(Ecr {
+            id,
+            uri,
+            name: input.name.clone(),
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ Ecr,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.delete_repository(input.name.clone()).await
+    }
+}
+
+#[derive(Debug)]
 pub struct VmSpec {
     instance_type: types::InstanceType,
     ami: String,
@@ -654,6 +695,7 @@ pub enum ResourceSpecType {
     SecurityGroup(SecurityGroupSpec),
     InstanceRole(InstanceRoleSpec),
     InstanceProfile(InstanceProfileSpec),
+    Ecr(EcrSpec),
     Vm(VmSpec),
 }
 
@@ -692,6 +734,9 @@ impl std::fmt::Display for SpecNode {
                 ResourceSpecType::InstanceProfile(resource) => {
                     write!(f, "spec InstanceProfile {}", resource.name)
                 }
+                ResourceSpecType::Ecr(resource) => {
+                    write!(f, "spec Ecr {}", resource.name)
+                }
                 ResourceSpecType::Vm(_resource) => {
                     write!(f, "spec VM")
                 }
@@ -712,6 +757,7 @@ pub enum ResourceType {
     SecurityGroup(SecurityGroup),
     InstanceRole(InstanceRole),
     InstanceProfile(InstanceProfile),
+    Ecr(Ecr),
     Vm(Vm),
 }
 
@@ -727,6 +773,7 @@ impl ResourceType {
             ResourceType::InstanceProfile(resource) => {
                 format!("instance_profile.{}", resource.name)
             }
+            ResourceType::Ecr(resource) => format!("ecr.{}", resource.id),
             ResourceType::Vm(resource) => format!("vm.{}", resource.id),
             ResourceType::None => String::from("none"),
         }
@@ -767,6 +814,9 @@ impl std::fmt::Display for Node {
                 }
                 ResourceType::InstanceProfile(resource) => {
                     write!(f, "cloud InstanceProfile {}", resource.name)
+                }
+                ResourceType::Ecr(resource) => {
+                    write!(f, "cloud Ecr {}", resource.id)
                 }
                 ResourceType::Vm(resource) => {
                     write!(f, "cloud VM {}", resource.id)
@@ -886,6 +936,7 @@ impl State {
 pub struct GraphManager {
     ec2_client: client::Ec2,
     iam_client: client::IAM,
+    ecr_client: client::ECR,
 }
 
 impl GraphManager {
@@ -903,10 +954,12 @@ impl GraphManager {
 
         let ec2_client = client::Ec2::new(aws_sdk_ec2::Client::new(&config));
         let iam_client = client::IAM::new(aws_sdk_iam::Client::new(&config));
+        let ecr_client = client::ECR::new(aws_sdk_ecr::Client::new(&config));
 
         Self {
             ec2_client,
             iam_client,
+            ecr_client,
         }
     }
 
@@ -989,6 +1042,10 @@ impl GraphManager {
             }),
         ));
 
+        let ecr_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::Ecr(EcrSpec {
+            name: String::from("ecr_1"),
+        })));
+
         let user_data = String::from(
             r#"#!/bin/bash
         set -e
@@ -1021,19 +1078,21 @@ impl GraphManager {
         // Nodes within the same parent are traversed from
         // the latest to the first
         let mut edges = vec![
+            (root, ecr_1, String::new()),                         // 2
             (root, instance_role_1, String::new()),               // 1
             (root, vpc_1, String::new()),                         // 0
-            (vpc_1, security_group_1, String::new()),             // 5
-            (vpc_1, subnet_1, String::new()),                     // 4
-            (vpc_1, route_table_1, String::new()),                // 3
-            (vpc_1, igw_1, String::new()),                        // 2
-            (igw_1, route_table_1, String::new()),                // 6
-            (route_table_1, subnet_1, String::new()),             // 7
-            (instance_role_1, instance_profile_1, String::new()), // 8
+            (vpc_1, security_group_1, String::new()),             // 6
+            (vpc_1, subnet_1, String::new()),                     // 5
+            (vpc_1, route_table_1, String::new()),                // 4
+            (vpc_1, igw_1, String::new()),                        // 3
+            (igw_1, route_table_1, String::new()),                // 7
+            (route_table_1, subnet_1, String::new()),             // 8
+            (instance_role_1, instance_profile_1, String::new()), // 9
         ];
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
             edges.push((instance_profile_1, instance, String::new()));
+            edges.push((ecr_1, instance, String::new()));
         }
 
         deps.extend_with_edges(&edges);
@@ -1278,6 +1337,34 @@ impl GraphManager {
                                 Err(e) => Err(Box::new(e)),
                             }
                         }
+                        ResourceSpecType::Ecr(resource) => {
+                            let manager = EcrManager {
+                                client: &self.ecr_client,
+                            };
+                            let output_resource = manager.create(resource, parent_nodes).await;
+
+                            match output_resource {
+                                Ok(output_resource) => {
+                                    log::info!(
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node = Node::Resource(ResourceType::Ecr(output_resource));
+                                    let resource_node_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            resource_node_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(resource_node_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
                         ResourceSpecType::Vm(resource) => {
                             let manager = VmManager {
                                 client: &self.ec2_client,
@@ -1436,6 +1523,14 @@ impl GraphManager {
                         ResourceType::InstanceProfile(resource) => {
                             let manager = InstanceProfileManager {
                                 client: &self.iam_client,
+                            };
+                            let _ = manager.destroy(resource, parent_nodes).await;
+
+                            log::info!("Destroyed {resource:?}");
+                        }
+                        ResourceType::Ecr(resource) => {
+                            let manager = EcrManager {
+                                client: &self.ecr_client,
                             };
                             let _ = manager.destroy(resource, parent_nodes).await;
 
