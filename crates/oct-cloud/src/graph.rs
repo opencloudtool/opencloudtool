@@ -61,28 +61,6 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
             .create_vpc(input.cidr_block.clone(), input.name.clone())
             .await?;
 
-        let default_security_group_id = self
-            .client
-            .get_default_security_group_id(vpc_id.clone())
-            .await?;
-
-        let inbound_rules = vec![
-            (String::from("0.0.0.0/0"), String::from("tcp"), 80),
-            (String::from("0.0.0.0/0"), String::from("tcp"), 31888),
-            (String::from("0.0.0.0/0"), String::from("tcp"), 22),
-        ];
-
-        for (cidr_block, protocol, port) in inbound_rules {
-            self.client
-                .allow_inbound_traffic_for_security_group(
-                    default_security_group_id.clone(),
-                    protocol,
-                    port,
-                    cidr_block,
-                )
-                .await?;
-        }
-
         Ok(Vpc {
             id: vpc_id,
             region: input.region.clone(),
@@ -639,6 +617,19 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
                 Err("VM expects InstanceProfile as a parent")
             };
 
+        let security_group_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::SecurityGroup(_))));
+
+        let security_group_id =
+            if let Some(Node::Resource(ResourceType::SecurityGroup(security_group))) =
+                security_group_node
+            {
+                Ok(security_group.id.clone())
+            } else {
+                Err("SecurityGroup expects VPC as a parent")
+            };
+
         let user_data_base64 = general_purpose::STANDARD.encode(input.user_data.clone());
 
         let response = self
@@ -649,7 +640,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
                 user_data_base64,
                 instance_profile_name?,
                 subnet_id?,
-                None,
+                security_group_id?,
             )
             .await?;
 
@@ -1092,6 +1083,7 @@ impl GraphManager {
         for instance in instances {
             edges.push((subnet_1, instance, String::new()));
             edges.push((instance_profile_1, instance, String::new()));
+            edges.push((security_group_1, instance, String::new()));
             edges.push((ecr_1, instance, String::new()));
         }
 

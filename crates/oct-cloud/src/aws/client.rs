@@ -579,11 +579,11 @@ impl Ec2Impl {
         user_data_base64: String,
         instance_profile_name: String,
         subnet_id: String,
-        security_group_id: Option<String>, // TODO: Remove `Option`
+        security_group_id: String,
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
         log::info!("Starting EC2 instance");
 
-        let mut request = self
+        let request = self
             .inner
             .run_instances()
             .instance_type(instance_type.as_str().into())
@@ -608,11 +608,8 @@ impl Ec2Impl {
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
                     .name(instance_profile_name)
                     .build(),
-            );
-
-        if let Some(security_group_id) = security_group_id {
-            request = request.security_group_ids(security_group_id);
-        }
+            )
+            .security_group_ids(security_group_id);
 
         let response = request.send().await?;
 
