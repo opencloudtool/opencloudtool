@@ -1044,7 +1044,7 @@ impl IAMImpl {
 
 /// AWS ECR client implementation
 #[derive(Debug)]
-pub(super) struct ECRImpl {
+pub struct ECRImpl {
     inner: aws_sdk_ecr::Client,
 }
 
@@ -1052,11 +1052,11 @@ pub(super) struct ECRImpl {
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl ECRImpl {
-    pub(super) fn new(inner: aws_sdk_ecr::Client) -> Self {
+    pub fn new(inner: aws_sdk_ecr::Client) -> Self {
         Self { inner }
     }
 
-    pub(super) async fn create_repository(
+    pub async fn create_repository(
         &self,
         name: String,
     ) -> Result<(String, String), Box<dyn std::error::Error>> {
@@ -1083,10 +1083,7 @@ impl ECRImpl {
         }
     }
 
-    pub(super) async fn delete_repository(
-        &self,
-        name: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_repository(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting ECR repository");
         self.inner
             .delete_repository()
@@ -1118,9 +1115,9 @@ pub use IAMImpl as IAM;
 pub use MockIAMImpl as IAM;
 
 #[cfg(not(test))]
-pub(super) use ECRImpl as ECR;
+pub use ECRImpl as ECR;
 #[cfg(test)]
-pub(super) use MockECRImpl as ECR;
+pub use MockECRImpl as ECR;
 
 #[cfg(test)]
 pub(super) use MockRoute53Impl as Route53;
