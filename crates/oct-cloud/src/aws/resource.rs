@@ -411,7 +411,7 @@ impl Resource for Ec2Instance {
                 self.instance_type.clone(),
                 self.ami.clone(),
                 self.user_data_base64.clone(),
-                Some(self.instance_profile_name.clone()),
+                self.instance_profile_name.clone(),
                 self.subnet_id.clone(),
                 Some(self.security_group_id.clone()),
             )

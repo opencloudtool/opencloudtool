@@ -577,7 +577,7 @@ impl Ec2Impl {
         instance_type: InstanceType,
         ami: String,
         user_data_base64: String,
-        instance_profile_name: Option<String>, // TODO: Remove `Option`
+        instance_profile_name: String,
         subnet_id: String,
         security_group_id: Option<String>, // TODO: Remove `Option`
     ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
@@ -603,15 +603,12 @@ impl Ec2Impl {
                             .build(),
                     )
                     .build(),
-            );
-
-        if let Some(instance_profile_name) = instance_profile_name {
-            request = request.iam_instance_profile(
+            )
+            .iam_instance_profile(
                 aws_sdk_ec2::types::IamInstanceProfileSpecification::builder()
                     .name(instance_profile_name)
                     .build(),
             );
-        }
 
         if let Some(security_group_id) = security_group_id {
             request = request.security_group_ids(security_group_id);
@@ -979,7 +976,7 @@ impl IAMImpl {
         Ok(())
     }
 
-    pub(super) async fn create_instance_profile(
+    pub async fn create_instance_profile(
         &self,
         name: String,
         role_names: Vec<String>,
@@ -1013,7 +1010,7 @@ impl IAMImpl {
         Ok(())
     }
 
-    pub(super) async fn delete_instance_profile(
+    pub async fn delete_instance_profile(
         &self,
         name: String,
         role_names: Vec<String>,
