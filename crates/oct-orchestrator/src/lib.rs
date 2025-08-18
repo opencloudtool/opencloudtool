@@ -23,7 +23,7 @@ impl OrchestratorWithGraph {
     const INSTANCE_TYPE: InstanceType = InstanceType::T3Medium;
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = config::Config::new(None)?;
+        let mut config = config::Config::new(None)?;
 
         let infra_state_backend =
             backend::get_state_backend::<graph::State>(&config.project.state_backend);
@@ -46,7 +46,7 @@ impl OrchestratorWithGraph {
             graph::GraphManager::get_spec_graph(number_of_instances, &Self::INSTANCE_TYPE);
 
         let graph_manager = graph::GraphManager::new().await;
-        let (resource_graph, vms) = graph_manager.deploy(&spec_graph).await;
+        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
 
         let state = graph::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
@@ -79,6 +79,30 @@ impl OrchestratorWithGraph {
 
         // All instances are healthy and ready to serve user services
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
+
+        if let Some(ecr) = ecr {
+            let known_base_ecr_url = ecr.get_base_uri();
+
+            container_manager_login(known_base_ecr_url)?;
+
+            log::info!("Logged in to ECR {known_base_ecr_url}");
+
+            for (service_name, service) in &mut config.project.services {
+                let Some(dockerfile_path) = &service.dockerfile_path else {
+                    log::debug!("Dockerfile path not specified for service '{service_name}'");
+
+                    continue;
+                };
+
+                let ecr_url = ecr.uri.clone();
+                let image_tag = format!("{ecr_url}:{service_name}-latest");
+
+                build_image(dockerfile_path, &image_tag)?;
+                push_image(&image_tag)?;
+
+                service.image.clone_from(&image_tag);
+            }
+        }
 
         deploy_user_services(
             &config,
