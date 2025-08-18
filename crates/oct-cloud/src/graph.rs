@@ -1496,82 +1496,100 @@ impl GraphManager {
 
             if let Some(elem) = graph.node_weight(node_index) {
                 match elem {
-                    Node::Root => {}
+                    Node::Root => (),
                     Node::Resource(resource_type) => match resource_type {
                         ResourceType::Vpc(resource) => {
                             let manager = VpcManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy Vpc {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed Vpc {resource:?}");
+                            }
                         }
                         ResourceType::InternetGateway(resource) => {
                             let manager = InternetGatewayManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy InternetGateway {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed InternetGateway {resource:?}");
+                            }
                         }
                         ResourceType::RouteTable(resource) => {
                             let manager = RouteTableManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy RouteTable {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed RouteTable {resource:?}");
+                            }
                         }
                         ResourceType::Subnet(resource) => {
                             let manager = SubnetManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy Subnet {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed Subnet {resource:?}");
+                            }
                         }
                         ResourceType::SecurityGroup(resource) => {
                             let manager = SecurityGroupManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy SecurityGroup {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed SecurityGroup {resource:?}");
+                            }
                         }
                         ResourceType::InstanceRole(resource) => {
                             let manager = InstanceRoleManager {
                                 client: &self.iam_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy InstanceRole {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed InstanceRole {resource:?}");
+                            }
                         }
                         ResourceType::InstanceProfile(resource) => {
                             let manager = InstanceProfileManager {
                                 client: &self.iam_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy InstanceProfile {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed InstanceProfile {resource:?}");
+                            }
                         }
                         ResourceType::Ecr(resource) => {
                             let manager = EcrManager {
                                 client: &self.ecr_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy Ecr {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed Ecr {resource:?}");
+                            }
                         }
                         ResourceType::Vm(resource) => {
                             let manager = VmManager {
                                 client: &self.ec2_client,
                             };
-                            let _ = manager.destroy(resource, parent_nodes).await;
-
-                            log::info!("Destroyed {resource:?}");
+                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                                log::error!("Failed to destroy Vm {resource:?}: {e}");
+                            } else {
+                                log::info!("Destroyed Vm {resource:?}");
+                            }
                         }
                         ResourceType::None => {
-                            panic!("Unexpected case ResourceType::None")
+                            log::error!("Unexpected case ResourceType::None")
                         }
                     },
                 }
