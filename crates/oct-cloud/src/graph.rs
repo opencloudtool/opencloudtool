@@ -484,9 +484,20 @@ pub struct EcrSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ecr {
     id: String,
-    uri: String,
+    pub uri: String,
 
     name: String,
+}
+
+impl Ecr {
+    pub fn get_base_uri(&self) -> &str {
+        let (base_uri, _) = self
+            .uri
+            .split_once('/')
+            .expect("Failed to split `uri` by `/` delimiter");
+
+        base_uri
+    }
 }
 
 struct EcrManager<'a> {
@@ -604,6 +615,16 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
             Err("VM expects Subnet as a parent")
         };
 
+        let ecr_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Ecr(_))));
+
+        let ecr = if let Some(Node::Resource(ResourceType::Ecr(ecr))) = ecr_node {
+            Ok(ecr.clone())
+        } else {
+            Err("VM expects Ecr as a parent")
+        };
+
         let instance_profile_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::InstanceProfile(_))));
@@ -630,7 +651,12 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
                 Err("SecurityGroup expects VPC as a parent")
             };
 
-        let user_data_base64 = general_purpose::STANDARD.encode(input.user_data.clone());
+        let ecr_login_string = format!(
+            "aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {}",
+            ecr?.get_base_uri()
+        );
+        let user_data = format!("{}\n{}", input.user_data, ecr_login_string);
+        let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
 
         let response = self
             .client
@@ -662,7 +688,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
 
             instance_type: input.instance_type.clone(),
             ami: input.ami.clone(),
-            user_data: input.user_data.clone(),
+            user_data,
         })
     }
 
@@ -1043,6 +1069,7 @@ impl GraphManager {
         sudo apt update
         sudo apt -y install podman
         sudo systemctl start podman
+        sudo snap install aws-cli --classic
 
         curl \
             --output /home/ubuntu/oct-ctl \
@@ -1094,9 +1121,12 @@ impl GraphManager {
 
     /// Deploy spec graph
     ///
-    /// Temporarily also returns a list of VMs to be used for user
-    /// services deployment
-    pub async fn deploy(&self, graph: &Graph<SpecNode, String>) -> (Graph<Node, String>, Vec<Vm>) {
+    /// Temporarily also returns a list of VMs and optional ECR
+    /// to be used for user services deployment
+    pub async fn deploy(
+        &self,
+        graph: &Graph<SpecNode, String>,
+    ) -> (Graph<Node, String>, Vec<Vm>, Option<Ecr>) {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
         let root_index = resource_graph.add_node(Node::Root);
@@ -1114,6 +1144,7 @@ impl GraphManager {
                 .push(root_index);
         }
 
+        let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
 
         while let Some(node_index) = queue.pop_front() {
@@ -1341,7 +1372,8 @@ impl GraphManager {
                                         "Deployed {output_resource:?}, parents - {parent_node_indexes:?}"
                                     );
 
-                                    let node = Node::Resource(ResourceType::Ecr(output_resource));
+                                    let node =
+                                        Node::Resource(ResourceType::Ecr(output_resource.clone()));
                                     let resource_node_index = resource_graph.add_node(node.clone());
 
                                     for parent_node_index in parent_node_indexes {
@@ -1351,6 +1383,8 @@ impl GraphManager {
                                             String::new(),
                                         ));
                                     }
+
+                                    ecr = Some(output_resource);
 
                                     Ok(resource_node_index)
                                 }
@@ -1410,7 +1444,7 @@ impl GraphManager {
 
         log::info!("Created graph {}", Dot::new(&resource_graph));
 
-        (resource_graph, vms)
+        (resource_graph, vms, ecr)
     }
 
     pub async fn destroy(&self, graph: &Graph<Node, String>) {
