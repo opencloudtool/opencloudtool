@@ -81,18 +81,18 @@ impl OrchestratorWithGraph {
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
         if let Some(ecr) = ecr {
+            let known_base_ecr_url = ecr.get_base_uri();
+
+            container_manager_login(known_base_ecr_url)?;
+
+            log::info!("Logged in to ECR {known_base_ecr_url}");
+
             for (service_name, service) in &mut config.project.services {
                 let Some(dockerfile_path) = &service.dockerfile_path else {
-                    log::debug!("Dockerfile path not specified");
+                    log::debug!("Dockerfile path not specified for service '{service_name}'");
 
                     continue;
                 };
-
-                let known_base_ecr_url = ecr.get_base_uri();
-
-                container_manager_login(known_base_ecr_url)?;
-
-                log::info!("Logged in to ECR {known_base_ecr_url}");
 
                 let ecr_url = ecr.uri.clone();
                 let image_tag = format!("{ecr_url}:{service_name}-latest");
