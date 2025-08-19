@@ -1,4 +1,6 @@
 use aws_sdk_ec2::types::InstanceStateName;
+use petgraph::{Incoming, Outgoing};
+
 use base64::{Engine as _, engine::general_purpose};
 use petgraph::visit::NodeIndexable;
 use serde::{Deserialize, Serialize};
@@ -1147,6 +1149,8 @@ impl GraphManager {
         let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
 
+        // TODO(minev-dev): Use Self::kahn_traverse to simplify traverse with no edge creation
+        //  ordering required
         while let Some(node_index) = queue.pop_front() {
             let parent_node_indexes = match parents.get(&node_index) {
                 Some(parent_node_indexes) => parent_node_indexes.clone(),
@@ -1453,7 +1457,6 @@ impl GraphManager {
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 
         // Remove resources
-        let mut queue_to_destroy: VecDeque<NodeIndex> = VecDeque::new();
         let mut queue_to_traverse: VecDeque<NodeIndex> = VecDeque::new();
         let root_index = graph.from_index(0);
         for node_index in graph.neighbors(root_index) {
@@ -1468,8 +1471,6 @@ impl GraphManager {
         // Prepare queue to destroy
         while let Some(node_index) = queue_to_traverse.pop_front() {
             if let Some(_elem) = graph.node_weight(node_index) {
-                queue_to_destroy.push_back(node_index);
-
                 for neighbor_index in graph.neighbors(node_index) {
                     if !parents.contains_key(&neighbor_index) {
                         queue_to_traverse.push_back(neighbor_index);
@@ -1483,9 +1484,11 @@ impl GraphManager {
             }
         }
 
-        // Destroy resources from back
-        while let Some(node_index) = queue_to_destroy.pop_back() {
-            let parent_node_indexes = match parents.get(&node_index) {
+        let result = Self::kahn_traverse(graph);
+
+        // Destroying resources in reversed order
+        for node_index in result.iter().rev() {
+            let parent_node_indexes = match parents.get(node_index) {
                 Some(parent_node_indexes) => parent_node_indexes.clone(),
                 None => Vec::new(),
             };
@@ -1494,107 +1497,140 @@ impl GraphManager {
                 .filter_map(|x| graph.node_weight(*x))
                 .collect();
 
-            if let Some(elem) = graph.node_weight(node_index) {
-                match elem {
-                    Node::Root => (),
-                    Node::Resource(resource_type) => match resource_type {
-                        ResourceType::Vpc(resource) => {
-                            let manager = VpcManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy Vpc {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed Vpc {resource:?}");
-                            }
+            match &graph[*node_index] {
+                Node::Root => (),
+                Node::Resource(resource_type) => match resource_type {
+                    ResourceType::Vpc(resource) => {
+                        let manager = VpcManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy Vpc {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed Vpc {resource:?}");
                         }
-                        ResourceType::InternetGateway(resource) => {
-                            let manager = InternetGatewayManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy InternetGateway {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed InternetGateway {resource:?}");
-                            }
+                    }
+                    ResourceType::InternetGateway(resource) => {
+                        let manager = InternetGatewayManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy InternetGateway {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed InternetGateway {resource:?}");
                         }
-                        ResourceType::RouteTable(resource) => {
-                            let manager = RouteTableManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy RouteTable {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed RouteTable {resource:?}");
-                            }
+                    }
+                    ResourceType::RouteTable(resource) => {
+                        let manager = RouteTableManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy RouteTable {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed RouteTable {resource:?}");
                         }
-                        ResourceType::Subnet(resource) => {
-                            let manager = SubnetManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy Subnet {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed Subnet {resource:?}");
-                            }
+                    }
+                    ResourceType::Subnet(resource) => {
+                        let manager = SubnetManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy Subnet {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed Subnet {resource:?}");
                         }
-                        ResourceType::SecurityGroup(resource) => {
-                            let manager = SecurityGroupManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy SecurityGroup {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed SecurityGroup {resource:?}");
-                            }
+                    }
+                    ResourceType::SecurityGroup(resource) => {
+                        let manager = SecurityGroupManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy SecurityGroup {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed SecurityGroup {resource:?}");
                         }
-                        ResourceType::InstanceRole(resource) => {
-                            let manager = InstanceRoleManager {
-                                client: &self.iam_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy InstanceRole {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed InstanceRole {resource:?}");
-                            }
+                    }
+                    ResourceType::InstanceRole(resource) => {
+                        let manager = InstanceRoleManager {
+                            client: &self.iam_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy InstanceRole {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed InstanceRole {resource:?}");
                         }
-                        ResourceType::InstanceProfile(resource) => {
-                            let manager = InstanceProfileManager {
-                                client: &self.iam_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy InstanceProfile {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed InstanceProfile {resource:?}");
-                            }
+                    }
+                    ResourceType::InstanceProfile(resource) => {
+                        let manager = InstanceProfileManager {
+                            client: &self.iam_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy InstanceProfile {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed InstanceProfile {resource:?}");
                         }
-                        ResourceType::Ecr(resource) => {
-                            let manager = EcrManager {
-                                client: &self.ecr_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy Ecr {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed Ecr {resource:?}");
-                            }
+                    }
+                    ResourceType::Ecr(resource) => {
+                        let manager = EcrManager {
+                            client: &self.ecr_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy Ecr {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed Ecr {resource:?}");
                         }
-                        ResourceType::Vm(resource) => {
-                            let manager = VmManager {
-                                client: &self.ec2_client,
-                            };
-                            if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                                log::error!("Failed to destroy Vm {resource:?}: {e}");
-                            } else {
-                                log::info!("Destroyed Vm {resource:?}");
-                            }
+                    }
+                    ResourceType::Vm(resource) => {
+                        let manager = VmManager {
+                            client: &self.ec2_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy Vm {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed Vm {resource:?}");
                         }
-                        ResourceType::None => {
-                            log::error!("Unexpected case ResourceType::None")
-                        }
-                    },
+                    }
+                    ResourceType::None => {
+                        log::error!("Unexpected case ResourceType::None");
+                    }
+                },
+            }
+        }
+    }
+
+    /// Kahn's Algorithm Implementation
+    fn kahn_traverse<T>(graph: &Graph<T, String>) -> Vec<NodeIndex> {
+        // 1. Calculate the in-degree for each node.
+        let mut in_degrees: Vec<usize> = graph
+            .node_indices()
+            .map(|i| graph.neighbors_directed(i, Incoming).count())
+            .collect();
+
+        // 2. Initialize a queue with all nodes having an in-degree of 0.
+        let mut queue: VecDeque<NodeIndex> = graph
+            .node_indices()
+            .filter(|&i| in_degrees[i.index()] == 0)
+            .collect();
+
+        let mut result = Vec::new();
+
+        // 3. Process the queue.
+        while let Some(node) = queue.pop_front() {
+            result.push(node);
+
+            // For each neighbor of the processed node, decrement its in-degree.
+            for neighbor in graph.neighbors_directed(node, Outgoing) {
+                let neighbor_idx = neighbor.index();
+                in_degrees[neighbor_idx] -= 1;
+
+                // If a neighbor's in-degree becomes 0, add it to the queue.
+                if in_degrees[neighbor_idx] == 0 {
+                    queue.push_back(neighbor);
                 }
             }
         }
+
+        result
     }
 }
 
