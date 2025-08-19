@@ -7,7 +7,7 @@ oct-cloud = { path = "crates/oct-cloud" }
 oct-orchestrator = { path = "crates/oct-orchestrator" }
 
 assert_cmd = "2.0.17"
-async-trait = "0.1.88"
+async-trait = "0.1.89"
 aws-config = "1.8.3"
 aws-sdk-ec2 = "1.154.0"
 aws-sdk-ecr = "1.87.0"
