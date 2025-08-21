@@ -42,8 +42,11 @@ impl OrchestratorWithGraph {
 
         let number_of_instances = get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
 
-        let spec_graph =
-            graph::GraphManager::get_spec_graph(number_of_instances, &Self::INSTANCE_TYPE);
+        let spec_graph = graph::GraphManager::get_spec_graph(
+            number_of_instances,
+            &Self::INSTANCE_TYPE,
+            config.project.domain.clone(),
+        );
 
         let graph_manager = graph::GraphManager::new().await;
         let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;

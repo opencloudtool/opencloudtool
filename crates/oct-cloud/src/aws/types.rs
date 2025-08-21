@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Represents an AWS resource record type.
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
 pub enum RecordType {
     A,
     NS,

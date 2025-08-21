@@ -634,18 +634,18 @@ impl Ec2Impl {
 
 /// AWS Route53 client implementation
 #[derive(Debug)]
-pub(super) struct Route53Impl {
+pub struct Route53Impl {
     inner: aws_sdk_route53::Client,
 }
 
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl Route53Impl {
-    pub(super) fn new(inner: aws_sdk_route53::Client) -> Self {
+    pub fn new(inner: aws_sdk_route53::Client) -> Self {
         Self { inner }
     }
 
-    pub(super) async fn create_hosted_zone(
+    pub async fn create_hosted_zone(
         &self,
         domain_name: String,
     ) -> Result<String, Box<dyn std::error::Error>> {
@@ -738,10 +738,7 @@ impl Route53Impl {
         Err("Failed to verify record".into())
     }
 
-    pub(super) async fn delete_hosted_zone(
-        &self,
-        id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_hosted_zone(&self, id: String) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Deleting Route53 hosted zone {id}");
         // List all record sets
         let record_sets = self
@@ -782,7 +779,7 @@ impl Route53Impl {
         Ok(())
     }
 
-    pub(super) async fn get_dns_records(
+    pub async fn get_dns_records(
         &self,
         hosted_zone_id: String,
     ) -> Result<Vec<(String, RecordType, String, Option<i64>)>, Box<dyn std::error::Error>> {
@@ -855,7 +852,7 @@ impl Route53Impl {
         Ok(())
     }
 
-    pub(super) async fn create_dns_record(
+    pub async fn create_dns_record(
         &self,
         hosted_zone_id: String,
         domain_name: String,
@@ -874,7 +871,7 @@ impl Route53Impl {
         .await
     }
 
-    pub(super) async fn delete_dns_record(
+    pub async fn delete_dns_record(
         &self,
         hosted_zone_id: String,
         domain_name: String,
@@ -1117,6 +1114,6 @@ pub use ECRImpl as ECR;
 pub use MockECRImpl as ECR;
 
 #[cfg(test)]
-pub(super) use MockRoute53Impl as Route53;
+pub use MockRoute53Impl as Route53;
 #[cfg(not(test))]
-pub(super) use Route53Impl as Route53;
+pub use Route53Impl as Route53;
