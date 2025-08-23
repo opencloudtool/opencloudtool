@@ -1,14 +1,14 @@
 use aws_sdk_ec2::types::InstanceStateName;
 use petgraph::{Incoming, Outgoing};
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use petgraph::visit::NodeIndexable;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-use petgraph::Graph;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
+use petgraph::Graph;
 
 use crate::aws::client;
 use crate::aws::types;
@@ -30,6 +30,142 @@ where
         input: &'a O,
         parents: Vec<&'a Node>,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+}
+
+#[derive(Debug)]
+pub struct HostedZoneSpec {
+    region: String,
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostedZone {
+    id: String,
+
+    region: String,
+    name: String,
+}
+
+struct HostedZoneManager<'a> {
+    client: &'a client::Route53,
+}
+
+impl Manager<'_, HostedZoneSpec, HostedZone> for HostedZoneManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ HostedZoneSpec,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<HostedZone, Box<dyn std::error::Error>> {
+        let hosted_zone_id = self.client.create_hosted_zone(input.name.clone()).await?;
+
+        Ok(HostedZone {
+            id: hosted_zone_id,
+            region: input.region.clone(),
+            name: input.name.clone(),
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ HostedZone,
+        _parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.client.delete_hosted_zone(input.id.clone()).await
+    }
+}
+
+#[derive(Debug)]
+pub struct DnsRecordSpec {
+    record_type: types::RecordType,
+    ttl: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsRecord {
+    name: String,
+    value: String,
+
+    record_type: types::RecordType,
+    ttl: Option<i64>,
+}
+
+struct DnsRecordManager<'a> {
+    client: &'a client::Route53,
+}
+
+impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
+    async fn create(
+        &self,
+        input: &'_ DnsRecordSpec,
+        parents: Vec<&'_ Node>,
+    ) -> Result<DnsRecord, Box<dyn std::error::Error>> {
+        let hosted_zone_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::HostedZone(_))));
+
+        let hosted_zone =
+            if let Some(Node::Resource(ResourceType::HostedZone(hosted_zone))) = hosted_zone_node {
+                Ok(hosted_zone.clone())
+            } else {
+                Err("DnsRecord expects HostedZone as a parent")
+            }?;
+
+        let vm_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::Vm(_))));
+
+        let vm = if let Some(Node::Resource(ResourceType::Vm(vm))) = vm_node {
+            Ok(vm.clone())
+        } else {
+            Err("DnsRecord expects Vm as a parent")
+        }?;
+
+        let domain_name = format!("{}.{}", vm.id, hosted_zone.name);
+
+        self.client
+            .create_dns_record(
+                hosted_zone.id.clone(),
+                domain_name.clone(),
+                input.record_type,
+                vm.public_ip.clone(),
+                input.ttl,
+            )
+            .await?;
+
+        Ok(DnsRecord {
+            record_type: input.record_type,
+            name: domain_name.clone(),
+            value: vm.public_ip.clone(),
+            ttl: input.ttl,
+        })
+    }
+
+    async fn destroy(
+        &self,
+        input: &'_ DnsRecord,
+        parents: Vec<&'_ Node>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let hosted_zone_node = parents
+            .iter()
+            .find(|parent| matches!(parent, Node::Resource(ResourceType::HostedZone(_))));
+
+        let hosted_zone =
+            if let Some(Node::Resource(ResourceType::HostedZone(hosted_zone))) = hosted_zone_node {
+                Ok(hosted_zone.clone())
+            } else {
+                Err("DnsRecord expects HostedZone as a parent")
+            }?;
+
+        self.client
+            .delete_dns_record(
+                hosted_zone.id.clone(),
+                input.name.clone(),
+                input.record_type,
+                input.value.clone(),
+                input.ttl,
+            )
+            .await
+    }
 }
 
 #[derive(Debug)]
@@ -707,6 +843,8 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
 
 #[derive(Debug)]
 pub enum ResourceSpecType {
+    HostedZone(HostedZoneSpec),
+    DnsRecord(DnsRecordSpec),
     Vpc(VpcSpec),
     InternetGateway(InternetGatewaySpec),
     RouteTable(RouteTableSpec),
@@ -732,6 +870,12 @@ impl std::fmt::Display for SpecNode {
         match self {
             SpecNode::Root => write!(f, "Root"),
             SpecNode::Resource(resource_type) => match resource_type {
+                ResourceSpecType::HostedZone(resource) => {
+                    write!(f, "spec HostedZone {}", resource.name)
+                }
+                ResourceSpecType::DnsRecord(_resource) => {
+                    write!(f, "spec DnsRecord")
+                }
                 ResourceSpecType::Vpc(resource) => {
                     write!(f, "spec {}", resource.name)
                 }
@@ -769,6 +913,8 @@ pub enum ResourceType {
     #[default] // TODO: Remove
     None,
 
+    HostedZone(HostedZone),
+    DnsRecord(DnsRecord),
     Vpc(Vpc),
     InternetGateway(InternetGateway),
     RouteTable(RouteTable),
@@ -783,6 +929,8 @@ pub enum ResourceType {
 impl ResourceType {
     fn name(&self) -> String {
         match self {
+            ResourceType::HostedZone(resource) => format!("hosted_zone.{}", resource.id),
+            ResourceType::DnsRecord(resource) => format!("dns_record.{}", resource.name),
             ResourceType::Vpc(resource) => format!("vpc.{}", resource.name),
             ResourceType::InternetGateway(resource) => format!("igw.{}", resource.id),
             ResourceType::RouteTable(resource) => format!("route_table.{}", resource.id),
@@ -813,6 +961,12 @@ impl std::fmt::Display for Node {
         match self {
             Node::Root => write!(f, "Root"),
             Node::Resource(resource_type) => match resource_type {
+                ResourceType::HostedZone(resource) => {
+                    write!(f, "cloud HostedZone {}", resource.id)
+                }
+                ResourceType::DnsRecord(resource) => {
+                    write!(f, "cloud DnsRecord {}", resource.name)
+                }
                 ResourceType::Vpc(resource) => {
                     write!(f, "cloud VPC {}", resource.name)
                 }
@@ -956,6 +1110,7 @@ pub struct GraphManager {
     ec2_client: client::Ec2,
     iam_client: client::IAM,
     ecr_client: client::ECR,
+    route53_client: client::Route53,
 }
 
 impl GraphManager {
@@ -974,17 +1129,20 @@ impl GraphManager {
         let ec2_client = client::Ec2::new(aws_sdk_ec2::Client::new(&config));
         let iam_client = client::IAM::new(aws_sdk_iam::Client::new(&config));
         let ecr_client = client::ECR::new(aws_sdk_ecr::Client::new(&config));
+        let route53_client = client::Route53::new(aws_sdk_route53::Client::new(&config));
 
         Self {
             ec2_client,
             iam_client,
             ecr_client,
+            route53_client,
         }
     }
 
     pub fn get_spec_graph(
         number_of_instances: u32,
         instance_type: &types::InstanceType,
+        domain_name: Option<String>,
     ) -> Graph<SpecNode, String> {
         let mut deps = Graph::<SpecNode, String>::new();
         let root = deps.add_node(SpecNode::Root);
@@ -1083,16 +1241,16 @@ impl GraphManager {
         );
 
         // TODO: Add instance profile with instance role
-        let instances = (0..number_of_instances)
-            .collect::<Vec<u32>>()
-            .into_iter()
-            .map(|_| {
-                deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
-                    instance_type: instance_type.clone(),
-                    ami: String::from("ami-04dd23e62ed049936"),
-                    user_data: user_data.clone(),
-                })))
-            });
+        let mut instances = Vec::new();
+        for _ in 0..number_of_instances {
+            let instance_node = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
+                instance_type: instance_type.clone(),
+                ami: String::from("ami-04dd23e62ed049936"),
+                user_data: user_data.clone(),
+            })));
+
+            instances.push(instance_node);
+        }
 
         // Order of the edges matters in this implementation
         // Nodes within the same parent are traversed from
@@ -1109,11 +1267,35 @@ impl GraphManager {
             (route_table_1, subnet_1, String::new()),             // 8
             (instance_role_1, instance_profile_1, String::new()), // 9
         ];
-        for instance in instances {
-            edges.push((subnet_1, instance, String::new()));
-            edges.push((instance_profile_1, instance, String::new()));
-            edges.push((security_group_1, instance, String::new()));
-            edges.push((ecr_1, instance, String::new()));
+        for instance in &instances {
+            edges.push((subnet_1, *instance, String::new()));
+            edges.push((instance_profile_1, *instance, String::new()));
+            edges.push((security_group_1, *instance, String::new()));
+            edges.push((ecr_1, *instance, String::new()));
+        }
+
+        if let Some(domain_name) = domain_name {
+            let hosted_zone = deps.add_node(SpecNode::Resource(ResourceSpecType::HostedZone(
+                HostedZoneSpec {
+                    region: String::from("us-west-2"),
+                    name: domain_name,
+                },
+            )));
+
+            // Insert at the first place to deploy it after all other root's children
+            edges.insert(0, (root, hosted_zone, String::new()));
+
+            for instance in instances {
+                let dns_record = deps.add_node(SpecNode::Resource(ResourceSpecType::DnsRecord(
+                    DnsRecordSpec {
+                        record_type: types::RecordType::A,
+                        ttl: Some(3600),
+                    },
+                )));
+
+                edges.push((instance, dns_record, String::new()));
+                edges.push((hosted_zone, dns_record, String::new()));
+            }
         }
 
         deps.extend_with_edges(&edges);
@@ -1165,6 +1347,64 @@ impl GraphManager {
                 let created_resource_node_index = match elem {
                     SpecNode::Root => Ok(resource_graph.add_node(Node::Root)),
                     SpecNode::Resource(resource_type) => match resource_type {
+                        ResourceSpecType::HostedZone(resource) => {
+                            let manager = HostedZoneManager {
+                                client: &self.route53_client,
+                            };
+                            let output_resource = manager.create(resource, parent_nodes).await;
+
+                            match output_resource {
+                                Ok(output_resource) => {
+                                    log::info!(
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node =
+                                        Node::Resource(ResourceType::HostedZone(output_resource));
+                                    let resource_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            resource_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(resource_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
+                        ResourceSpecType::DnsRecord(resource) => {
+                            let manager = DnsRecordManager {
+                                client: &self.route53_client,
+                            };
+                            let output_resource = manager.create(resource, parent_nodes).await;
+
+                            match output_resource {
+                                Ok(output_resource) => {
+                                    log::info!(
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}"
+                                    );
+
+                                    let node =
+                                        Node::Resource(ResourceType::DnsRecord(output_resource));
+                                    let resource_index = resource_graph.add_node(node.clone());
+
+                                    for parent_node_index in parent_node_indexes {
+                                        edges.push((
+                                            parent_node_index,
+                                            resource_index,
+                                            String::new(),
+                                        ));
+                                    }
+
+                                    Ok(resource_index)
+                                }
+                                Err(e) => Err(Box::new(e)),
+                            }
+                        }
                         ResourceSpecType::Vpc(resource) => {
                             let manager = VpcManager {
                                 client: &self.ec2_client,
@@ -1500,6 +1740,26 @@ impl GraphManager {
             match &graph[*node_index] {
                 Node::Root => (),
                 Node::Resource(resource_type) => match resource_type {
+                    ResourceType::HostedZone(resource) => {
+                        let manager = HostedZoneManager {
+                            client: &self.route53_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed {resource:?}");
+                        }
+                    }
+                    ResourceType::DnsRecord(resource) => {
+                        let manager = DnsRecordManager {
+                            client: &self.route53_client,
+                        };
+                        if let Err(e) = manager.destroy(resource, parent_nodes).await {
+                            log::error!("Failed to destroy {resource:?}: {e}");
+                        } else {
+                            log::info!("Destroyed {resource:?}");
+                        }
+                    }
                     ResourceType::Vpc(resource) => {
                         let manager = VpcManager {
                             client: &self.ec2_client,
