@@ -7,7 +7,7 @@ use oct_cloud::aws::resource::{
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::{InstanceType, RecordType};
-use oct_cloud::graph;
+use oct_cloud::infra::graph;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
