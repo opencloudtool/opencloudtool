@@ -1,4 +1,4 @@
-pub mod graph;
+pub mod infra;
 pub mod resource;
 pub mod state;
 
