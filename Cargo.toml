@@ -21,7 +21,13 @@ opencloudtool (oct)
 """
 
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/oct-cli",
+    "crates/oct-cloud",
+    "crates/oct-ctl",
+    "crates/oct-orchestrator",
+    "crates/python/oct-py" 
+]
 resolver = "3"
 
 [workspace.dependencies]
