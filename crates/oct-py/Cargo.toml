@@ -1,0 +1,20 @@
+[package]
+name = "oct-py"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py312"] }
+tokio = { workspace = true }
+oct-orchestrator = { workspace = true }
+env_logger = { workspace = true } 
+log = { workspace = true }
+
+[lints]
+workspace = true
