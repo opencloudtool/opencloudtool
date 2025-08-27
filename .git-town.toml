@@ -15,6 +15,7 @@ strategy = "squash-merge"
 
 [sync]
 tags = true
+feature-strategy = "rebase"
 perennial-strategy = "rebase"
 prototype-strategy = "rebase"
 push-hook = true
