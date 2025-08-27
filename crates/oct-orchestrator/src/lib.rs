@@ -7,7 +7,7 @@ use oct_cloud::aws::resource::{
     InternetGateway, RouteTable, SecurityGroup, Subnet, VPC,
 };
 use oct_cloud::aws::types::{InstanceType, RecordType};
-use oct_cloud::infra::graph;
+use oct_cloud::infra;
 use oct_cloud::resource::Resource;
 use oct_cloud::state;
 
@@ -26,7 +26,7 @@ impl OrchestratorWithGraph {
         let mut config = config::Config::new(None)?;
 
         let infra_state_backend =
-            backend::get_state_backend::<graph::State>(&config.project.state_backend);
+            backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         // let (mut infra_state, _loaded) = state_backend.load().await?;
 
         let user_state_backend =
@@ -42,16 +42,16 @@ impl OrchestratorWithGraph {
 
         let number_of_instances = get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
 
-        let spec_graph = graph::GraphManager::get_spec_graph(
+        let spec_graph = infra::graph::GraphManager::get_spec_graph(
             number_of_instances,
             &Self::INSTANCE_TYPE,
             config.project.domain.clone(),
         );
 
-        let graph_manager = graph::GraphManager::new().await;
+        let graph_manager = infra::graph::GraphManager::new().await;
         let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
 
-        let state = graph::State::from_graph(&resource_graph);
+        let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
 
         for vm in &vms {
@@ -123,7 +123,7 @@ impl OrchestratorWithGraph {
         let config = config::Config::new(None)?;
 
         let infra_state_backend =
-            backend::get_state_backend::<graph::State>(&config.project.state_backend);
+            backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         let (infra_state, _loaded) = infra_state_backend.load().await?;
 
         let user_state_backend =
@@ -132,7 +132,7 @@ impl OrchestratorWithGraph {
 
         let resource_graph = infra_state.to_graph();
 
-        let graph_manager = graph::GraphManager::new().await;
+        let graph_manager = infra::graph::GraphManager::new().await;
         graph_manager.destroy(&resource_graph).await;
 
         infra_state_backend.remove().await?;
