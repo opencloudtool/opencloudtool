@@ -2,8 +2,8 @@ use petgraph::visit::NodeIndexable;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-use petgraph::graph::NodeIndex;
 use petgraph::Graph;
+use petgraph::graph::NodeIndex;
 
 use crate::infra::resource::{Node, ResourceType};
 
@@ -60,7 +60,7 @@ impl State {
                 .collect();
 
             if let Some(Node::Resource(resource_type)) = graph.node_weight(*child_index) {
-                log::info!("Add to state {:?}", resource_type);
+                log::info!("Add to state {resource_type:?}");
 
                 resource_states.push(ResourceState {
                     name: resource_type.name(),

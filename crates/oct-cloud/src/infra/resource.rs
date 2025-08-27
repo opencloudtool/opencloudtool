@@ -1,5 +1,5 @@
 use aws_sdk_ec2::types::InstanceStateName;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
 
 use crate::aws::client;
@@ -98,7 +98,7 @@ impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
                 Ok(hosted_zone.clone())
             } else {
                 Err("DnsRecord expects HostedZone as a parent")
-            } ?;
+            }?;
 
         let vm_node = parents
             .iter()
@@ -108,7 +108,7 @@ impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
             Ok(vm.clone())
         } else {
             Err("DnsRecord expects Vm as a parent")
-        } ?;
+        }?;
 
         let domain_name = format!("{}.{}", vm.id, hosted_zone.name);
 
@@ -144,7 +144,7 @@ impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
                 Ok(hosted_zone.clone())
             } else {
                 Err("DnsRecord expects HostedZone as a parent")
-            } ?;
+            }?;
 
         self.client
             .delete_dns_record(
@@ -231,7 +231,7 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
             Ok(vpc.clone())
         } else {
             Err("Igw expects VPC as a parent")
-        } ?;
+        }?;
 
         let igw_id = self.client.create_internet_gateway(vpc.id.clone()).await?;
 
@@ -251,7 +251,7 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
             Ok(vpc.clone())
         } else {
             Err("Igw expects VPC as a parent")
-        } ?;
+        }?;
 
         self.client
             .delete_internet_gateway(input.id.clone(), vpc.id.clone())
@@ -287,7 +287,7 @@ impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
             Ok(vpc.clone())
         } else {
             Err("RouteTable expects VPC as a parent")
-        } ?;
+        }?;
 
         let igw_node = parents
             .iter()
@@ -297,7 +297,7 @@ impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
             Ok(igw.clone())
         } else {
             Err("RouteTable expects IGW as a parent")
-        } ?;
+        }?;
 
         let id = self.client.create_route_table(vpc.id.clone()).await?;
 
@@ -350,7 +350,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
             Ok(vpc.clone())
         } else {
             Err("Subnet expects VPC as a parent")
-        } ?;
+        }?;
 
         let route_table_node = parents
             .iter()
@@ -361,7 +361,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
                 Ok(route_table.clone())
             } else {
                 Err("Subnet expects RouteTable as a parent")
-            } ?;
+            }?;
 
         let subnet_id = self
             .client
@@ -403,7 +403,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
                 Ok(route_table.clone())
             } else {
                 Err("Subnet expects RouteTable as a parent")
-            } ?;
+            }?;
 
         self.client
             .disassociate_route_table_with_subnet(route_table.id.clone(), input.id.clone())
@@ -451,7 +451,7 @@ impl Manager<'_, SecurityGroupSpec, SecurityGroup> for SecurityGroupManager<'_> 
             Ok(vpc.clone())
         } else {
             Err("SecurityGroup expects VPC as a parent")
-        } ?;
+        }?;
 
         let security_group_id = self
             .client
@@ -707,7 +707,7 @@ impl VmManager<'_> {
 
             if vm_status == Some(&InstanceStateName::Terminated) {
                 log::info!("VM {id:?} terminated");
-                return Ok(())
+                return Ok(());
             }
 
             log::info!(
@@ -777,8 +777,11 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
             "aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {}",
             ecr?.get_base_uri()
         );
-        let user_data = format!("{}
-{}", input.user_data, ecr_login_string);
+        let user_data = format!(
+            "{}
+{}",
+            input.user_data, ecr_login_string
+        );
         let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
 
         let response = self

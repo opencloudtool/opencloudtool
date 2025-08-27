@@ -253,8 +253,8 @@ mod mocks {
                 region,
                 cidr_block,
                 availability_zone,
-                name,
                 vpc_id,
+                name,
             }
         }
     }

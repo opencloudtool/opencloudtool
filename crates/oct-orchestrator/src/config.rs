@@ -146,8 +146,6 @@ impl Service {
 mod tests {
     use std::io::Write;
 
-    use tempfile;
-
     use super::*;
 
     #[test]
@@ -209,7 +207,7 @@ depends_on = ["app_1"]
                         (
                             "app_1".to_string(),
                             Service {
-                                image: "".to_string(),
+                                image: String::new(),
                                 dockerfile_path: Some("Dockerfile".to_string()),
                                 command: Some("echo Hello World!".to_string()),
                                 internal_port: Some(80),

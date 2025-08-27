@@ -3,9 +3,9 @@ use petgraph::{Incoming, Outgoing};
 use petgraph::visit::NodeIndexable;
 use std::collections::{HashMap, VecDeque};
 
+use petgraph::Graph;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
-use petgraph::Graph;
 
 use crate::aws::client;
 use crate::aws::types;
@@ -267,9 +267,7 @@ impl GraphManager {
                             match output_resource {
                                 Ok(output_resource) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_resource,
-                                        parent_node_indexes,
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node =
@@ -298,9 +296,7 @@ impl GraphManager {
                             match output_resource {
                                 Ok(output_resource) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_resource,
-                                        parent_node_indexes,
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node =
@@ -329,9 +325,7 @@ impl GraphManager {
                             match output_vpc {
                                 Ok(output_vpc) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_vpc,
-                                        parent_node_indexes,
+                                        "Deployed {output_vpc:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::Vpc(output_vpc));
@@ -355,9 +349,7 @@ impl GraphManager {
                             match output_igw {
                                 Ok(output_igw) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_igw,
-                                        parent_node_indexes,
+                                        "Deployed {output_igw:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node =
@@ -382,9 +374,7 @@ impl GraphManager {
                             match output_route_table {
                                 Ok(output_route_table) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_route_table,
-                                        parent_node_indexes,
+                                        "Deployed {output_route_table:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::RouteTable(
@@ -414,9 +404,7 @@ impl GraphManager {
                             match output_subnet {
                                 Ok(output_subnet) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_subnet,
-                                        parent_node_indexes,
+                                        "Deployed {output_subnet:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::Subnet(output_subnet));
@@ -445,9 +433,7 @@ impl GraphManager {
                             match output_security_group {
                                 Ok(output_security_group) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_security_group,
-                                        parent_node_indexes,
+                                        "Deployed {output_security_group:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::SecurityGroup(
@@ -478,9 +464,7 @@ impl GraphManager {
                             match output_instance_role {
                                 Ok(output_instance_role) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_instance_role,
-                                        parent_node_indexes,
+                                        "Deployed {output_instance_role:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::InstanceRole(
@@ -510,9 +494,7 @@ impl GraphManager {
                             match output_resource {
                                 Ok(output_resource) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_resource,
-                                        parent_node_indexes,
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::InstanceProfile(
@@ -542,9 +524,7 @@ impl GraphManager {
                             match output_resource {
                                 Ok(output_resource) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_resource,
-                                        parent_node_indexes,
+                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node =
@@ -575,9 +555,7 @@ impl GraphManager {
                             match output_vm {
                                 Ok(output_vm) => {
                                     log::info!(
-                                        "Deployed {:?}, parents - {:?}",
-                                        output_vm,
-                                        parent_node_indexes,
+                                        "Deployed {output_vm:?}, parents - {parent_node_indexes:?}",
                                     );
 
                                     let node = Node::Resource(ResourceType::Vm(output_vm.clone()));
@@ -599,10 +577,7 @@ impl GraphManager {
 
                 let Ok(created_resource_node_index) = created_resource_node_index else {
                     //TODO: Handle failed resource creation
-                    log::error!(
-                        "Failed to create a resource {:?}",
-                        created_resource_node_index
-                    );
+                    log::error!("Failed to create a resource {created_resource_node_index:?}");
 
                     continue;
                 };
@@ -681,9 +656,9 @@ impl GraphManager {
                             client: &self.route53_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy {:?}: {}", resource, e);
+                            log::error!("Failed to destroy {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed {:?}", resource);
+                            log::info!("Destroyed {resource:?}");
                         }
                     }
                     ResourceType::DnsRecord(resource) => {
@@ -691,9 +666,9 @@ impl GraphManager {
                             client: &self.route53_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy {:?}: {}", resource, e);
+                            log::error!("Failed to destroy {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed {:?}", resource);
+                            log::info!("Destroyed {resource:?}");
                         }
                     }
                     ResourceType::Vpc(resource) => {
@@ -701,9 +676,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy Vpc {:?}: {}", resource, e);
+                            log::error!("Failed to destroy Vpc {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed Vpc {:?}", resource);
+                            log::info!("Destroyed Vpc {resource:?}");
                         }
                     }
                     ResourceType::InternetGateway(resource) => {
@@ -711,9 +686,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy InternetGateway {:?}: {}", resource, e);
+                            log::error!("Failed to destroy InternetGateway {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed InternetGateway {:?}", resource);
+                            log::info!("Destroyed InternetGateway {resource:?}");
                         }
                     }
                     ResourceType::RouteTable(resource) => {
@@ -721,9 +696,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy RouteTable {:?}: {}", resource, e);
+                            log::error!("Failed to destroy RouteTable {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed RouteTable {:?}", resource);
+                            log::info!("Destroyed RouteTable {resource:?}");
                         }
                     }
                     ResourceType::Subnet(resource) => {
@@ -731,9 +706,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy Subnet {:?}: {}", resource, e);
+                            log::error!("Failed to destroy Subnet {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed Subnet {:?}", resource);
+                            log::info!("Destroyed Subnet {resource:?}");
                         }
                     }
                     ResourceType::SecurityGroup(resource) => {
@@ -741,9 +716,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy SecurityGroup {:?}: {}", resource, e);
+                            log::error!("Failed to destroy SecurityGroup {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed SecurityGroup {:?}", resource);
+                            log::info!("Destroyed SecurityGroup {resource:?}");
                         }
                     }
                     ResourceType::InstanceRole(resource) => {
@@ -751,9 +726,9 @@ impl GraphManager {
                             client: &self.iam_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy InstanceRole {:?}: {}", resource, e);
+                            log::error!("Failed to destroy InstanceRole {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed InstanceRole {:?}", resource);
+                            log::info!("Destroyed InstanceRole {resource:?}");
                         }
                     }
                     ResourceType::InstanceProfile(resource) => {
@@ -761,9 +736,9 @@ impl GraphManager {
                             client: &self.iam_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy InstanceProfile {:?}: {}", resource, e);
+                            log::error!("Failed to destroy InstanceProfile {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed InstanceProfile {:?}", resource);
+                            log::info!("Destroyed InstanceProfile {resource:?}");
                         }
                     }
                     ResourceType::Ecr(resource) => {
@@ -771,9 +746,9 @@ impl GraphManager {
                             client: &self.ecr_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy Ecr {:?}: {}", resource, e);
+                            log::error!("Failed to destroy Ecr {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed Ecr {:?}", resource);
+                            log::info!("Destroyed Ecr {resource:?}");
                         }
                     }
                     ResourceType::Vm(resource) => {
@@ -781,9 +756,9 @@ impl GraphManager {
                             client: &self.ec2_client,
                         };
                         if let Err(e) = manager.destroy(resource, parent_nodes).await {
-                            log::error!("Failed to destroy Vm {:?}: {}", resource, e);
+                            log::error!("Failed to destroy Vm {resource:?}: {e}");
                         } else {
-                            log::info!("Destroyed Vm {:?}", resource);
+                            log::info!("Destroyed Vm {resource:?}");
                         }
                     }
                     ResourceType::None => {
