@@ -166,7 +166,7 @@ mod tests {
             .await;
 
         // Assert
-        assert_eq!(response.is_ok(), true);
+        assert!(response.is_ok());
         server_mock.assert();
     }
 
@@ -202,7 +202,7 @@ mod tests {
             .await;
 
         // Assert
-        assert_eq!(response.is_ok(), false);
+        assert!(!response.is_ok());
         server_mock.assert();
     }
 
@@ -227,7 +227,7 @@ mod tests {
         let response = client.remove_container("test".to_string()).await;
 
         // Assert
-        assert_eq!(response.is_ok(), true);
+        assert!(response.is_ok());
         server_mock.assert();
     }
 
@@ -252,7 +252,7 @@ mod tests {
         let response = client.remove_container("test".to_string()).await;
 
         // Assert
-        assert_eq!(response.is_ok(), false);
+        assert!(!response.is_ok());
         server_mock.assert();
     }
 }
