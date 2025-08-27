@@ -1,0 +1,21 @@
+# More info around this file at https://www.git-town.com/configuration-file
+
+[branches]
+main = "main"
+
+[create]
+share-new-branches = "no"
+
+[hosting]
+dev-remote = "origin"
+
+[ship]
+delete-tracking-branch = true
+strategy = "squash-merge"
+
+[sync]
+tags = true
+perennial-strategy = "rebase"
+prototype-strategy = "rebase"
+push-hook = true
+upstream = true
