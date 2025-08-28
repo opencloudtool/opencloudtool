@@ -165,7 +165,7 @@ pub struct VpcSpec {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Vpc {
     pub id: String,
     pub region: String,
@@ -986,5 +986,127 @@ impl std::fmt::Display for Node {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use mockall::predicate::eq;
+
+    #[tokio::test]
+    async fn test_vpc_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_vpc()
+            .with(eq(String::from("0.0.0.0/0")), eq(String::from("vpc")))
+            .return_once(|_, _| Ok(String::from("vpc-id")));
+
+        let vpc_manager = VpcManager {
+            client: &ec2_client_mock,
+        };
+
+        let vpc_spec = VpcSpec {
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+
+        // Act
+        let vpc = vpc_manager.create(&vpc_spec, vec![]).await;
+
+        // Assert
+        assert!(vpc.is_ok());
+        assert_eq!(
+            vpc.expect("Failed to get VPC"),
+            Vpc {
+                id: String::from("vpc-id"),
+                region: String::from("us-west-2"),
+                cidr_block: String::from("0.0.0.0/0"),
+                name: String::from("vpc"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vpc_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_vpc()
+            .with(eq(String::new()), eq(String::new()))
+            .return_once(|_, _| Err("Error".into()));
+
+        let vpc_manager = VpcManager {
+            client: &ec2_client_mock,
+        };
+
+        let vpc_spec = VpcSpec {
+            region: String::new(),
+            cidr_block: String::new(),
+            name: String::new(),
+        };
+
+        // Act
+        let vpc = vpc_manager.create(&vpc_spec, vec![]).await;
+
+        // Assert
+        assert!(vpc.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_vpc_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_vpc()
+            .with(eq(String::from("vpc-id")))
+            .return_once(|_| Ok(()));
+
+        let vpc_manager = VpcManager {
+            client: &ec2_client_mock,
+        };
+
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+
+        // Act
+        let result = vpc_manager.destroy(&vpc, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_vpc_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_vpc()
+            .with(eq(String::from("vpc-id")))
+            .return_once(|_| Err("Error".into()));
+
+        let vpc_manager = VpcManager {
+            client: &ec2_client_mock,
+        };
+
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+
+        // Act
+        let vpc = vpc_manager.destroy(&vpc, vec![]).await;
+
+        // Assert
+        assert!(vpc.is_err());
     }
 }
