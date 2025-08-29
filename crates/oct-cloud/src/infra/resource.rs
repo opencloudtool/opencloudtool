@@ -65,13 +65,13 @@ impl Manager<'_, HostedZoneSpec, HostedZone> for HostedZoneManager<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsRecordSpec {
     pub record_type: types::RecordType,
     pub ttl: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DnsRecord {
     pub name: String,
     pub value: String,
@@ -413,20 +413,20 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InboundRule {
     pub protocol: String,
     pub port: i32,
     pub cidr_block: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecurityGroupSpec {
     pub name: String,
     pub inbound_rules: Vec<InboundRule>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SecurityGroup {
     pub id: String,
     pub name: String,
@@ -540,12 +540,12 @@ impl Manager<'_, InstanceRoleSpec, InstanceRole> for InstanceRoleManager<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceProfileSpec {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstanceProfile {
     pub name: String,
 }
@@ -658,7 +658,7 @@ pub struct VmSpec {
     pub user_data: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Vm {
     pub id: String,
     pub public_ip: String,
@@ -2069,6 +2069,620 @@ mod tests {
 
         // Act
         let result = route_table_manager.destroy(&route_table, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_create() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_create_dns_record()
+            .with(
+                eq(String::from("hz-id")),
+                eq(String::from("vm-id.example.com")),
+                eq(types::RecordType::A),
+                eq(String::from("1.2.3.4")),
+                eq(Some(300)),
+            )
+            .return_once(|_, _, _, _, _| Ok(()));
+
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+
+        let dns_record_spec = DnsRecordSpec {
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let hosted_zone = HostedZone {
+            id: String::from("hz-id"),
+            name: String::from("example.com"),
+            region: String::from("us-west-2"),
+        };
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from(""),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::HostedZone(hosted_zone)),
+            Node::Resource(ResourceType::Vm(vm)),
+        ];
+
+        // Act
+        let dns_record = dns_record_manager
+            .create(&dns_record_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(dns_record.is_ok());
+        assert_eq!(
+            dns_record.expect("Failed to create dns record"),
+            DnsRecord {
+                name: String::from("vm-id.example.com"),
+                value: String::from("1.2.3.4"),
+                record_type: types::RecordType::A,
+                ttl: Some(300),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_create_no_hosted_zone_parent() {
+        // Arrange
+        let route53_client_mock = client::Route53::default();
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+        let dns_record_spec = DnsRecordSpec {
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from(""),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vm(vm))];
+
+        // Act
+        let result = dns_record_manager
+            .create(&dns_record_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "DnsRecord expects HostedZone as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_create_no_vm_parent() {
+        // Arrange
+        let route53_client_mock = client::Route53::default();
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+        let dns_record_spec = DnsRecordSpec {
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let hosted_zone = HostedZone {
+            id: String::from("hz-id"),
+            name: String::from("example.com"),
+            region: String::from("us-west-2"),
+        };
+        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+
+        // Act
+        let result = dns_record_manager
+            .create(&dns_record_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "DnsRecord expects Vm as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_create_error() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_create_dns_record()
+            .return_once(|_, _, _, _, _| Err("Error".into()));
+
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+
+        let dns_record_spec = DnsRecordSpec {
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let hosted_zone = HostedZone {
+            id: String::from("hz-id"),
+            name: String::from("example.com"),
+            region: String::from("us-west-2"),
+        };
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from(""),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::HostedZone(hosted_zone)),
+            Node::Resource(ResourceType::Vm(vm)),
+        ];
+
+        // Act
+        let result = dns_record_manager
+            .create(&dns_record_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_destroy() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_delete_dns_record()
+            .with(
+                eq(String::from("hz-id")),
+                eq(String::from("vm-id.example.com")),
+                eq(types::RecordType::A),
+                eq(String::from("1.2.3.4")),
+                eq(Some(300)),
+            )
+            .return_once(|_, _, _, _, _| Ok(()));
+
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+
+        let dns_record = DnsRecord {
+            name: String::from("vm-id.example.com"),
+            value: String::from("1.2.3.4"),
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let hosted_zone = HostedZone {
+            id: String::from("hz-id"),
+            name: String::from("example.com"),
+            region: String::from("us-west-2"),
+        };
+        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+
+        // Act
+        let result = dns_record_manager
+            .destroy(&dns_record, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_destroy_no_hosted_zone_parent() {
+        // Arrange
+        let route53_client_mock = client::Route53::default();
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+        let dns_record = DnsRecord {
+            name: String::from("vm-id.example.com"),
+            value: String::from("1.2.3.4"),
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+
+        // Act
+        let result = dns_record_manager.destroy(&dns_record, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "DnsRecord expects HostedZone as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dns_record_manager_destroy_error() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_delete_dns_record()
+            .return_once(|_, _, _, _, _| Err("Error".into()));
+
+        let dns_record_manager = DnsRecordManager {
+            client: &route53_client_mock,
+        };
+
+        let dns_record = DnsRecord {
+            name: String::from("vm-id.example.com"),
+            value: String::from("1.2.3.4"),
+            record_type: types::RecordType::A,
+            ttl: Some(300),
+        };
+        let hosted_zone = HostedZone {
+            id: String::from("hz-id"),
+            name: String::from("example.com"),
+            region: String::from("us-west-2"),
+        };
+        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+
+        // Act
+        let result = dns_record_manager
+            .destroy(&dns_record, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_security_group_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_security_group()
+            .with(
+                eq(String::from("vpc-id")),
+                eq(String::from("sg-name")),
+                eq(String::from("No description")),
+            )
+            .return_once(|_, _, _| Ok(String::from("sg-id")));
+        ec2_client_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(
+                eq(String::from("sg-id")),
+                eq(String::from("tcp")),
+                eq(80),
+                eq(String::from("0.0.0.0/0")),
+            )
+            .return_once(|_, _, _, _| Ok(()));
+
+        let security_group_manager = SecurityGroupManager {
+            client: &ec2_client_mock,
+        };
+
+        let security_group_spec = SecurityGroupSpec {
+            name: String::from("sg-name"),
+            inbound_rules: vec![InboundRule {
+                protocol: String::from("tcp"),
+                port: 80,
+                cidr_block: String::from("0.0.0.0/0"),
+            }],
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let security_group = security_group_manager
+            .create(&security_group_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(security_group.is_ok());
+        assert_eq!(
+            security_group.expect("Failed to create security group"),
+            SecurityGroup {
+                id: String::from("sg-id"),
+                name: String::from("sg-name"),
+                inbound_rules: vec![InboundRule {
+                    protocol: String::from("tcp"),
+                    port: 80,
+                    cidr_block: String::from("0.0.0.0/0"),
+                }],
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_security_group_manager_create_no_vpc_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let security_group_manager = SecurityGroupManager {
+            client: &ec2_client_mock,
+        };
+        let security_group_spec = SecurityGroupSpec {
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+
+        // Act
+        let result = security_group_manager
+            .create(&security_group_spec, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "SecurityGroup expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_security_group_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_security_group()
+            .return_once(|_, _, _| Err("Error".into()));
+
+        let security_group_manager = SecurityGroupManager {
+            client: &ec2_client_mock,
+        };
+
+        let security_group_spec = SecurityGroupSpec {
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let security_group = security_group_manager
+            .create(&security_group_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(security_group.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_security_group_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_security_group()
+            .with(eq(String::from("sg-id")))
+            .return_once(|_| Ok(()));
+
+        let security_group_manager = SecurityGroupManager {
+            client: &ec2_client_mock,
+        };
+
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+
+        // Act
+        let result = security_group_manager
+            .destroy(&security_group, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_security_group_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_security_group()
+            .return_once(|_| Err("Error".into()));
+
+        let security_group_manager = SecurityGroupManager {
+            client: &ec2_client_mock,
+        };
+
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+
+        // Act
+        let result = security_group_manager
+            .destroy(&security_group, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_create() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_create_instance_profile()
+            .with(
+                eq(String::from("profile-name")),
+                eq(vec![String::from("role-name")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_profile_spec = InstanceProfileSpec {
+            name: String::from("profile-name"),
+        };
+        let instance_role = InstanceRole {
+            name: String::from("role-name"),
+            assume_role_policy: String::from(""),
+            policy_arns: vec![],
+        };
+        let parents = vec![Node::Resource(ResourceType::InstanceRole(instance_role))];
+
+        // Act
+        let instance_profile = instance_profile_manager
+            .create(&instance_profile_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(instance_profile.is_ok());
+        assert_eq!(
+            instance_profile.expect("Failed to create instance profile"),
+            InstanceProfile {
+                name: String::from("profile-name"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_create_no_instance_role_parent() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_create_instance_profile()
+            .with(eq(String::from("profile-name")), eq(Vec::<String>::new()))
+            .return_once(|_, _| Ok(()));
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+        let instance_profile_spec = InstanceProfileSpec {
+            name: String::from("profile-name"),
+        };
+
+        // Act
+        let result = instance_profile_manager
+            .create(&instance_profile_spec, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_create_error() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_create_instance_profile()
+            .return_once(|_, _| Err("Error".into()));
+
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_profile_spec = InstanceProfileSpec {
+            name: String::from("profile-name"),
+        };
+
+        // Act
+        let result = instance_profile_manager
+            .create(&instance_profile_spec, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_destroy() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_delete_instance_profile()
+            .with(
+                eq(String::from("profile-name")),
+                eq(vec![String::from("role-name")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_profile = InstanceProfile {
+            name: String::from("profile-name"),
+        };
+        let instance_role = InstanceRole {
+            name: String::from("role-name"),
+            assume_role_policy: String::from(""),
+            policy_arns: vec![],
+        };
+        let parents = vec![Node::Resource(ResourceType::InstanceRole(instance_role))];
+
+        // Act
+        let result = instance_profile_manager
+            .destroy(&instance_profile, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_destroy_no_instance_role_parent() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_delete_instance_profile()
+            .with(eq(String::from("profile-name")), eq(Vec::<String>::new()))
+            .return_once(|_, _| Ok(()));
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("profile-name"),
+        };
+
+        // Act
+        let result = instance_profile_manager
+            .destroy(&instance_profile, vec![])
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_instance_profile_manager_destroy_error() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_delete_instance_profile()
+            .return_once(|_, _| Err("Error".into()));
+
+        let instance_profile_manager = InstanceProfileManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_profile = InstanceProfile {
+            name: String::from("profile-name"),
+        };
+
+        // Act
+        let result = instance_profile_manager
+            .destroy(&instance_profile, vec![])
+            .await;
 
         // Assert
         assert!(result.is_err());
