@@ -600,12 +600,12 @@ impl Manager<'_, InstanceProfileSpec, InstanceProfile> for InstanceProfileManage
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EcrSpec {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Ecr {
     pub id: String,
     pub uri: String,
@@ -1350,6 +1350,114 @@ mod tests {
 
         // Act
         let result = instance_role_manager.destroy(&instance_role, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ecr_manager_create() {
+        // Arrange
+        let mut ecr_client_mock = client::ECR::default();
+        ecr_client_mock
+            .expect_create_repository()
+            .with(eq(String::from("repo-name")))
+            .return_once(|_| Ok((String::from("repo-id"), String::from("repo-uri"))));
+
+        let ecr_manager = EcrManager {
+            client: &ecr_client_mock,
+        };
+
+        let ecr_spec = EcrSpec {
+            name: String::from("repo-name"),
+        };
+
+        // Act
+        let ecr = ecr_manager.create(&ecr_spec, vec![]).await;
+
+        // Assert
+        assert!(ecr.is_ok());
+        assert_eq!(
+            ecr.expect("Failed to create ECR"),
+            Ecr {
+                id: String::from("repo-id"),
+                uri: String::from("repo-uri"),
+                name: String::from("repo-name"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ecr_manager_create_error() {
+        // Arrange
+        let mut ecr_client_mock = client::ECR::default();
+        ecr_client_mock
+            .expect_create_repository()
+            .with(eq(String::from("repo-name")))
+            .return_once(|_| Err("Error".into()));
+
+        let ecr_manager = EcrManager {
+            client: &ecr_client_mock,
+        };
+
+        let ecr_spec = EcrSpec {
+            name: String::from("repo-name"),
+        };
+
+        // Act
+        let ecr = ecr_manager.create(&ecr_spec, vec![]).await;
+
+        // Assert
+        assert!(ecr.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ecr_manager_destroy() {
+        // Arrange
+        let mut ecr_client_mock = client::ECR::default();
+        ecr_client_mock
+            .expect_delete_repository()
+            .with(eq(String::from("repo-name")))
+            .return_once(|_| Ok(()));
+
+        let ecr_manager = EcrManager {
+            client: &ecr_client_mock,
+        };
+
+        let ecr = Ecr {
+            id: String::from("repo-id"),
+            uri: String::from("repo-uri"),
+            name: String::from("repo-name"),
+        };
+
+        // Act
+        let result = ecr_manager.destroy(&ecr, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ecr_manager_destroy_error() {
+        // Arrange
+        let mut ecr_client_mock = client::ECR::default();
+        ecr_client_mock
+            .expect_delete_repository()
+            .with(eq(String::from("repo-name")))
+            .return_once(|_| Err("Error".into()));
+
+        let ecr_manager = EcrManager {
+            client: &ecr_client_mock,
+        };
+
+        let ecr = Ecr {
+            id: String::from("repo-id"),
+            uri: String::from("repo-uri"),
+            name: String::from("repo-name"),
+        };
+
+        // Act
+        let result = ecr_manager.destroy(&ecr, vec![]).await;
 
         // Assert
         assert!(result.is_err());
