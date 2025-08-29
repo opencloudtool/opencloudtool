@@ -1888,4 +1888,189 @@ mod tests {
         // Assert
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_route_table_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_route_table()
+            .with(eq(String::from("vpc-id")))
+            .return_once(|_| Ok(String::from("rt-id")));
+        ec2_client_mock
+            .expect_add_public_route()
+            .with(eq(String::from("rt-id")), eq(String::from("igw-id")))
+            .return_once(|_, _| Ok(()));
+
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+
+        let route_table_spec = RouteTableSpec;
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Vpc(vpc)),
+            Node::Resource(ResourceType::InternetGateway(igw)),
+        ];
+
+        // Act
+        let route_table = route_table_manager
+            .create(&route_table_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(route_table.is_ok());
+        assert_eq!(
+            route_table.expect("Failed to create route table"),
+            RouteTable {
+                id: String::from("rt-id"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_route_table_manager_create_no_vpc_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+        let route_table_spec = RouteTableSpec;
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+        let parents = vec![Node::Resource(ResourceType::InternetGateway(igw))];
+
+        // Act
+        let result = route_table_manager
+            .create(&route_table_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "RouteTable expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_route_table_manager_create_no_igw_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+        let route_table_spec = RouteTableSpec;
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let result = route_table_manager
+            .create(&route_table_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "RouteTable expects IGW as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_route_table_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_route_table()
+            .return_once(|_| Err("Error".into()));
+
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+
+        let route_table_spec = RouteTableSpec;
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Vpc(vpc)),
+            Node::Resource(ResourceType::InternetGateway(igw)),
+        ];
+
+        // Act
+        let route_table = route_table_manager
+            .create(&route_table_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(route_table.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_route_table_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_route_table()
+            .with(eq(String::from("rt-id")))
+            .return_once(|_| Ok(()));
+
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+
+        // Act
+        let result = route_table_manager.destroy(&route_table, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_route_table_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_route_table()
+            .return_once(|_| Err("Error".into()));
+
+        let route_table_manager = RouteTableManager {
+            client: &ec2_client_mock,
+        };
+
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+
+        // Act
+        let result = route_table_manager.destroy(&route_table, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
 }
