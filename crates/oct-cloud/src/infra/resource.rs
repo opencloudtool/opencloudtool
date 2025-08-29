@@ -496,7 +496,7 @@ pub struct InstanceRoleSpec {
     pub policy_arns: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstanceRole {
     pub name: String,
     pub assume_role_policy: String,
@@ -1215,6 +1215,141 @@ mod tests {
 
         // Act
         let result = hosted_zone_manager.destroy(&hosted_zone, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_instance_role_manager_create() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_create_instance_iam_role()
+            .with(
+                eq(String::from("role-name")),
+                eq(String::from("assume-policy")),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+                )]),
+            )
+            .return_once(|_, _, _| Ok(()));
+
+        let instance_role_manager = InstanceRoleManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_role_spec = InstanceRoleSpec {
+            name: String::from("role-name"),
+            assume_role_policy: String::from("assume-policy"),
+            policy_arns: vec![String::from(
+                "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+            )],
+        };
+
+        // Act
+        let instance_role = instance_role_manager
+            .create(&instance_role_spec, vec![])
+            .await;
+
+        // Assert
+        assert!(instance_role.is_ok());
+        assert_eq!(
+            instance_role.expect("Failed to get InstanceRole"),
+            InstanceRole {
+                name: String::from("role-name"),
+                assume_role_policy: String::from("assume-policy"),
+                policy_arns: vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+                )],
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_instance_role_manager_create_error() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_create_instance_iam_role()
+            .return_once(|_, _, _| Err("Error".into()));
+
+        let instance_role_manager = InstanceRoleManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_role_spec = InstanceRoleSpec {
+            name: String::from("role-name"),
+            assume_role_policy: String::from("assume-policy"),
+            policy_arns: vec![String::from(
+                "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+            )],
+        };
+
+        // Act
+        let instance_role = instance_role_manager
+            .create(&instance_role_spec, vec![])
+            .await;
+
+        // Assert
+        assert!(instance_role.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_instance_role_manager_destroy() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_delete_instance_iam_role()
+            .with(
+                eq(String::from("role-name")),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+                )]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        let instance_role_manager = InstanceRoleManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_role = InstanceRole {
+            name: String::from("role-name"),
+            assume_role_policy: String::from("assume-policy"),
+            policy_arns: vec![String::from(
+                "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+            )],
+        };
+
+        // Act
+        let result = instance_role_manager.destroy(&instance_role, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_instance_role_manager_destroy_error() {
+        // Arrange
+        let mut iam_client_mock = client::IAM::default();
+        iam_client_mock
+            .expect_delete_instance_iam_role()
+            .return_once(|_, _| Err("Error".into()));
+
+        let instance_role_manager = InstanceRoleManager {
+            client: &iam_client_mock,
+        };
+
+        let instance_role = InstanceRole {
+            name: String::from("role-name"),
+            assume_role_policy: String::from("assume-policy"),
+            policy_arns: vec![String::from(
+                "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+            )],
+        };
+
+        // Act
+        let result = instance_role_manager.destroy(&instance_role, vec![]).await;
 
         // Assert
         assert!(result.is_err());
