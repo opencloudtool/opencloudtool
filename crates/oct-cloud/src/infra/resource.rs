@@ -205,10 +205,10 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InternetGatewaySpec;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InternetGateway {
     pub id: String,
 }
@@ -1458,6 +1458,172 @@ mod tests {
 
         // Act
         let result = ecr_manager.destroy(&ecr, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_internet_gateway()
+            .with(eq(String::from("vpc-id")))
+            .return_once(|_| Ok(String::from("igw-id")));
+
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+
+        let igw_spec = InternetGatewaySpec;
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let igw = igw_manager.create(&igw_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(igw.is_ok());
+        assert_eq!(
+            igw.expect("Failed to create InternetGateway"),
+            InternetGateway {
+                id: String::from("igw-id"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_create_no_vpc_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+        let igw_spec = InternetGatewaySpec;
+
+        // Act
+        let igw = igw_manager.create(&igw_spec, vec![]).await;
+
+        // Assert
+        assert!(igw.is_err());
+        assert_eq!(
+            igw.unwrap_err().to_string(),
+            "Igw expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_internet_gateway()
+            .return_once(|_| Err("Error".into()));
+
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+
+        let igw_spec = InternetGatewaySpec;
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let igw = igw_manager.create(&igw_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(igw.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_internet_gateway()
+            .with(eq(String::from("igw-id")), eq(String::from("vpc-id")))
+            .return_once(|_, _| Ok(()));
+
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let result = igw_manager.destroy(&igw, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_destroy_no_vpc_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+
+        // Act
+        let result = igw_manager.destroy(&igw, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Igw expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_internet_gateway_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_delete_internet_gateway()
+            .return_once(|_, _| Err("Error".into()));
+
+        let igw_manager = InternetGatewayManager {
+            client: &ec2_client_mock,
+        };
+
+        let igw = InternetGateway {
+            id: String::from("igw-id"),
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("0.0.0.0/0"),
+            name: String::from("vpc"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let result = igw_manager.destroy(&igw, parents.iter().collect()).await;
 
         // Assert
         assert!(result.is_err());
