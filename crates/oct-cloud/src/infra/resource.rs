@@ -30,7 +30,7 @@ pub struct HostedZoneSpec {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HostedZone {
     pub id: String,
     pub region: String,
@@ -1108,5 +1108,115 @@ mod tests {
 
         // Assert
         assert!(vpc.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_hosted_zone_manager_create() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_create_hosted_zone()
+            .with(eq(String::from("example.com")))
+            .return_once(|_| Ok(String::from("hosted-zone-id")));
+
+        let hosted_zone_manager = HostedZoneManager {
+            client: &route53_client_mock,
+        };
+
+        let hosted_zone_spec = HostedZoneSpec {
+            region: String::from("us-west-2"),
+            name: String::from("example.com"),
+        };
+
+        // Act
+        let hosted_zone = hosted_zone_manager.create(&hosted_zone_spec, vec![]).await;
+
+        // Assert
+        assert!(hosted_zone.is_ok());
+        assert_eq!(
+            hosted_zone.expect("Failed to get HostedZone"),
+            HostedZone {
+                id: String::from("hosted-zone-id"),
+                region: String::from("us-west-2"),
+                name: String::from("example.com"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hosted_zone_manager_create_error() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_create_hosted_zone()
+            .with(eq(String::from("example.com")))
+            .return_once(|_| Err("Error".into()));
+
+        let hosted_zone_manager = HostedZoneManager {
+            client: &route53_client_mock,
+        };
+
+        let hosted_zone_spec = HostedZoneSpec {
+            region: String::from("us-west-2"),
+            name: String::from("example.com"),
+        };
+
+        // Act
+        let hosted_zone = hosted_zone_manager.create(&hosted_zone_spec, vec![]).await;
+
+        // Assert
+        assert!(hosted_zone.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_hosted_zone_manager_destroy() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_delete_hosted_zone()
+            .with(eq(String::from("hosted-zone-id")))
+            .return_once(|_| Ok(()));
+
+        let hosted_zone_manager = HostedZoneManager {
+            client: &route53_client_mock,
+        };
+
+        let hosted_zone = HostedZone {
+            id: String::from("hosted-zone-id"),
+            region: String::from("us-west-2"),
+            name: String::from("example.com"),
+        };
+
+        // Act
+        let result = hosted_zone_manager.destroy(&hosted_zone, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_hosted_zone_manager_destroy_error() {
+        // Arrange
+        let mut route53_client_mock = client::Route53::default();
+        route53_client_mock
+            .expect_delete_hosted_zone()
+            .with(eq(String::from("hosted-zone-id")))
+            .return_once(|_| Err("Error".into()));
+
+        let hosted_zone_manager = HostedZoneManager {
+            client: &route53_client_mock,
+        };
+
+        let hosted_zone = HostedZone {
+            id: String::from("hosted-zone-id"),
+            region: String::from("us-west-2"),
+            name: String::from("example.com"),
+        };
+
+        // Act
+        let result = hosted_zone_manager.destroy(&hosted_zone, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
     }
 }
