@@ -1483,10 +1483,12 @@ mod tests {
             cidr_block: String::from("0.0.0.0/0"),
             name: String::from("vpc"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
-        let igw = igw_manager.create(&igw_spec, parents.iter().collect()).await;
+        let igw = igw_manager
+            .create(&igw_spec, parents.iter().collect())
+            .await;
 
         // Assert
         assert!(igw.is_ok());
@@ -1512,10 +1514,7 @@ mod tests {
 
         // Assert
         assert!(igw.is_err());
-        assert_eq!(
-            igw.unwrap_err().to_string(),
-            "Igw expects VPC as a parent"
-        );
+        assert_eq!(igw.unwrap_err().to_string(), "Igw expects VPC as a parent");
     }
 
     #[tokio::test]
@@ -1537,10 +1536,12 @@ mod tests {
             cidr_block: String::from("0.0.0.0/0"),
             name: String::from("vpc"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
-        let igw = igw_manager.create(&igw_spec, parents.iter().collect()).await;
+        let igw = igw_manager
+            .create(&igw_spec, parents.iter().collect())
+            .await;
 
         // Assert
         assert!(igw.is_err());
@@ -1568,7 +1569,7 @@ mod tests {
             cidr_block: String::from("0.0.0.0/0"),
             name: String::from("vpc"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let result = igw_manager.destroy(&igw, parents.iter().collect()).await;
@@ -1620,7 +1621,7 @@ mod tests {
             cidr_block: String::from("0.0.0.0/0"),
             name: String::from("vpc"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let result = igw_manager.destroy(&igw, parents.iter().collect()).await;
@@ -1707,7 +1708,7 @@ mod tests {
         let route_table = RouteTable {
             id: String::from("rt-id"),
         };
-        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+        let parents = [Node::Resource(ResourceType::RouteTable(route_table))];
 
         // Act
         let result = subnet_manager
@@ -1740,7 +1741,7 @@ mod tests {
             cidr_block: String::from("10.0.0.0/16"),
             name: String::from("vpc-name"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let result = subnet_manager
@@ -1821,7 +1822,7 @@ mod tests {
         let route_table = RouteTable {
             id: String::from("rt-id"),
         };
-        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+        let parents = [Node::Resource(ResourceType::RouteTable(route_table))];
 
         // Act
         let result = subnet_manager
@@ -1878,7 +1879,7 @@ mod tests {
         let route_table = RouteTable {
             id: String::from("rt-id"),
         };
-        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+        let parents = [Node::Resource(ResourceType::RouteTable(route_table))];
 
         // Act
         let result = subnet_manager
@@ -1947,7 +1948,7 @@ mod tests {
         let igw = InternetGateway {
             id: String::from("igw-id"),
         };
-        let parents = vec![Node::Resource(ResourceType::InternetGateway(igw))];
+        let parents = [Node::Resource(ResourceType::InternetGateway(igw))];
 
         // Act
         let result = route_table_manager
@@ -1976,7 +1977,7 @@ mod tests {
             cidr_block: String::from("10.0.0.0/16"),
             name: String::from("vpc-name"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let result = route_table_manager
@@ -2107,7 +2108,7 @@ mod tests {
             public_ip: String::from("1.2.3.4"),
             instance_type: types::InstanceType::T2Micro,
             ami: String::from("ami-123"),
-            user_data: String::from(""),
+            user_data: String::new(),
         };
         let parents = vec![
             Node::Resource(ResourceType::HostedZone(hosted_zone)),
@@ -2148,9 +2149,9 @@ mod tests {
             public_ip: String::from("1.2.3.4"),
             instance_type: types::InstanceType::T2Micro,
             ami: String::from("ami-123"),
-            user_data: String::from(""),
+            user_data: String::new(),
         };
-        let parents = vec![Node::Resource(ResourceType::Vm(vm))];
+        let parents = [Node::Resource(ResourceType::Vm(vm))];
 
         // Act
         let result = dns_record_manager
@@ -2181,7 +2182,7 @@ mod tests {
             name: String::from("example.com"),
             region: String::from("us-west-2"),
         };
-        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+        let parents = [Node::Resource(ResourceType::HostedZone(hosted_zone))];
 
         // Act
         let result = dns_record_manager
@@ -2222,7 +2223,7 @@ mod tests {
             public_ip: String::from("1.2.3.4"),
             instance_type: types::InstanceType::T2Micro,
             ami: String::from("ami-123"),
-            user_data: String::from(""),
+            user_data: String::new(),
         };
         let parents = vec![
             Node::Resource(ResourceType::HostedZone(hosted_zone)),
@@ -2268,7 +2269,7 @@ mod tests {
             name: String::from("example.com"),
             region: String::from("us-west-2"),
         };
-        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+        let parents = [Node::Resource(ResourceType::HostedZone(hosted_zone))];
 
         // Act
         let result = dns_record_manager
@@ -2327,7 +2328,7 @@ mod tests {
             name: String::from("example.com"),
             region: String::from("us-west-2"),
         };
-        let parents = vec![Node::Resource(ResourceType::HostedZone(hosted_zone))];
+        let parents = [Node::Resource(ResourceType::HostedZone(hosted_zone))];
 
         // Act
         let result = dns_record_manager
@@ -2378,7 +2379,7 @@ mod tests {
             cidr_block: String::from("10.0.0.0/16"),
             name: String::from("vpc-name"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let security_group = security_group_manager
@@ -2448,7 +2449,7 @@ mod tests {
             cidr_block: String::from("10.0.0.0/16"),
             name: String::from("vpc-name"),
         };
-        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+        let parents = [Node::Resource(ResourceType::Vpc(vpc))];
 
         // Act
         let security_group = security_group_manager
@@ -2535,10 +2536,10 @@ mod tests {
         };
         let instance_role = InstanceRole {
             name: String::from("role-name"),
-            assume_role_policy: String::from(""),
+            assume_role_policy: String::new(),
             policy_arns: vec![],
         };
-        let parents = vec![Node::Resource(ResourceType::InstanceRole(instance_role))];
+        let parents = [Node::Resource(ResourceType::InstanceRole(instance_role))];
 
         // Act
         let instance_profile = instance_profile_manager
@@ -2625,10 +2626,10 @@ mod tests {
         };
         let instance_role = InstanceRole {
             name: String::from("role-name"),
-            assume_role_policy: String::from(""),
+            assume_role_policy: String::new(),
             policy_arns: vec![],
         };
-        let parents = vec![Node::Resource(ResourceType::InstanceRole(instance_role))];
+        let parents = [Node::Resource(ResourceType::InstanceRole(instance_role))];
 
         // Act
         let result = instance_profile_manager

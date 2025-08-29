@@ -202,7 +202,7 @@ mod tests {
             .await;
 
         // Assert
-        assert!(!response.is_ok());
+        assert!(response.is_err());
         server_mock.assert();
     }
 
@@ -252,7 +252,7 @@ mod tests {
         let response = client.remove_container("test".to_string()).await;
 
         // Assert
-        assert!(!response.is_ok());
+        assert!(response.is_err());
         server_mock.assert();
     }
 }
