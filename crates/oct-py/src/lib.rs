@@ -70,7 +70,7 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
             let deploy_result = orchestrator.deploy().await;
 
             match deploy_result {
-                Ok(_) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Deployment failed in Rust core: {e}"
                 ))),
@@ -116,7 +116,7 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
             let destroy_result = orchestrator.destroy().await;
 
             match destroy_result {
-                Ok(_) => Ok(()),
+                Ok(()) => Ok(()),
                 Err(e) => Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                     "Destruction failed in Rust core: {e}"
                 ))),
