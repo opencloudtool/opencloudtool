@@ -261,10 +261,10 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RouteTableSpec;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RouteTable {
     pub id: String,
 }
@@ -317,14 +317,14 @@ impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubnetSpec {
     pub name: String,
     pub cidr_block: String,
     pub availability_zone: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Subnet {
     pub id: String,
     pub name: String,
@@ -1624,6 +1624,266 @@ mod tests {
 
         // Act
         let result = igw_manager.destroy(&igw, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_subnet()
+            .with(
+                eq(String::from("vpc-id")),
+                eq(String::from("10.0.1.0/24")),
+                eq(String::from("us-west-2a")),
+                eq(String::from("subnet-name")),
+            )
+            .return_once(|_, _, _, _| Ok(String::from("subnet-id")));
+        ec2_client_mock
+            .expect_enable_auto_assign_ip_addresses_for_subnet()
+            .with(eq(String::from("subnet-id")))
+            .return_once(|_| Ok(()));
+        ec2_client_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq(String::from("rt-id")), eq(String::from("subnet-id")))
+            .return_once(|_, _| Ok(()));
+
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+
+        let subnet_spec = SubnetSpec {
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Vpc(vpc)),
+            Node::Resource(ResourceType::RouteTable(route_table)),
+        ];
+
+        // Act
+        let subnet = subnet_manager
+            .create(&subnet_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(subnet.is_ok());
+        assert_eq!(
+            subnet.expect("Failed to create subnet"),
+            Subnet {
+                id: String::from("subnet-id"),
+                name: String::from("subnet-name"),
+                cidr_block: String::from("10.0.1.0/24"),
+                availability_zone: String::from("us-west-2a"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_create_no_vpc_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+        let subnet_spec = SubnetSpec {
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+
+        // Act
+        let result = subnet_manager
+            .create(&subnet_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Subnet expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_create_no_route_table_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+        let subnet_spec = SubnetSpec {
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let parents = vec![Node::Resource(ResourceType::Vpc(vpc))];
+
+        // Act
+        let result = subnet_manager
+            .create(&subnet_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Subnet expects RouteTable as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_create_subnet()
+            .return_once(|_, _, _, _| Err("Error".into()));
+
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+
+        let subnet_spec = SubnetSpec {
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let vpc = Vpc {
+            id: String::from("vpc-id"),
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-name"),
+        };
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Vpc(vpc)),
+            Node::Resource(ResourceType::RouteTable(route_table)),
+        ];
+
+        // Act
+        let subnet = subnet_manager
+            .create(&subnet_spec, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(subnet.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq(String::from("rt-id")), eq(String::from("subnet-id")))
+            .return_once(|_, _| Ok(()));
+        ec2_client_mock
+            .expect_delete_subnet()
+            .with(eq(String::from("subnet-id")))
+            .return_once(|_| Ok(()));
+
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+
+        // Act
+        let result = subnet_manager
+            .destroy(&subnet, parents.iter().collect())
+            .await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_destroy_no_route_table_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+
+        // Act
+        let result = subnet_manager.destroy(&subnet, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Subnet expects RouteTable as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subnet_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_disassociate_route_table_with_subnet()
+            .return_once(|_, _| Err("Error".into()));
+
+        let subnet_manager = SubnetManager {
+            client: &ec2_client_mock,
+        };
+
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let route_table = RouteTable {
+            id: String::from("rt-id"),
+        };
+        let parents = vec![Node::Resource(ResourceType::RouteTable(route_table))];
+
+        // Act
+        let result = subnet_manager
+            .destroy(&subnet, parents.iter().collect())
+            .await;
 
         // Assert
         assert!(result.is_err());
