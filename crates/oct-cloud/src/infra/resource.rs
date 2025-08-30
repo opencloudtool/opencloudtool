@@ -2688,4 +2688,373 @@ mod tests {
         // Assert
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_vm_manager_create() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_run_instances()
+            .return_once(|_, _, _, _, _, _| {
+                let instance = aws_sdk_ec2::types::Instance::builder()
+                    .instance_id("vm-id")
+                    .build();
+                let output = aws_sdk_ec2::operation::run_instances::RunInstancesOutput::builder()
+                    .instances(instance)
+                    .build();
+                Ok(output)
+            });
+        ec2_client_mock
+            .expect_describe_instances()
+            .return_once(|_| {
+                let instance = aws_sdk_ec2::types::Instance::builder()
+                    .public_ip_address("1.2.3.4")
+                    .build();
+                Ok(instance)
+            });
+
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let ecr = Ecr {
+            id: String::from("ecr-id"),
+            uri: String::from("dkr.ecr.region.amazonaws.com/repo"),
+            name: String::from("ecr-name"),
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("instance-profile-name"),
+        };
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+
+        let parents = vec![
+            Node::Resource(ResourceType::Subnet(subnet)),
+            Node::Resource(ResourceType::Ecr(ecr)),
+            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
+            Node::Resource(ResourceType::SecurityGroup(security_group)),
+        ];
+
+        // Act
+        let vm = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(vm.is_ok());
+        assert_eq!(
+            vm.expect("failed to get vm"),
+            Vm {
+                id: String::from("vm-id"),
+                public_ip: String::from("1.2.3.4"),
+                instance_type: types::InstanceType::T2Micro,
+                ami: String::from("ami-123"),
+                user_data: String::from(
+                    "user-data\naws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin dkr.ecr.region.amazonaws.com",
+                ),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_create_no_subnet_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+        let ecr = Ecr {
+            id: String::from("ecr-id"),
+            uri: String::from("dkr.ecr.region.amazonaws.com/repo"),
+            name: String::from("ecr-name"),
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("instance-profile-name"),
+        };
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Ecr(ecr)),
+            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
+            Node::Resource(ResourceType::SecurityGroup(security_group)),
+        ];
+
+        // Act
+        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "VM expects Subnet as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_create_no_ecr_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("instance-profile-name"),
+        };
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Subnet(subnet)),
+            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
+            Node::Resource(ResourceType::SecurityGroup(security_group)),
+        ];
+
+        // Act
+        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "VM expects Ecr as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_create_no_instance_profile_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let ecr = Ecr {
+            id: String::from("ecr-id"),
+            uri: String::from("dkr.ecr.region.amazonaws.com/repo"),
+            name: String::from("ecr-name"),
+        };
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Subnet(subnet)),
+            Node::Resource(ResourceType::Ecr(ecr)),
+            Node::Resource(ResourceType::SecurityGroup(security_group)),
+        ];
+
+        // Act
+        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "VM expects InstanceProfile as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_create_no_security_group_parent() {
+        // Arrange
+        let ec2_client_mock = client::Ec2::default();
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let ecr = Ecr {
+            id: String::from("ecr-id"),
+            uri: String::from("dkr.ecr.region.amazonaws.com/repo"),
+            name: String::from("ecr-name"),
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("instance-profile-name"),
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Subnet(subnet)),
+            Node::Resource(ResourceType::Ecr(ecr)),
+            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
+        ];
+
+        // Act
+        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "SecurityGroup expects VPC as a parent"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_create_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_run_instances()
+            .return_once(|_, _, _, _, _, _| Err("Error".into()));
+
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+
+        let vm_spec = VmSpec {
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+        let subnet = Subnet {
+            id: String::from("subnet-id"),
+            name: String::from("subnet-name"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        };
+        let ecr = Ecr {
+            id: String::from("ecr-id"),
+            uri: String::from("dkr.ecr.region.amazonaws.com/repo"),
+            name: String::from("ecr-name"),
+        };
+        let instance_profile = InstanceProfile {
+            name: String::from("instance-profile-name"),
+        };
+        let security_group = SecurityGroup {
+            id: String::from("sg-id"),
+            name: String::from("sg-name"),
+            inbound_rules: vec![],
+        };
+        let parents = vec![
+            Node::Resource(ResourceType::Subnet(subnet)),
+            Node::Resource(ResourceType::Ecr(ecr)),
+            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
+            Node::Resource(ResourceType::SecurityGroup(security_group)),
+        ];
+
+        // Act
+        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_destroy() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_terminate_instance()
+            .with(eq(String::from("vm-id")))
+            .return_once(|_| Ok(()));
+        ec2_client_mock
+            .expect_describe_instances()
+            .with(eq(String::from("vm-id")))
+            .return_once(|_| {
+                let state = aws_sdk_ec2::types::InstanceState::builder()
+                    .name(aws_sdk_ec2::types::InstanceStateName::Terminated)
+                    .build();
+                let instance = aws_sdk_ec2::types::Instance::builder().state(state).build();
+                Ok(instance)
+            });
+
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+
+        // Act
+        let result = vm_manager.destroy(&vm, vec![]).await;
+
+        // Assert
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_vm_manager_destroy_error() {
+        // Arrange
+        let mut ec2_client_mock = client::Ec2::default();
+        ec2_client_mock
+            .expect_terminate_instance()
+            .with(eq(String::from("vm-id")))
+            .return_once(|_| Err("Error".into()));
+
+        let vm_manager = VmManager {
+            client: &ec2_client_mock,
+        };
+
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: types::InstanceType::T2Micro,
+            ami: String::from("ami-123"),
+            user_data: String::from("user-data"),
+        };
+
+        // Act
+        let result = vm_manager.destroy(&vm, vec![]).await;
+
+        // Assert
+        assert!(result.is_err());
+    }
 }
