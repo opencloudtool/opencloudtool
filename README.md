@@ -19,6 +19,14 @@ or
 wget -qO- https://repo.opencloudtool.com/install.sh | sh
 ```
 
+## Install as Python library
+
+```bash
+pip install opencloudtool
+```
+
+See the Python library README for details: [crates/oct-py/README.md](crates/oct-py/README.md)
+
 ## Log in to AWS
 
 Basic login ([docs](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/configure/index.html)):

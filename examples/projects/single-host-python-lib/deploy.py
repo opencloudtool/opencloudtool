@@ -1,4 +1,4 @@
-import oct
+import opencloudtool as oct
 
 test_project_path = "."
 
