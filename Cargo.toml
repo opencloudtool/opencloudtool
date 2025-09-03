@@ -38,7 +38,7 @@ aws-sdk-route53 = "1.88.0"
 aws-sdk-s3 = "1.100.0"
 axum = "0.8.4"
 base64 = "0.22.1"
-clap = { version = "4.5.45", features = ["derive"] }
+clap = { version = "4.5.47", features = ["derive"] }
 petgraph = "0.8.1"
 predicates = "3.1.3"
 serde = "1.0.219"
@@ -50,7 +50,7 @@ tokio = { version = "1.47.1", features = ["full"] }
 mockall = "0.13.1"
 mockito = "1.7.0"
 pyo3 = { version = "0.20.0", features = ["extension-module"] }
-uuid = { version = "1.18.0", features = ["v4"] }
+uuid = { version = "1.18.1", features = ["v4"] }
 log = "0.4.27"
 env_logger = "0.11.6"
 toml = "0.8.23"
