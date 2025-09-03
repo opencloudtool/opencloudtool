@@ -895,7 +895,7 @@ impl std::fmt::Display for SpecNode {
     }
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ResourceType {
     #[default] // TODO: Remove
     None,
@@ -934,7 +934,7 @@ impl ResourceType {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum Node {
     /// The synthetic root node.
     #[default]
