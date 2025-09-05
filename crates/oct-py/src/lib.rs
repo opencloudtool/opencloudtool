@@ -15,7 +15,7 @@ impl Drop for DirRestoreGuard {
     fn drop(&mut self) {
         if let Err(e) = env::set_current_dir(&self.prev) {
             log::error!(
-                "oct._internal: failed to restore current directory to '{}': {e}",
+                "opencloudtool._internal: failed to restore current directory to '{}': {e}",
                 self.prev.display(),
             );
         }
@@ -47,7 +47,7 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
                 .get_or_init(|| std::sync::Mutex::new(()))
                 .lock()
                 .unwrap_or_else(|e| {
-                    log::warn!("oct._internal: CWD lock poisoned: {e}; continuing");
+                    log::warn!("opencloudtool._internal: CWD lock poisoned: {e}; continuing");
                     e.into_inner()
                 });
             // Save the original directory.
@@ -97,7 +97,7 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
                 .get_or_init(|| std::sync::Mutex::new(()))
                 .lock()
                 .unwrap_or_else(|e| {
-                    log::warn!("oct._internal: CWD lock poisoned: {e}; continuing");
+                    log::warn!("opencloudtool._internal: CWD lock poisoned: {e}; continuing");
                     e.into_inner()
                 });
             let prev_cwd = env::current_dir().map_err(|e| {
