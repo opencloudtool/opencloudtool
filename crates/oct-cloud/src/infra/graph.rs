@@ -806,4 +806,154 @@ impl GraphManager {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use crate::aws::types::InstanceType;
+    use crate::infra::resource::{ResourceSpecType, SpecNode};
+
+    #[test]
+    fn test_get_spec_graph_with_one_instance_no_domain() {
+        // Arrange
+        let number_of_instances = 1;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = None;
+
+        // Act
+        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+
+        // Assert
+        let number_of_nodes = 9 + number_of_instances;
+        let number_of_edges = 10 + 4 * number_of_instances;
+        assert_eq!(graph.node_count(), number_of_nodes as usize);
+        assert_eq!(graph.edge_count(), number_of_edges as usize);
+
+        let vm_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
+            .count();
+        assert_eq!(vm_nodes_count, number_of_instances as usize);
+    }
+
+    #[test]
+    fn test_get_spec_graph_with_multiple_instances_no_domain() {
+        // Arrange
+        let number_of_instances = 3;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = None;
+
+        // Act
+        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+
+        // Assert
+        let number_of_nodes = 9 + number_of_instances;
+        let number_of_edges = 10 + 4 * number_of_instances;
+        assert_eq!(graph.node_count(), number_of_nodes as usize);
+        assert_eq!(graph.edge_count(), number_of_edges as usize);
+
+        let vm_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
+            .count();
+        assert_eq!(vm_nodes_count, number_of_instances as usize);
+    }
+
+    #[test]
+    fn test_get_spec_graph_with_one_instance_and_domain() {
+        // Arrange
+        let number_of_instances = 1;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = Some(String::from("example.com"));
+
+        // Act
+        let graph =
+            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name.clone());
+
+        // Assert
+        let number_of_nodes = 10 + 2 * number_of_instances;
+        let number_of_edges = 11 + 6 * number_of_instances;
+        assert_eq!(graph.node_count(), number_of_nodes as usize);
+        assert_eq!(graph.edge_count(), number_of_edges as usize);
+
+        let vm_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
+            .count();
+        assert_eq!(vm_nodes_count, number_of_instances as usize);
+
+        let hosted_zone_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| {
+                matches!(
+                    &node.weight,
+                    SpecNode::Resource(ResourceSpecType::HostedZone(_))
+                )
+            })
+            .count();
+        assert_eq!(hosted_zone_nodes_count, 1);
+
+        let dns_record_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| {
+                matches!(
+                    &node.weight,
+                    SpecNode::Resource(ResourceSpecType::DnsRecord(_))
+                )
+            })
+            .count();
+        assert_eq!(dns_record_nodes_count, number_of_instances as usize);
+    }
+
+    #[test]
+    fn test_get_spec_graph_with_multiple_instances_and_domain() {
+        // Arrange
+        let number_of_instances = 3;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = Some(String::from("example.com"));
+
+        // Act
+        let graph =
+            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name.clone());
+
+        // Assert
+        let number_of_nodes = 10 + 2 * number_of_instances;
+        let number_of_edges = 11 + 6 * number_of_instances;
+        assert_eq!(graph.node_count(), number_of_nodes as usize);
+        assert_eq!(graph.edge_count(), number_of_edges as usize);
+
+        let vm_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
+            .count();
+        assert_eq!(vm_nodes_count, number_of_instances as usize);
+
+        let hosted_zone_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| {
+                matches!(
+                    &node.weight,
+                    SpecNode::Resource(ResourceSpecType::HostedZone(_))
+                )
+            })
+            .count();
+        assert_eq!(hosted_zone_nodes_count, 1);
+
+        let dns_record_nodes_count = graph
+            .raw_nodes()
+            .iter()
+            .filter(|node| {
+                matches!(
+                    &node.weight,
+                    SpecNode::Resource(ResourceSpecType::DnsRecord(_))
+                )
+            })
+            .count();
+        assert_eq!(dns_record_nodes_count, number_of_instances as usize);
+    }
+}
