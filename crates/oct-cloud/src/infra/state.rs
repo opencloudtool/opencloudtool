@@ -2,8 +2,8 @@ use petgraph::visit::NodeIndexable;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
-use petgraph::graph::NodeIndex;
 use petgraph::Graph;
+use petgraph::graph::NodeIndex;
 
 use crate::infra::resource::{Node, ResourceType};
 
