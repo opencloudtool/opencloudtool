@@ -23,12 +23,13 @@ impl Drop for DirRestoreGuard {
 }
 
 #[pyfunction]
-#[allow(unsafe_op_in_unsafe_fn)]
 fn init_logging() -> PyResult<()> {
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .try_init();
+
     Ok(())
 }
+
 #[pyfunction]
 fn deploy(py: Python, path: String) -> PyResult<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -40,7 +41,7 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
             ))
         })?;
 
-    py.allow_threads(|| {
+    py.detach(|| {
         rt.block_on(async move {
             // Lock to ensure only this thread can change the CWD.
             let _cwd_lock = CWD_LOCK
@@ -80,7 +81,6 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
 }
 
 #[pyfunction]
-#[allow(unsafe_op_in_unsafe_fn)]
 fn destroy(py: Python, path: String) -> PyResult<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -91,7 +91,7 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
             ))
         })?;
 
-    py.allow_threads(|| {
+    py.detach(|| {
         rt.block_on(async move {
             let _cwd_lock = CWD_LOCK
                 .get_or_init(|| std::sync::Mutex::new(()))
@@ -124,11 +124,13 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
         })
     })
 }
-/// This function defines the Python module.
+
+/// This function defines the `opencloudtool` Python module.
 #[pymodule]
-fn _internal(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(deploy, m)?)?;
     m.add_function(wrap_pyfunction!(destroy, m)?)?;
     m.add_function(wrap_pyfunction!(init_logging, m)?)?;
+
     Ok(())
 }

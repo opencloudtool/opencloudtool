@@ -49,7 +49,7 @@ tera = { git = "https://github.com/minev-dev/tera.git", rev = "1e36d2f8ba66833ce
 tokio = { version = "1.47.1", features = ["full"] }
 mockall = "0.13.1"
 mockito = "1.7.0"
-pyo3 = { version = "0.20.0", features = ["extension-module"] }
+pyo3 = { version = "0.26.0", features = ["extension-module"] }
 uuid = { version = "1.18.1", features = ["v4"] }
 log = "0.4.27"
 env_logger = "0.11.6"
