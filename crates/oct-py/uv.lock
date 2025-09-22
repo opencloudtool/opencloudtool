@@ -27,8 +27,8 @@ wheels = [
 ]
 
 [[package]]
-name = "oct"
-version = "0.1.0"
+name = "opencloudtool"
+version = "0.4.2"
 source = { editable = "." }
 
 [package.dev-dependencies]
