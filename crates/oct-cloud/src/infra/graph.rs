@@ -228,11 +228,8 @@ impl GraphManager {
 
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 
-        let mut queue: VecDeque<NodeIndex> = VecDeque::new();
         let root_node = graph.from_index(0);
         for node_index in graph.neighbors(root_node) {
-            queue.push_back(node_index);
-
             parents
                 .entry(node_index)
                 .or_insert_with(Vec::new)
@@ -242,10 +239,10 @@ impl GraphManager {
         let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
 
-        // TODO(minev-dev): Use Self::kahn_traverse to simplify traverse with no edge creation
-        //  ordering required
-        while let Some(node_index) = queue.pop_front() {
-            let parent_node_indexes = match parents.get(&node_index) {
+        let result = Self::kahn_traverse(graph);
+
+        for node_index in &result {
+            let parent_node_indexes = match parents.get(node_index) {
                 Some(parent_node_indexes) => parent_node_indexes.clone(),
                 None => Vec::new(),
             };
@@ -254,344 +251,321 @@ impl GraphManager {
                 .filter_map(|x| resource_graph.node_weight(*x))
                 .collect();
 
-            if let Some(elem) = graph.node_weight(node_index) {
-                let created_resource_node_index = match elem {
-                    SpecNode::Root => Ok(resource_graph.add_node(Node::Root)),
-                    SpecNode::Resource(resource_type) => match resource_type {
-                        ResourceSpecType::HostedZone(resource) => {
-                            let manager = HostedZoneManager {
-                                client: &self.route53_client,
-                            };
-                            let output_resource = manager.create(resource, parent_nodes).await;
+            let created_resource_node_index = match &graph[*node_index] {
+                SpecNode::Root => Ok(root_index),
+                SpecNode::Resource(resource_type) => match resource_type {
+                    ResourceSpecType::HostedZone(resource) => {
+                        let manager = HostedZoneManager {
+                            client: &self.route53_client,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
 
-                            match output_resource {
-                                Ok(output_resource) => {
-                                    log::info!(
-                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                    );
+                        match output_resource {
+                            Ok(output_resource) => {
+                                log::info!(
+                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
+                                );
 
-                                    let node =
-                                        Node::Resource(ResourceType::HostedZone(output_resource));
-                                    let resource_index = resource_graph.add_node(node.clone());
+                                let node =
+                                    Node::Resource(ResourceType::HostedZone(output_resource));
+                                let resource_index = resource_graph.add_node(node.clone());
 
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            resource_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(resource_index)
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, resource_index, String::new()));
                                 }
-                                Err(e) => Err(Box::new(e)),
+
+                                Ok(resource_index)
                             }
+                            Err(e) => Err(Box::new(e)),
                         }
-                        ResourceSpecType::DnsRecord(resource) => {
-                            let manager = DnsRecordManager {
-                                client: &self.route53_client,
-                            };
-                            let output_resource = manager.create(resource, parent_nodes).await;
-
-                            match output_resource {
-                                Ok(output_resource) => {
-                                    log::info!(
-                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node =
-                                        Node::Resource(ResourceType::DnsRecord(output_resource));
-                                    let resource_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            resource_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(resource_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::Vpc(resource) => {
-                            let manager = VpcManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_vpc = manager.create(resource, parent_nodes).await;
-
-                            match output_vpc {
-                                Ok(output_vpc) => {
-                                    log::info!(
-                                        "Deployed {output_vpc:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::Vpc(output_vpc));
-                                    let vpc_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((parent_node_index, vpc_index, String::new()));
-                                    }
-
-                                    Ok(vpc_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::InternetGateway(resource) => {
-                            let manager = InternetGatewayManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_igw = manager.create(resource, parent_nodes).await;
-
-                            match output_igw {
-                                Ok(output_igw) => {
-                                    log::info!(
-                                        "Deployed {output_igw:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node =
-                                        Node::Resource(ResourceType::InternetGateway(output_igw));
-                                    let igw_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((parent_node_index, igw_index, String::new()));
-                                    }
-
-                                    Ok(igw_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::RouteTable(resource) => {
-                            let manager = RouteTableManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_route_table = manager.create(resource, parent_nodes).await;
-
-                            match output_route_table {
-                                Ok(output_route_table) => {
-                                    log::info!(
-                                        "Deployed {output_route_table:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::RouteTable(
-                                        output_route_table,
-                                    ));
-                                    let route_table_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            route_table_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(route_table_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::Subnet(resource) => {
-                            let manager = SubnetManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_subnet = manager.create(resource, parent_nodes).await;
-
-                            match output_subnet {
-                                Ok(output_subnet) => {
-                                    log::info!(
-                                        "Deployed {output_subnet:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::Subnet(output_subnet));
-                                    let subnet_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            subnet_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(subnet_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::SecurityGroup(resource) => {
-                            let manager = SecurityGroupManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_security_group =
-                                manager.create(resource, parent_nodes).await;
-
-                            match output_security_group {
-                                Ok(output_security_group) => {
-                                    log::info!(
-                                        "Deployed {output_security_group:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::SecurityGroup(
-                                        output_security_group,
-                                    ));
-                                    let security_group_index =
-                                        resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            security_group_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(security_group_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::InstanceRole(resource) => {
-                            let manager = InstanceRoleManager {
-                                client: &self.iam_client,
-                            };
-                            let output_instance_role = manager.create(resource, parent_nodes).await;
-
-                            match output_instance_role {
-                                Ok(output_instance_role) => {
-                                    log::info!(
-                                        "Deployed {output_instance_role:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::InstanceRole(
-                                        output_instance_role,
-                                    ));
-                                    let instance_role_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            instance_role_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(instance_role_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::InstanceProfile(resource) => {
-                            let manager = InstanceProfileManager {
-                                client: &self.iam_client,
-                            };
-                            let output_resource = manager.create(resource, parent_nodes).await;
-
-                            match output_resource {
-                                Ok(output_resource) => {
-                                    log::info!(
-                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::InstanceProfile(
-                                        output_resource,
-                                    ));
-                                    let resource_node_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            resource_node_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    Ok(resource_node_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::Ecr(resource) => {
-                            let manager = EcrManager {
-                                client: &self.ecr_client,
-                            };
-                            let output_resource = manager.create(resource, parent_nodes).await;
-
-                            match output_resource {
-                                Ok(output_resource) => {
-                                    log::info!(
-                                        "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node =
-                                        Node::Resource(ResourceType::Ecr(output_resource.clone()));
-                                    let resource_node_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((
-                                            parent_node_index,
-                                            resource_node_index,
-                                            String::new(),
-                                        ));
-                                    }
-
-                                    ecr = Some(output_resource);
-
-                                    Ok(resource_node_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                        ResourceSpecType::Vm(resource) => {
-                            let manager = VmManager {
-                                client: &self.ec2_client,
-                            };
-                            let output_vm = manager.create(resource, parent_nodes).await;
-
-                            match output_vm {
-                                Ok(output_vm) => {
-                                    log::info!(
-                                        "Deployed {output_vm:?}, parents - {parent_node_indexes:?}",
-                                    );
-
-                                    let node = Node::Resource(ResourceType::Vm(output_vm.clone()));
-                                    let vm_index = resource_graph.add_node(node.clone());
-
-                                    for parent_node_index in parent_node_indexes {
-                                        edges.push((parent_node_index, vm_index, String::new()));
-                                    }
-
-                                    vms.push(output_vm);
-
-                                    Ok(vm_index)
-                                }
-                                Err(e) => Err(Box::new(e)),
-                            }
-                        }
-                    },
-                };
-
-                let Ok(created_resource_node_index) = created_resource_node_index else {
-                    //TODO: Handle failed resource creation
-                    log::error!("Failed to create a resource {created_resource_node_index:?}");
-
-                    continue;
-                };
-
-                for neighbor_index in graph.neighbors(node_index) {
-                    if !parents.contains_key(&neighbor_index) {
-                        queue.push_back(neighbor_index);
                     }
+                    ResourceSpecType::DnsRecord(resource) => {
+                        let manager = DnsRecordManager {
+                            client: &self.route53_client,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
 
-                    parents
-                        .entry(neighbor_index)
-                        .or_insert_with(Vec::new)
-                        .push(created_resource_node_index);
-                }
+                        match output_resource {
+                            Ok(output_resource) => {
+                                log::info!(
+                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::DnsRecord(output_resource));
+                                let resource_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, resource_index, String::new()));
+                                }
+
+                                Ok(resource_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vpc(resource) => {
+                        let manager = VpcManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_vpc = manager.create(resource, parent_nodes).await;
+
+                        match output_vpc {
+                            Ok(output_vpc) => {
+                                log::info!(
+                                    "Deployed {output_vpc:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::Vpc(output_vpc));
+                                let vpc_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, vpc_index, String::new()));
+                                }
+
+                                Ok(vpc_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InternetGateway(resource) => {
+                        let manager = InternetGatewayManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_igw = manager.create(resource, parent_nodes).await;
+
+                        match output_igw {
+                            Ok(output_igw) => {
+                                log::info!(
+                                    "Deployed {output_igw:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node =
+                                    Node::Resource(ResourceType::InternetGateway(output_igw));
+                                let igw_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, igw_index, String::new()));
+                                }
+
+                                Ok(igw_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::RouteTable(resource) => {
+                        let manager = RouteTableManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_route_table = manager.create(resource, parent_nodes).await;
+
+                        match output_route_table {
+                            Ok(output_route_table) => {
+                                log::info!(
+                                    "Deployed {output_route_table:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node =
+                                    Node::Resource(ResourceType::RouteTable(output_route_table));
+                                let route_table_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((
+                                        parent_node_index,
+                                        route_table_index,
+                                        String::new(),
+                                    ));
+                                }
+
+                                Ok(route_table_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Subnet(resource) => {
+                        let manager = SubnetManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_subnet = manager.create(resource, parent_nodes).await;
+
+                        match output_subnet {
+                            Ok(output_subnet) => {
+                                log::info!(
+                                    "Deployed {output_subnet:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::Subnet(output_subnet));
+                                let subnet_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, subnet_index, String::new()));
+                                }
+
+                                Ok(subnet_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::SecurityGroup(resource) => {
+                        let manager = SecurityGroupManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_security_group = manager.create(resource, parent_nodes).await;
+
+                        match output_security_group {
+                            Ok(output_security_group) => {
+                                log::info!(
+                                    "Deployed {output_security_group:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::SecurityGroup(
+                                    output_security_group,
+                                ));
+                                let security_group_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((
+                                        parent_node_index,
+                                        security_group_index,
+                                        String::new(),
+                                    ));
+                                }
+
+                                Ok(security_group_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceRole(resource) => {
+                        let manager = InstanceRoleManager {
+                            client: &self.iam_client,
+                        };
+                        let output_instance_role = manager.create(resource, parent_nodes).await;
+
+                        match output_instance_role {
+                            Ok(output_instance_role) => {
+                                log::info!(
+                                    "Deployed {output_instance_role:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::InstanceRole(
+                                    output_instance_role,
+                                ));
+                                let instance_role_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((
+                                        parent_node_index,
+                                        instance_role_index,
+                                        String::new(),
+                                    ));
+                                }
+
+                                Ok(instance_role_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceProfile(resource) => {
+                        let manager = InstanceProfileManager {
+                            client: &self.iam_client,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                log::info!(
+                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node =
+                                    Node::Resource(ResourceType::InstanceProfile(output_resource));
+                                let resource_node_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((
+                                        parent_node_index,
+                                        resource_node_index,
+                                        String::new(),
+                                    ));
+                                }
+
+                                Ok(resource_node_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Ecr(resource) => {
+                        let manager = EcrManager {
+                            client: &self.ecr_client,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                log::info!(
+                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node =
+                                    Node::Resource(ResourceType::Ecr(output_resource.clone()));
+                                let resource_node_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((
+                                        parent_node_index,
+                                        resource_node_index,
+                                        String::new(),
+                                    ));
+                                }
+
+                                ecr = Some(output_resource);
+
+                                Ok(resource_node_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vm(resource) => {
+                        let manager = VmManager {
+                            client: &self.ec2_client,
+                        };
+                        let output_vm = manager.create(resource, parent_nodes).await;
+
+                        match output_vm {
+                            Ok(output_vm) => {
+                                log::info!(
+                                    "Deployed {output_vm:?}, parents - {parent_node_indexes:?}",
+                                );
+
+                                let node = Node::Resource(ResourceType::Vm(output_vm.clone()));
+                                let vm_index = resource_graph.add_node(node.clone());
+
+                                for parent_node_index in parent_node_indexes {
+                                    edges.push((parent_node_index, vm_index, String::new()));
+                                }
+
+                                vms.push(output_vm);
+
+                                Ok(vm_index)
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                },
+            };
+
+            let Ok(created_resource_node_index) = created_resource_node_index else {
+                //TODO: Handle failed resource creation
+                log::error!("Failed to create a resource {created_resource_node_index:?}");
+
+                continue;
+            };
+
+            for neighbor_index in graph.neighbors(*node_index) {
+                parents
+                    .entry(neighbor_index)
+                    .or_insert_with(Vec::new)
+                    .push(created_resource_node_index);
             }
         }
 
