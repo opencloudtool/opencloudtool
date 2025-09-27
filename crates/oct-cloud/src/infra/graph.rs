@@ -50,6 +50,21 @@ impl GraphManager {
         }
     }
 
+    #[cfg(test)]
+    pub fn new_with_clients(
+        ec2_client: client::Ec2,
+        iam_client: client::IAM,
+        ecr_client: client::ECR,
+        route53_client: client::Route53,
+    ) -> Self {
+        Self {
+            ec2_client,
+            iam_client,
+            ecr_client,
+            route53_client,
+        }
+    }
+
     pub fn get_spec_graph(
         number_of_instances: u32,
         instance_type: &types::InstanceType,
@@ -105,7 +120,7 @@ impl GraphManager {
             InstanceRoleSpec {
                 name: String::from("instance-role-1"),
                 assume_role_policy: String::from(
-                    r#"{
+                    r#"{ 
                         "Version": "2012-10-17",
                         "Statement": [
                             {
@@ -147,7 +162,7 @@ impl GraphManager {
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl &
+            && /home/ubuntu/oct-ctl & 
         "#,
         );
 
@@ -784,6 +799,7 @@ mod tests {
     use super::*;
     use crate::aws::types::InstanceType;
     use crate::infra::resource::{ResourceSpecType, SpecNode};
+    use mockall::predicate::eq;
 
     #[test]
     fn test_get_spec_graph_with_one_instance_no_domain() {
@@ -929,5 +945,337 @@ mod tests {
             })
             .count();
         assert_eq!(dns_record_nodes_count, number_of_instances as usize);
+    }
+
+    #[tokio::test]
+    async fn test_deploy_with_one_instance_no_domain() {
+        // Arrange
+        let number_of_instances = 1;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = None;
+
+        let spec_graph =
+            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+
+        let mut ec2_client_mock = client::Ec2::default();
+        let mut iam_client_mock = client::IAM::default();
+        let mut ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        // Expectations for resource creation
+        ec2_client_mock
+            .expect_create_vpc()
+            .with(eq(String::from("10.0.0.0/16")), eq(String::from("vpc-1")))
+            .return_once(|_, _| Ok(String::from("vpc-id-1")));
+
+        iam_client_mock
+            .expect_create_instance_iam_role()
+            .with(
+                eq(String::from("instance-role-1")),
+                eq(String::from(
+                    r#"{ 
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "ec2.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole"
+                            }
+                        ]
+                    }"#,
+                )),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )]),
+            )
+            .return_once(|_, _, _| Ok(()));
+
+        ecr_client_mock
+            .expect_create_repository()
+            .with(eq(String::from("ecr_1")))
+            .return_once(|_| Ok((String::from("ecr-id-1"), String::from("ecr-uri-1/foo"))));
+
+        ec2_client_mock
+            .expect_create_internet_gateway()
+            .with(eq(String::from("vpc-id-1")))
+            .return_once(|_| Ok(String::from("igw-id-1")));
+
+        ec2_client_mock
+            .expect_create_route_table()
+            .with(eq(String::from("vpc-id-1")))
+            .return_once(|_| Ok(String::from("rt-id-1")));
+
+        ec2_client_mock
+            .expect_add_public_route()
+            .with(eq(String::from("rt-id-1")), eq(String::from("igw-id-1")))
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_create_subnet()
+            .with(
+                eq(String::from("vpc-id-1")),
+                eq(String::from("10.0.1.0/24")),
+                eq(String::from("us-west-2a")),
+                eq(String::from("vpc-1-subnet")),
+            )
+            .return_once(|_, _, _, _| Ok(String::from("subnet-id-1")));
+
+        ec2_client_mock
+            .expect_enable_auto_assign_ip_addresses_for_subnet()
+            .with(eq(String::from("subnet-id-1")))
+            .return_once(|_| Ok(()));
+
+        ec2_client_mock
+            .expect_associate_route_table_with_subnet()
+            .with(eq(String::from("rt-id-1")), eq(String::from("subnet-id-1")))
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_create_security_group()
+            .with(
+                eq(String::from("vpc-id-1")),
+                eq(String::from("vpc-1-security-group")),
+                eq(String::from("No description")),
+            )
+            .return_once(|_, _, _| Ok(String::from("sg-id-1")));
+
+        ec2_client_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(
+                eq(String::from("sg-id-1")),
+                eq(String::from("tcp")),
+                eq(80),
+                eq(String::from("0.0.0.0/0")),
+            )
+            .return_once(|_, _, _, _| Ok(()));
+        ec2_client_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(
+                eq(String::from("sg-id-1")),
+                eq(String::from("tcp")),
+                eq(31888),
+                eq(String::from("0.0.0.0/0")),
+            )
+            .return_once(|_, _, _, _| Ok(()));
+        ec2_client_mock
+            .expect_allow_inbound_traffic_for_security_group()
+            .with(
+                eq(String::from("sg-id-1")),
+                eq(String::from("tcp")),
+                eq(22),
+                eq(String::from("0.0.0.0/0")),
+            )
+            .return_once(|_, _, _, _| Ok(()));
+
+        iam_client_mock
+            .expect_create_instance_profile()
+            .with(
+                eq(String::from("instance_profile_1")),
+                eq(vec![String::from("instance-role-1")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_run_instances()
+            .return_once(|_, _, _, _, _, _| {
+                let instance = aws_sdk_ec2::types::Instance::builder()
+                    .instance_id("vm-id-1")
+                    .build();
+                Ok(
+                    aws_sdk_ec2::operation::run_instances::RunInstancesOutput::builder()
+                        .instances(instance)
+                        .build(),
+                )
+            });
+
+        ec2_client_mock
+            .expect_describe_instances()
+            .with(eq(String::from("vm-id-1")))
+            .return_once(|_| {
+                Ok(aws_sdk_ec2::types::Instance::builder()
+                    .public_ip_address("1.2.3.4")
+                    .build())
+            });
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+
+        // Assert
+        assert_eq!(resource_graph.node_count(), 10); // root + 9 resources
+        assert_eq!(resource_graph.edge_count(), 17);
+
+        assert_eq!(
+            vms,
+            vec![Vm {
+                id: String::from("vm-id-1"),
+                public_ip: String::from("1.2.3.4"),
+                ami: String::from("ami-04dd23e62ed049936"),
+                instance_type: InstanceType::T2Micro,
+                user_data: String::from(
+                    r#"#!/bin/bash
+        set -e
+        sudo apt update
+        sudo apt -y install podman
+        sudo systemctl start podman
+        sudo snap install aws-cli --classic
+
+        curl \
+            --output /home/ubuntu/oct-ctl \
+            -L \
+            https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
+            && sudo chmod +x /home/ubuntu/oct-ctl \
+            && /home/ubuntu/oct-ctl & 
+        
+aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin ecr-uri-1"#
+                )
+            }]
+        );
+
+        assert_eq!(
+            ecr.expect("Failed to get ECR"),
+            Ecr {
+                id: String::from("ecr-id-1"),
+                name: String::from("ecr_1"),
+                uri: String::from("ecr-uri-1/foo"),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_deploy_empty_graph() {
+        // Arrange
+        let spec_graph = Graph::<SpecNode, String>::new();
+
+        let ec2_client_mock = client::Ec2::default();
+        let iam_client_mock = client::IAM::default();
+        let ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+
+        // Assert
+        assert_eq!(resource_graph.node_count(), 1); // Just the root node
+        assert!(
+            resource_graph
+                .node_weights()
+                .any(|w| matches!(w, Node::Root))
+        );
+        assert_eq!(resource_graph.edge_count(), 0);
+        assert!(vms.is_empty());
+        assert!(ecr.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_deploy_resource_creation_fails() {
+        // Arrange
+        let number_of_instances = 1;
+        let instance_type = InstanceType::T2Micro;
+        let domain_name = None;
+
+        let spec_graph =
+            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+
+        let mut ec2_client_mock = client::Ec2::default();
+        let mut iam_client_mock = client::IAM::default();
+        let mut ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        // Expectations for resource creation
+        iam_client_mock
+            .expect_create_instance_iam_role()
+            .with(
+                eq(String::from("instance-role-1")),
+                eq(String::from(
+                    r#"{ 
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "ec2.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole"
+                            }
+                        ]
+                    }"#,
+                )),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )]),
+            )
+            .return_once(|_, _, _| Ok(()));
+
+        iam_client_mock
+            .expect_create_instance_profile()
+            .with(
+                eq(String::from("instance_profile_1")),
+                eq(vec![String::from("instance-role-1")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ecr_client_mock
+            .expect_create_repository()
+            .with(eq(String::from("ecr_1")))
+            .return_once(|_| Ok((String::from("ecr-id-1"), String::from("ecr-uri-1/foo"))));
+
+        // Simulate VPC creation failure
+        ec2_client_mock
+            .expect_create_vpc()
+            .with(eq(String::from("10.0.0.0/16")), eq(String::from("vpc-1")))
+            .return_once(|_, _| Err("VPC creation failed".into()));
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+
+        // Assert
+        // 1 root + ECR + InstanceRole + InstanceProfile
+        assert_eq!(resource_graph.node_count(), 4);
+        assert_eq!(resource_graph.edge_count(), 5);
+        assert!(vms.is_empty());
+        assert!(ecr.is_some());
+
+        let ecr_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::Ecr(_))));
+        assert!(ecr_node_exists);
+
+        let instance_role_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::InstanceRole(_))));
+        assert!(instance_role_node_exists);
+
+        let instance_profile_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::InstanceProfile(_))));
+        assert!(instance_profile_node_exists);
+
+        let vpc_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::Vpc(_))));
+        assert!(!vpc_node_exists);
     }
 }
