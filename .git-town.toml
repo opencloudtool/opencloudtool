@@ -2,16 +2,20 @@
 
 [branches]
 main = "main"
+perennials = []
+perennial-regex = ""
 
 [create]
 share-new-branches = "no"
+new-branch-type = "feature"
 
 [hosting]
 dev-remote = "origin"
+platform = "github"
 
 [ship]
-delete-tracking-branch = true
-strategy = "squash-merge"
+delete-tracking-branch = false
+strategy = "api"
 
 [sync]
 tags = true
