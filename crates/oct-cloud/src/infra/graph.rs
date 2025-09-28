@@ -239,17 +239,8 @@ impl GraphManager {
     ) -> (Graph<Node, String>, Vec<Vm>, Option<Ecr>) {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
-        let root_index = resource_graph.add_node(Node::Root);
 
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
-
-        let root_node = graph.from_index(0);
-        for node_index in graph.neighbors(root_node) {
-            parents
-                .entry(node_index)
-                .or_insert_with(Vec::new)
-                .push(root_index);
-        }
 
         let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
@@ -266,8 +257,9 @@ impl GraphManager {
                 .filter_map(|x| resource_graph.node_weight(*x))
                 .collect();
 
-            let created_resource_node_index = match &graph[*node_index] {
-                SpecNode::Root => Ok(root_index),
+            let node_to_deploy = &graph[*node_index];
+            let deployed_node = match node_to_deploy {
+                SpecNode::Root => Ok(Node::Root),
                 SpecNode::Resource(resource_type) => match resource_type {
                     ResourceSpecType::HostedZone(resource) => {
                         let manager = HostedZoneManager {
@@ -277,19 +269,7 @@ impl GraphManager {
 
                         match output_resource {
                             Ok(output_resource) => {
-                                log::info!(
-                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node =
-                                    Node::Resource(ResourceType::HostedZone(output_resource));
-                                let resource_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, resource_index, String::new()));
-                                }
-
-                                Ok(resource_index)
+                                Ok(Node::Resource(ResourceType::HostedZone(output_resource)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -302,18 +282,7 @@ impl GraphManager {
 
                         match output_resource {
                             Ok(output_resource) => {
-                                log::info!(
-                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node = Node::Resource(ResourceType::DnsRecord(output_resource));
-                                let resource_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, resource_index, String::new()));
-                                }
-
-                                Ok(resource_index)
+                                Ok(Node::Resource(ResourceType::DnsRecord(output_resource)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -325,20 +294,7 @@ impl GraphManager {
                         let output_vpc = manager.create(resource, parent_nodes).await;
 
                         match output_vpc {
-                            Ok(output_vpc) => {
-                                log::info!(
-                                    "Deployed {output_vpc:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node = Node::Resource(ResourceType::Vpc(output_vpc));
-                                let vpc_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, vpc_index, String::new()));
-                                }
-
-                                Ok(vpc_index)
-                            }
+                            Ok(output_vpc) => Ok(Node::Resource(ResourceType::Vpc(output_vpc))),
                             Err(e) => Err(Box::new(e)),
                         }
                     }
@@ -350,19 +306,7 @@ impl GraphManager {
 
                         match output_igw {
                             Ok(output_igw) => {
-                                log::info!(
-                                    "Deployed {output_igw:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node =
-                                    Node::Resource(ResourceType::InternetGateway(output_igw));
-                                let igw_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, igw_index, String::new()));
-                                }
-
-                                Ok(igw_index)
+                                Ok(Node::Resource(ResourceType::InternetGateway(output_igw)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -375,23 +319,7 @@ impl GraphManager {
 
                         match output_route_table {
                             Ok(output_route_table) => {
-                                log::info!(
-                                    "Deployed {output_route_table:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node =
-                                    Node::Resource(ResourceType::RouteTable(output_route_table));
-                                let route_table_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((
-                                        parent_node_index,
-                                        route_table_index,
-                                        String::new(),
-                                    ));
-                                }
-
-                                Ok(route_table_index)
+                                Ok(Node::Resource(ResourceType::RouteTable(output_route_table)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -404,18 +332,7 @@ impl GraphManager {
 
                         match output_subnet {
                             Ok(output_subnet) => {
-                                log::info!(
-                                    "Deployed {output_subnet:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node = Node::Resource(ResourceType::Subnet(output_subnet));
-                                let subnet_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, subnet_index, String::new()));
-                                }
-
-                                Ok(subnet_index)
+                                Ok(Node::Resource(ResourceType::Subnet(output_subnet)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -427,26 +344,9 @@ impl GraphManager {
                         let output_security_group = manager.create(resource, parent_nodes).await;
 
                         match output_security_group {
-                            Ok(output_security_group) => {
-                                log::info!(
-                                    "Deployed {output_security_group:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node = Node::Resource(ResourceType::SecurityGroup(
-                                    output_security_group,
-                                ));
-                                let security_group_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((
-                                        parent_node_index,
-                                        security_group_index,
-                                        String::new(),
-                                    ));
-                                }
-
-                                Ok(security_group_index)
-                            }
+                            Ok(output_security_group) => Ok(Node::Resource(
+                                ResourceType::SecurityGroup(output_security_group),
+                            )),
                             Err(e) => Err(Box::new(e)),
                         }
                     }
@@ -457,26 +357,9 @@ impl GraphManager {
                         let output_instance_role = manager.create(resource, parent_nodes).await;
 
                         match output_instance_role {
-                            Ok(output_instance_role) => {
-                                log::info!(
-                                    "Deployed {output_instance_role:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node = Node::Resource(ResourceType::InstanceRole(
-                                    output_instance_role,
-                                ));
-                                let instance_role_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((
-                                        parent_node_index,
-                                        instance_role_index,
-                                        String::new(),
-                                    ));
-                                }
-
-                                Ok(instance_role_index)
-                            }
+                            Ok(output_instance_role) => Ok(Node::Resource(
+                                ResourceType::InstanceRole(output_instance_role),
+                            )),
                             Err(e) => Err(Box::new(e)),
                         }
                     }
@@ -487,25 +370,9 @@ impl GraphManager {
                         let output_resource = manager.create(resource, parent_nodes).await;
 
                         match output_resource {
-                            Ok(output_resource) => {
-                                log::info!(
-                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                );
-
-                                let node =
-                                    Node::Resource(ResourceType::InstanceProfile(output_resource));
-                                let resource_node_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((
-                                        parent_node_index,
-                                        resource_node_index,
-                                        String::new(),
-                                    ));
-                                }
-
-                                Ok(resource_node_index)
-                            }
+                            Ok(output_resource) => Ok(Node::Resource(
+                                ResourceType::InstanceProfile(output_resource),
+                            )),
                             Err(e) => Err(Box::new(e)),
                         }
                     }
@@ -517,25 +384,9 @@ impl GraphManager {
 
                         match output_resource {
                             Ok(output_resource) => {
-                                log::info!(
-                                    "Deployed {output_resource:?}, parents - {parent_node_indexes:?}",
-                                );
+                                ecr = Some(output_resource.clone());
 
-                                let node =
-                                    Node::Resource(ResourceType::Ecr(output_resource.clone()));
-                                let resource_node_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((
-                                        parent_node_index,
-                                        resource_node_index,
-                                        String::new(),
-                                    ));
-                                }
-
-                                ecr = Some(output_resource);
-
-                                Ok(resource_node_index)
+                                Ok(Node::Resource(ResourceType::Ecr(output_resource)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -548,20 +399,9 @@ impl GraphManager {
 
                         match output_vm {
                             Ok(output_vm) => {
-                                log::info!(
-                                    "Deployed {output_vm:?}, parents - {parent_node_indexes:?}",
-                                );
+                                vms.push(output_vm.clone());
 
-                                let node = Node::Resource(ResourceType::Vm(output_vm.clone()));
-                                let vm_index = resource_graph.add_node(node.clone());
-
-                                for parent_node_index in parent_node_indexes {
-                                    edges.push((parent_node_index, vm_index, String::new()));
-                                }
-
-                                vms.push(output_vm);
-
-                                Ok(vm_index)
+                                Ok(Node::Resource(ResourceType::Vm(output_vm)))
                             }
                             Err(e) => Err(Box::new(e)),
                         }
@@ -569,12 +409,22 @@ impl GraphManager {
                 },
             };
 
-            let Ok(created_resource_node_index) = created_resource_node_index else {
+            let Ok(created_node) = deployed_node else {
                 //TODO: Handle failed resource creation
-                log::error!("Failed to create a resource {created_resource_node_index:?}");
+                log::error!("Failed to create a resource {node_to_deploy:?}");
 
                 continue;
             };
+
+            let created_resource_node_index = resource_graph.add_node(created_node.clone());
+
+            for parent_node_index in parent_node_indexes {
+                edges.push((
+                    parent_node_index,
+                    created_resource_node_index,
+                    String::new(),
+                ));
+            }
 
             for neighbor_index in graph.neighbors(*node_index) {
                 parents
@@ -1111,7 +961,7 @@ mod tests {
 
         // Assert
         assert_eq!(resource_graph.node_count(), 10); // root + 9 resources
-        assert_eq!(resource_graph.edge_count(), 17);
+        assert_eq!(resource_graph.edge_count(), 14);
 
         assert_eq!(
             vms,
@@ -1171,12 +1021,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
 
         // Assert
-        assert_eq!(resource_graph.node_count(), 1); // Just the root node
-        assert!(
-            resource_graph
-                .node_weights()
-                .any(|w| matches!(w, Node::Root))
-        );
+        assert_eq!(resource_graph.node_count(), 0);
         assert_eq!(resource_graph.edge_count(), 0);
         assert!(vms.is_empty());
         assert!(ecr.is_none());
@@ -1254,7 +1099,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         // Assert
         // 1 root + ECR + InstanceRole + InstanceProfile
         assert_eq!(resource_graph.node_count(), 4);
-        assert_eq!(resource_graph.edge_count(), 5);
+        assert_eq!(resource_graph.edge_count(), 3);
         assert!(vms.is_empty());
         assert!(ecr.is_some());
 
