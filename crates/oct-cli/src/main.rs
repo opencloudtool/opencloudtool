@@ -17,10 +17,6 @@ struct Cli {
     /// Context path
     #[clap(long, default_value = ".")]
     context_path: String,
-
-    /// Use infra graph for deployment
-    #[clap(long)]
-    use_infra_graph: bool,
 }
 
 #[derive(Subcommand)]
@@ -37,19 +33,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cli = Cli::parse();
 
-    let orchestrator = oct_orchestrator::Orchestrator;
     let orchestrator_with_graph = oct_orchestrator::OrchestratorWithGraph;
 
-    if cli.use_infra_graph {
-        match &cli.command {
-            Commands::Deploy => orchestrator_with_graph.deploy().await?,
-            Commands::Destroy => orchestrator_with_graph.destroy().await?,
-        }
-    } else {
-        match &cli.command {
-            Commands::Deploy => Box::pin(orchestrator.deploy()).await?,
-            Commands::Destroy => orchestrator.destroy().await?,
-        }
+    match &cli.command {
+        Commands::Deploy => orchestrator_with_graph.deploy().await?,
+        Commands::Destroy => orchestrator_with_graph.destroy().await?,
     }
 
     Ok(())
@@ -71,16 +59,6 @@ mod tests {
         assert_eq!(cli.user_state_file_path, "./user_state.json");
         assert_eq!(cli.dockerfile_path, ".");
         assert_eq!(cli.context_path, ".");
-        assert!(!cli.use_infra_graph);
-    }
-
-    #[test]
-    fn test_cli_use_infra_graph_flag() {
-        // Arrange
-        let cli = Cli::parse_from(["app", "--use-infra-graph", "deploy"]);
-
-        // Assert
-        assert!(cli.use_infra_graph);
     }
 
     #[tokio::test]
