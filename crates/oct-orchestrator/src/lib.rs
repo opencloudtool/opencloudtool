@@ -133,10 +133,17 @@ impl OrchestratorWithGraph {
         let resource_graph = infra_state.to_graph();
 
         let graph_manager = infra::graph::GraphManager::new().await;
-        graph_manager.destroy(&resource_graph).await;
+        let destroy_result = graph_manager.destroy(&resource_graph).await;
 
-        infra_state_backend.remove().await?;
-        user_state_backend.remove().await?;
+        match destroy_result {
+            Ok(()) => {
+                infra_state_backend.remove().await?;
+                user_state_backend.remove().await?;
+            }
+            Err(e) => {
+                log::error!("{e}");
+            }
+        }
 
         Ok(())
     }
