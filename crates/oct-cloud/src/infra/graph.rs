@@ -441,7 +441,11 @@ impl GraphManager {
         (resource_graph, vms, ecr)
     }
 
-    pub async fn destroy(&self, graph: &Graph<Node, String>) {
+    /// TODO: Handle failed resources deletions
+    pub async fn destroy(
+        &self,
+        graph: &Graph<Node, String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         log::info!("Graph to delete {}", Dot::new(&graph));
 
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
@@ -606,6 +610,8 @@ impl GraphManager {
                 },
             }
         }
+
+        Ok(())
     }
 
     /// Kahn's Algorithm Implementation
@@ -648,6 +654,7 @@ impl GraphManager {
 mod tests {
     use super::*;
     use crate::aws::types::InstanceType;
+    use crate::infra::resource::*;
     use crate::infra::resource::{ResourceSpecType, SpecNode};
     use mockall::predicate::eq;
 
@@ -1122,5 +1129,317 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
             .node_weights()
             .any(|w| matches!(w, Node::Resource(ResourceType::Vpc(_))));
         assert!(!vpc_node_exists);
+    }
+
+    #[tokio::test]
+    async fn test_destroy_with_one_instance_no_domain() {
+        // Arrange
+        let resource_graph = get_test_resource_graph();
+
+        let mut ec2_client_mock = client::Ec2::default();
+        let mut iam_client_mock = client::IAM::default();
+        let mut ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        // Expectations for resource destruction
+        ec2_client_mock
+            .expect_terminate_instance()
+            .with(eq(String::from("vm-id-1")))
+            .return_once(|_| Ok(()));
+
+        // VmManager::is_terminated mock
+        ec2_client_mock
+            .expect_describe_instances()
+            .with(eq(String::from("vm-id-1")))
+            .return_once(|_| {
+                Ok(aws_sdk_ec2::types::Instance::builder()
+                    .state(
+                        aws_sdk_ec2::types::InstanceState::builder()
+                            .name(aws_sdk_ec2::types::InstanceStateName::Terminated)
+                            .build(),
+                    )
+                    .build())
+            });
+
+        iam_client_mock
+            .expect_delete_instance_profile()
+            .with(
+                eq(String::from("instance_profile_1")),
+                eq(vec![String::from("instance-role-1")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_security_group()
+            .with(eq(String::from("sg-id-1")))
+            .return_once(|_| Ok(()));
+
+        ec2_client_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq(String::from("rt-id-1")), eq(String::from("subnet-id-1")))
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_subnet()
+            .with(eq(String::from("subnet-id-1")))
+            .return_once(|_| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_route_table()
+            .with(eq(String::from("rt-id-1")))
+            .return_once(|_| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_internet_gateway()
+            .with(eq(String::from("igw-id-1")), eq(String::from("vpc-id-1")))
+            .return_once(|_, _| Ok(()));
+
+        ecr_client_mock
+            .expect_delete_repository()
+            .with(eq(String::from("ecr_1")))
+            .return_once(|_| Ok(()));
+
+        iam_client_mock
+            .expect_delete_instance_iam_role()
+            .with(
+                eq(String::from("instance-role-1")),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_vpc()
+            .with(eq(String::from("vpc-id-1")))
+            .return_once(|_| Ok(()));
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let destroy_result = graph_manager.destroy(&resource_graph).await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_empty_graph() {
+        // Arrange
+        let resource_graph = Graph::<Node, String>::new();
+
+        let ec2_client_mock = client::Ec2::default();
+        let iam_client_mock = client::IAM::default();
+        let ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let destroy_result = graph_manager.destroy(&resource_graph).await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_destroy_resource_deletion_fails() {
+        // Arrange
+        let resource_graph = get_test_resource_graph();
+
+        let mut ec2_client_mock = client::Ec2::default();
+        let mut iam_client_mock = client::IAM::default();
+        let mut ecr_client_mock = client::ECR::default();
+        let route53_client_mock = client::Route53::default();
+
+        // Expectations for resource destruction
+        ec2_client_mock
+            .expect_terminate_instance()
+            .with(eq(String::from("vm-id-1")))
+            .return_once(|_| Ok(()));
+
+        // VmManager::is_terminated mock
+        ec2_client_mock
+            .expect_describe_instances()
+            .with(eq(String::from("vm-id-1")))
+            .return_once(|_| {
+                Ok(aws_sdk_ec2::types::Instance::builder()
+                    .state(
+                        aws_sdk_ec2::types::InstanceState::builder()
+                            .name(aws_sdk_ec2::types::InstanceStateName::Terminated)
+                            .build(),
+                    )
+                    .build())
+            });
+
+        iam_client_mock
+            .expect_delete_instance_profile()
+            .with(
+                eq(String::from("instance_profile_1")),
+                eq(vec![String::from("instance-role-1")]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_security_group()
+            .with(eq(String::from("sg-id-1")))
+            .return_once(|_| Ok(()));
+
+        // Simulate subnet deletion failure
+        ec2_client_mock
+            .expect_disassociate_route_table_with_subnet()
+            .with(eq(String::from("rt-id-1")), eq(String::from("subnet-id-1")))
+            .return_once(|_, _| Err("Subnet deletion failed".into()));
+
+        // Even if subnet deletion fails, other deletions should be attempted.
+        ec2_client_mock
+            .expect_delete_route_table()
+            .with(eq(String::from("rt-id-1")))
+            .return_once(|_| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_internet_gateway()
+            .with(eq(String::from("igw-id-1")), eq(String::from("vpc-id-1")))
+            .return_once(|_, _| Ok(()));
+
+        ecr_client_mock
+            .expect_delete_repository()
+            .with(eq(String::from("ecr_1")))
+            .return_once(|_| Ok(()));
+
+        iam_client_mock
+            .expect_delete_instance_iam_role()
+            .with(
+                eq(String::from("instance-role-1")),
+                eq(vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )]),
+            )
+            .return_once(|_, _| Ok(()));
+
+        ec2_client_mock
+            .expect_delete_vpc()
+            .with(eq(String::from("vpc-id-1")))
+            .return_once(|_| Ok(()));
+
+        let graph_manager = GraphManager::new_with_clients(
+            ec2_client_mock,
+            iam_client_mock,
+            ecr_client_mock,
+            route53_client_mock,
+        );
+
+        // Act
+        let destroy_result = graph_manager.destroy(&resource_graph).await;
+
+        // Assert
+        assert!(destroy_result.is_ok());
+    }
+
+    fn get_test_resource_graph() -> Graph<Node, String> {
+        let mut graph = Graph::<Node, String>::new();
+        let root = graph.add_node(Node::Root);
+
+        let ecr = graph.add_node(Node::Resource(ResourceType::Ecr(Ecr {
+            id: "ecr-id-1".to_string(),
+            name: "ecr_1".to_string(),
+            uri: "ecr-uri-1/foo".to_string(),
+        })));
+
+        let instance_role =
+            graph.add_node(Node::Resource(ResourceType::InstanceRole(InstanceRole {
+                name: "instance-role-1".to_string(),
+                assume_role_policy: String::from(
+                    r#"{ 
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "ec2.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole"
+                            }
+                        ]
+                    }"#,
+                ),
+                policy_arns: vec![String::from(
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )],
+            })));
+
+        let vpc = graph.add_node(Node::Resource(ResourceType::Vpc(Vpc {
+            id: "vpc-id-1".to_string(),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "vpc-1".to_string(),
+        })));
+
+        let security_group =
+            graph.add_node(Node::Resource(ResourceType::SecurityGroup(SecurityGroup {
+                id: "sg-id-1".to_string(),
+                name: "vpc-1-security-group".to_string(),
+                inbound_rules: vec![], // Not used in destroy
+            })));
+
+        let route_table = graph.add_node(Node::Resource(ResourceType::RouteTable(RouteTable {
+            id: "rt-id-1".to_string(),
+        })));
+
+        let igw = graph.add_node(Node::Resource(ResourceType::InternetGateway(
+            InternetGateway {
+                id: "igw-id-1".to_string(),
+            },
+        )));
+
+        let subnet = graph.add_node(Node::Resource(ResourceType::Subnet(Subnet {
+            id: "subnet-id-1".to_string(),
+            name: "vpc-1-subnet".to_string(),
+            cidr_block: "10.0.1.0/24".to_string(),
+            availability_zone: "us-west-2a".to_string(),
+        })));
+
+        let instance_profile = graph.add_node(Node::Resource(ResourceType::InstanceProfile(
+            InstanceProfile {
+                name: "instance_profile_1".to_string(),
+            },
+        )));
+
+        let vm = graph.add_node(Node::Resource(ResourceType::Vm(Vm {
+            id: "vm-id-1".to_string(),
+            public_ip: "1.2.3.4".to_string(),
+            ami: "ami-04dd23e62ed049936".to_string(),
+            instance_type: InstanceType::T2Micro,
+            user_data: "".to_string(), // Not used in destroy
+        })));
+
+        graph.extend_with_edges(&[
+            (root, ecr, String::new()),
+            (root, instance_role, String::new()),
+            (root, vpc, String::new()),
+            (vpc, security_group, String::new()),
+            (vpc, subnet, String::new()),
+            (vpc, route_table, String::new()),
+            (vpc, igw, String::new()),
+            (igw, route_table, String::new()),
+            (route_table, subnet, String::new()),
+            (instance_role, instance_profile, String::new()),
+            (subnet, vm, String::new()),
+            (instance_profile, vm, String::new()),
+            (security_group, vm, String::new()),
+            (ecr, vm, String::new()),
+        ]);
+
+        graph
     }
 }
