@@ -57,13 +57,21 @@ aws configure sso
 
 ![OpenCloudTool Design](./docs/high-level-design.excalidraw.png)
 
-## Versions Design
+### Versions Design
 
 Each version of OpenCloudTool has a mini-project to prove the design and implementation.
 
-### v0.6.0 "Refactor: User services deployment scalability"
+#### v0.6.0 "Refactor: User services deployment scalability"
 
 ![v0.6.0](./docs/v0.6.0.excalidraw.png)
+
+### Fixed infra graph
+
+Shows the current state of the graph from [crates/oct-cloud/src/infra](./crates/oct-cloud/src/infra/graph.rs).
+
+The diagram can be moved to the infra-specific folder later, keeping it here for now to have all the design documents in one place.
+
+![Fixed infra graph](./docs/infra-graph.excalidraw.png)
 
 ## Development
 
