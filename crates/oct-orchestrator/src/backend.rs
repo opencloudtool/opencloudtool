@@ -167,13 +167,22 @@ mod tests {
     "value": "test"
 }"#;
 
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        file.write_all(state_file_content.as_bytes()).unwrap();
+        let mut state_file = tempfile::NamedTempFile::new().expect("Failed to create a temp file");
+        state_file
+            .write_all(state_file_content.as_bytes())
+            .expect("Failed to write to file");
 
-        let state_backend = LocalStateBackend::<TestState>::new(file.path().to_str().unwrap());
+        let state_file_path = state_file
+            .path()
+            .to_str()
+            .expect("Failed to convert path to str");
+        let state_backend = LocalStateBackend::<TestState>::new(state_file_path);
 
         // Act
-        let (state, loaded) = state_backend.load().await.unwrap();
+        let (state, loaded) = state_backend
+            .load()
+            .await
+            .expect("Failed to load from state backend");
 
         // Assert
         assert!(loaded);
@@ -191,7 +200,10 @@ mod tests {
         let state_backend = LocalStateBackend::<TestState>::new("NO_FILE");
 
         // Act
-        let (state, loaded) = state_backend.load().await.unwrap();
+        let (state, loaded) = state_backend
+            .load()
+            .await
+            .expect("Failed to load from state backend");
 
         // Assert
         assert_eq!(state.value, "");
@@ -205,16 +217,21 @@ mod tests {
             value: "test".to_string(),
         };
 
-        let state_file = tempfile::NamedTempFile::new().unwrap();
-        let state_file_path = state_file.path().to_str().unwrap();
-
+        let state_file = tempfile::NamedTempFile::new().expect("Failed to create a temp file");
+        let state_file_path = state_file
+            .path()
+            .to_str()
+            .expect("Failed to convert path to str");
         let state_backend = LocalStateBackend::<TestState>::new(state_file_path);
 
         // Act
-        state_backend.save(&state).await.unwrap();
+        state_backend
+            .save(&state)
+            .await
+            .expect("Failed to save to state file");
 
         // Assert
-        let file_content = fs::read_to_string(state_file_path).unwrap();
+        let file_content = fs::read_to_string(state_file_path).expect("Failed to read from file");
 
         assert_eq!(
             file_content,
@@ -239,7 +256,10 @@ mod tests {
 
         let state = TestState::default();
 
-        state_backend.save(&state).await.unwrap();
+        state_backend
+            .save(&state)
+            .await
+            .expect("Failed to save to state file");
     }
 
     #[tokio::test]
@@ -247,6 +267,9 @@ mod tests {
     async fn test_s3_backend_load() {
         let state_backend = S3StateBackend::<TestState>::new("region", "bucket", "key");
 
-        state_backend.load().await.unwrap();
+        let _ = state_backend
+            .load()
+            .await
+            .expect("Failed to load from state backend");
     }
 }

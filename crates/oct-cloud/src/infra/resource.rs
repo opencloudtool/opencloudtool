@@ -1514,7 +1514,10 @@ mod tests {
 
         // Assert
         assert!(igw.is_err());
-        assert_eq!(igw.unwrap_err().to_string(), "Igw expects VPC as a parent");
+        assert_eq!(
+            igw.expect_err("Expected error").to_string(),
+            "Igw expects VPC as a parent"
+        );
     }
 
     #[tokio::test]
@@ -1595,7 +1598,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "Igw expects VPC as a parent"
         );
     }
@@ -1718,7 +1721,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "Subnet expects VPC as a parent"
         );
     }
@@ -1751,7 +1754,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "Subnet expects RouteTable as a parent"
         );
     }
@@ -1853,7 +1856,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "Subnet expects RouteTable as a parent"
         );
     }
@@ -1958,7 +1961,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "RouteTable expects VPC as a parent"
         );
     }
@@ -1987,7 +1990,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "RouteTable expects IGW as a parent"
         );
     }
@@ -2161,7 +2164,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "DnsRecord expects HostedZone as a parent"
         );
     }
@@ -2192,7 +2195,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "DnsRecord expects Vm as a parent"
         );
     }
@@ -2300,7 +2303,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "DnsRecord expects HostedZone as a parent"
         );
     }
@@ -2422,7 +2425,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "SecurityGroup expects VPC as a parent"
         );
     }
@@ -2806,7 +2809,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "VM expects Subnet as a parent"
         );
     }
@@ -2849,7 +2852,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "VM expects Ecr as a parent"
         );
     }
@@ -2894,7 +2897,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "VM expects InstanceProfile as a parent"
         );
     }
@@ -2937,7 +2940,7 @@ mod tests {
         // Assert
         assert!(result.is_err());
         assert_eq!(
-            result.unwrap_err().to_string(),
+            result.expect_err("Expected error").to_string(),
             "SecurityGroup expects VPC as a parent"
         );
     }

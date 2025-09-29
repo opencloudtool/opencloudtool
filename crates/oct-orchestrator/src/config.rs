@@ -185,11 +185,14 @@ memory = 64
 depends_on = ["app_1"]
 "#;
 
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        file.write_all(config_file_content.as_bytes()).unwrap();
+        let mut config_file = tempfile::NamedTempFile::new().expect("Failed to create a temp file");
+        config_file
+            .write_all(config_file_content.as_bytes())
+            .expect("Failed to write to file");
 
         // Act
-        let config = Config::new(file.path().to_str()).unwrap();
+        let config =
+            Config::new(config_file.path().to_str()).expect("Failed to create a new config");
 
         // Assert
         assert_eq!(
