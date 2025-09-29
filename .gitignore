@@ -1,4 +1,15 @@
-/target
-/frontend/dist
-.env
+# oct-specific
 state.json
+user_state.json
+
+# Python-specific: Byte-compiled / optimized / DLL files
+.venv*
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Rust-specific
+/target*
+
+# Other
+.env
