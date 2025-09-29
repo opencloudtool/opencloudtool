@@ -638,6 +638,15 @@ pub struct Route53Impl {
     inner: aws_sdk_route53::Client,
 }
 
+/// Represents a DNS record.
+///
+/// The tuple contains the following elements in order:
+/// 1. The domain name of the record.
+/// 2. The type of the DNS record (e.g., A, AAAA, CNAME, etc.).
+/// 3. The value of the record (e.g., an IP address).
+/// 4. The time-to-live (TTL) for the record in seconds.
+pub type DnsRecord = (String, RecordType, String, Option<i64>);
+
 #[cfg_attr(test, allow(dead_code))]
 #[cfg_attr(test, automock)]
 impl Route53Impl {
@@ -782,7 +791,7 @@ impl Route53Impl {
     pub async fn get_dns_records(
         &self,
         hosted_zone_id: String,
-    ) -> Result<Vec<(String, RecordType, String, Option<i64>)>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<DnsRecord>, Box<dyn std::error::Error>> {
         log::info!("Getting DNS records for {hosted_zone_id}");
 
         let response = self

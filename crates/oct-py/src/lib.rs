@@ -3,7 +3,8 @@ use std::env;
 
 use oct_orchestrator::OrchestratorWithGraph;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
 
 static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -23,11 +24,9 @@ impl Drop for DirRestoreGuard {
 }
 
 #[pyfunction]
-fn init_logging() -> PyResult<()> {
+fn init_logging() {
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .try_init();
-
-    Ok(())
 }
 
 #[pyfunction]
@@ -44,13 +43,7 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
     py.detach(|| {
         rt.block_on(async move {
             // Lock to ensure only this thread can change the CWD.
-            let _cwd_lock = CWD_LOCK
-                .get_or_init(|| std::sync::Mutex::new(()))
-                .lock()
-                .unwrap_or_else(|e| {
-                    log::warn!("opencloudtool._internal: CWD lock poisoned: {e}; continuing");
-                    e.into_inner()
-                });
+            let _cwd_lock = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().await;
             // Save the original directory.
             let prev_cwd = env::current_dir().map_err(|e| {
                 pyo3::exceptions::PyIOError::new_err(format!(
@@ -93,13 +86,8 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
 
     py.detach(|| {
         rt.block_on(async move {
-            let _cwd_lock = CWD_LOCK
-                .get_or_init(|| std::sync::Mutex::new(()))
-                .lock()
-                .unwrap_or_else(|e| {
-                    log::warn!("opencloudtool._internal: CWD lock poisoned: {e}; continuing");
-                    e.into_inner()
-                });
+            let _cwd_lock = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+
             let prev_cwd = env::current_dir().map_err(|e| {
                 pyo3::exceptions::PyIOError::new_err(format!(
                     "Failed to read current directory: {e}"

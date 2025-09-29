@@ -64,7 +64,8 @@ mod tests {
     #[tokio::test]
     async fn test_main_deploy_no_oct_toml() {
         // Arrange
-        let mut oct_cli_bin = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+        let mut oct_cli_bin =
+            Command::cargo_bin(assert_cmd::crate_name!()).expect("Failed to the binary");
 
         // Act
         let cmd = oct_cli_bin.arg("deploy");
@@ -78,7 +79,8 @@ mod tests {
     #[tokio::test]
     async fn test_main_destroy_no_oct_toml() {
         // Arrange
-        let mut oct_cli_bin = Command::cargo_bin(assert_cmd::crate_name!()).unwrap();
+        let mut oct_cli_bin =
+            Command::cargo_bin(assert_cmd::crate_name!()).expect("Failed to the binary");
 
         // Act
         let cmd = oct_cli_bin.arg("destroy");

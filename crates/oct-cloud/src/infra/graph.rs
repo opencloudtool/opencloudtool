@@ -18,10 +18,10 @@ use crate::infra::resource::{
 };
 
 pub struct GraphManager {
-    ec2_client: client::Ec2,
-    iam_client: client::IAM,
-    ecr_client: client::ECR,
-    route53_client: client::Route53,
+    ec2: client::Ec2,
+    iam: client::IAM,
+    ecr: client::ECR,
+    route53: client::Route53,
 }
 
 impl GraphManager {
@@ -43,10 +43,10 @@ impl GraphManager {
         let route53_client = client::Route53::new(aws_sdk_route53::Client::new(&config));
 
         Self {
-            ec2_client,
-            iam_client,
-            ecr_client,
-            route53_client,
+            ec2: ec2_client,
+            iam: iam_client,
+            ecr: ecr_client,
+            route53: route53_client,
         }
     }
 
@@ -58,10 +58,10 @@ impl GraphManager {
         route53_client: client::Route53,
     ) -> Self {
         Self {
-            ec2_client,
-            iam_client,
-            ecr_client,
-            route53_client,
+            ec2: ec2_client,
+            iam: iam_client,
+            ecr: ecr_client,
+            route53: route53_client,
         }
     }
 
@@ -263,7 +263,7 @@ impl GraphManager {
                 SpecNode::Resource(resource_type) => match resource_type {
                     ResourceSpecType::HostedZone(resource) => {
                         let manager = HostedZoneManager {
-                            client: &self.route53_client,
+                            client: &self.route53,
                         };
                         let output_resource = manager.create(resource, parent_nodes).await;
 
@@ -276,7 +276,7 @@ impl GraphManager {
                     }
                     ResourceSpecType::DnsRecord(resource) => {
                         let manager = DnsRecordManager {
-                            client: &self.route53_client,
+                            client: &self.route53,
                         };
                         let output_resource = manager.create(resource, parent_nodes).await;
 
@@ -288,9 +288,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::Vpc(resource) => {
-                        let manager = VpcManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = VpcManager { client: &self.ec2 };
                         let output_vpc = manager.create(resource, parent_nodes).await;
 
                         match output_vpc {
@@ -299,9 +297,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::InternetGateway(resource) => {
-                        let manager = InternetGatewayManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = InternetGatewayManager { client: &self.ec2 };
                         let output_igw = manager.create(resource, parent_nodes).await;
 
                         match output_igw {
@@ -312,9 +308,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::RouteTable(resource) => {
-                        let manager = RouteTableManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = RouteTableManager { client: &self.ec2 };
                         let output_route_table = manager.create(resource, parent_nodes).await;
 
                         match output_route_table {
@@ -325,9 +319,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::Subnet(resource) => {
-                        let manager = SubnetManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = SubnetManager { client: &self.ec2 };
                         let output_subnet = manager.create(resource, parent_nodes).await;
 
                         match output_subnet {
@@ -338,9 +330,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::SecurityGroup(resource) => {
-                        let manager = SecurityGroupManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = SecurityGroupManager { client: &self.ec2 };
                         let output_security_group = manager.create(resource, parent_nodes).await;
 
                         match output_security_group {
@@ -351,9 +341,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::InstanceRole(resource) => {
-                        let manager = InstanceRoleManager {
-                            client: &self.iam_client,
-                        };
+                        let manager = InstanceRoleManager { client: &self.iam };
                         let output_instance_role = manager.create(resource, parent_nodes).await;
 
                         match output_instance_role {
@@ -364,9 +352,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::InstanceProfile(resource) => {
-                        let manager = InstanceProfileManager {
-                            client: &self.iam_client,
-                        };
+                        let manager = InstanceProfileManager { client: &self.iam };
                         let output_resource = manager.create(resource, parent_nodes).await;
 
                         match output_resource {
@@ -377,9 +363,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::Ecr(resource) => {
-                        let manager = EcrManager {
-                            client: &self.ecr_client,
-                        };
+                        let manager = EcrManager { client: &self.ecr };
                         let output_resource = manager.create(resource, parent_nodes).await;
 
                         match output_resource {
@@ -392,9 +376,7 @@ impl GraphManager {
                         }
                     }
                     ResourceSpecType::Vm(resource) => {
-                        let manager = VmManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = VmManager { client: &self.ec2 };
                         let output_vm = manager.create(resource, parent_nodes).await;
 
                         match output_vm {
@@ -497,68 +479,50 @@ impl GraphManager {
                 Node::Resource(resource_type) => match resource_type {
                     ResourceType::HostedZone(resource) => {
                         let manager = HostedZoneManager {
-                            client: &self.route53_client,
+                            client: &self.route53,
                         };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::DnsRecord(resource) => {
                         let manager = DnsRecordManager {
-                            client: &self.route53_client,
+                            client: &self.route53,
                         };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::Vpc(resource) => {
-                        let manager = VpcManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = VpcManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::InternetGateway(resource) => {
-                        let manager = InternetGatewayManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = InternetGatewayManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::RouteTable(resource) => {
-                        let manager = RouteTableManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = RouteTableManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::Subnet(resource) => {
-                        let manager = SubnetManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = SubnetManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::SecurityGroup(resource) => {
-                        let manager = SecurityGroupManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = SecurityGroupManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::InstanceRole(resource) => {
-                        let manager = InstanceRoleManager {
-                            client: &self.iam_client,
-                        };
+                        let manager = InstanceRoleManager { client: &self.iam };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::InstanceProfile(resource) => {
-                        let manager = InstanceProfileManager {
-                            client: &self.iam_client,
-                        };
+                        let manager = InstanceProfileManager { client: &self.iam };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::Ecr(resource) => {
-                        let manager = EcrManager {
-                            client: &self.ecr_client,
-                        };
+                        let manager = EcrManager { client: &self.ecr };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::Vm(resource) => {
-                        let manager = VmManager {
-                            client: &self.ec2_client,
-                        };
+                        let manager = VmManager { client: &self.ec2 };
                         manager.destroy(resource, parent_nodes).await
                     }
                     ResourceType::None => Err("Unexpected case ResourceType::None".into()),
@@ -678,8 +642,7 @@ mod tests {
         let domain_name = Some(String::from("example.com"));
 
         // Act
-        let graph =
-            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name.clone());
+        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
 
         // Assert
         let number_of_nodes = 10 + 2 * number_of_instances;
@@ -727,8 +690,7 @@ mod tests {
         let domain_name = Some(String::from("example.com"));
 
         // Act
-        let graph =
-            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name.clone());
+        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
 
         // Assert
         let number_of_nodes = 10 + 2 * number_of_instances;
@@ -1384,7 +1346,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
             public_ip: "1.2.3.4".to_string(),
             ami: "ami-04dd23e62ed049936".to_string(),
             instance_type: InstanceType::T2Micro,
-            user_data: "".to_string(), // Not used in destroy
+            user_data: String::new(), // Not used in destroy
         })));
 
         graph.extend_with_edges(&[
