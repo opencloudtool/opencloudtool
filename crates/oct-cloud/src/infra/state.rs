@@ -52,7 +52,7 @@ impl State {
         }
 
         for (child_index, parents) in &parents {
-            let parent_node_names = parents
+            let mut parent_node_names: Vec<String> = parents
                 .iter()
                 .filter_map(|x| graph.node_weight(*x))
                 .filter_map(|x| match x {
@@ -60,6 +60,8 @@ impl State {
                     Node::Resource(parent_resource_type) => Some(parent_resource_type.name()),
                 })
                 .collect();
+
+            parent_node_names.sort();
 
             if let Some(Node::Resource(resource_type)) = graph.node_weight(*child_index) {
                 log::info!("Add to state {resource_type:?}");
@@ -71,6 +73,13 @@ impl State {
                 });
             }
         }
+
+        resource_states.sort_by(|a, b| {
+            a.dependencies
+                .len()
+                .cmp(&b.dependencies.len())
+                .then_with(|| a.name.cmp(&b.name))
+        });
 
         Self {
             resources: resource_states,
