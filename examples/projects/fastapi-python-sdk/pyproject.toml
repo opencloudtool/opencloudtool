@@ -1,0 +1,11 @@
+[project]
+name = "fastapi-python-sdk"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.118.0",
+    "uvicorn>=0.37.0",
+    "opencloudtool"
+]
+
