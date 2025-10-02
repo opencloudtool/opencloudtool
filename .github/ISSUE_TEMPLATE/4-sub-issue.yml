@@ -9,7 +9,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: Please provide detailed description of piece of work withing parent issue
+      description: Please provide detailed description of piece of work within the parent issue
     validations:
       required: true
 
