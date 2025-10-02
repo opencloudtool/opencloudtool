@@ -1,0 +1,22 @@
+name: Feature Request
+description: Suggest an idea for this project
+title: ""
+type: Feature
+projects: ["opencloudtool/1"]
+labels: []
+body:
+  - type: textarea
+    id: why-is-it-needed
+    attributes:
+      label: Why is it needed?
+      description: Please provide detailed description of your request
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Please provide a list of expected state when the issue should be closed
+    validations:
+      required: true
+
