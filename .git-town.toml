@@ -18,7 +18,7 @@ delete-tracking-branch = false
 strategy = "api"
 
 [sync]
-tags = true
+tags = false
 feature-strategy = "rebase"
 perennial-strategy = "rebase"
 prototype-strategy = "rebase"
