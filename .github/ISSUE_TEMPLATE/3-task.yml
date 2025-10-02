@@ -1,6 +1,5 @@
 name: General Task
 description: Use this for general tasks and chores
-title: ""
 type: Task
 projects: ["opencloudtool/1"]
 labels: []
