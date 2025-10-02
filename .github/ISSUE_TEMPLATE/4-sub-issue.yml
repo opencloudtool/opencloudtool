@@ -1,0 +1,15 @@
+name: Sub-Issue
+title: "[Sub-Issue]: "
+description: Use this for sub-issues within parent issues
+type: Task
+projects: ["opencloudtool/1"]
+labels: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Please provide detailed description of piece of work within the parent issue
+    validations:
+      required: true
+
