@@ -422,13 +422,15 @@ impl GraphManager {
         (resource_graph, vms, ecr)
     }
 
-    /// TODO: Handle failed resources deletions
+    /// Destroys resource graph
+    ///
+    /// Modifies the input graph by deleting all the destroyed nodes.
+    /// In case of a resource destruction failure, returns Err and
+    /// the remaining resources in `graph` must be handled accordingly.
     pub async fn destroy(
         &self,
-        graph: &Graph<Node, String>,
+        graph: &mut Graph<Node, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Graph to delete {}", Dot::new(&graph));
-
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 
         // Remove resources
@@ -460,6 +462,8 @@ impl GraphManager {
         }
 
         let result = Self::kahn_traverse(graph);
+
+        let mut destroyed_nodes: Vec<NodeIndex> = Vec::new();
 
         // Destroying resources in reversed order
         for node_index in result.iter().rev() {
@@ -531,14 +535,24 @@ impl GraphManager {
             match destroyed_node {
                 Ok(()) => {
                     log::info!("Destroyed {node_to_destroy:?}");
+
+                    destroyed_nodes.push(*node_index);
                 }
                 Err(e) => {
                     log::error!("Failed to destroy {node_to_destroy:?}: {e}");
+
+                    break;
                 }
             }
         }
 
-        Ok(())
+        graph.retain_nodes(|_, node_idx| !destroyed_nodes.contains(&node_idx));
+
+        if graph.edge_count() == 0 {
+            Ok(())
+        } else {
+            Err("Failed to destroy some resources".into())
+        }
     }
 
     /// Kahn's Algorithm Implementation
@@ -1032,7 +1046,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
     #[tokio::test]
     async fn test_destroy_with_one_instance_no_domain() {
         // Arrange
-        let resource_graph = get_test_resource_graph();
+        let mut resource_graph = get_test_resource_graph();
 
         let mut ec2_client_mock = client::Ec2::default();
         let mut iam_client_mock = client::IAM::default();
@@ -1120,16 +1134,19 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let destroy_result = graph_manager.destroy(&resource_graph).await;
+        let destroy_result = graph_manager.destroy(&mut resource_graph).await;
 
         // Assert
         assert!(destroy_result.is_ok());
+
+        assert_eq!(resource_graph.node_count(), 0);
+        assert_eq!(resource_graph.edge_count(), 0);
     }
 
     #[tokio::test]
     async fn test_destroy_empty_graph() {
         // Arrange
-        let resource_graph = Graph::<Node, String>::new();
+        let mut resource_graph = Graph::<Node, String>::new();
 
         let ec2_client_mock = client::Ec2::default();
         let iam_client_mock = client::IAM::default();
@@ -1144,91 +1161,68 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let destroy_result = graph_manager.destroy(&resource_graph).await;
+        let destroy_result = graph_manager.destroy(&mut resource_graph).await;
 
         // Assert
         assert!(destroy_result.is_ok());
+
+        assert_eq!(resource_graph.node_count(), 0);
+        assert_eq!(resource_graph.edge_count(), 0);
     }
 
     #[tokio::test]
     async fn test_destroy_resource_deletion_fails() {
         // Arrange
-        let resource_graph = get_test_resource_graph();
+        let mut resource_graph = Graph::<Node, String>::new();
+        let root = resource_graph.add_node(Node::Root);
+        let vpc = resource_graph.add_node(Node::Resource(ResourceType::Vpc(Vpc {
+            id: "vpc-id-1".to_string(),
+            region: "us-west-2".to_string(),
+            cidr_block: "10.0.0.0/16".to_string(),
+            name: "vpc-1".to_string(),
+        })));
+        let subnet = resource_graph.add_node(Node::Resource(ResourceType::Subnet(Subnet {
+            id: "subnet-id-1".to_string(),
+            name: "vpc-1-subnet".to_string(),
+            cidr_block: "10.0.1.0/24".to_string(),
+            availability_zone: "us-west-2a".to_string(),
+        })));
+        let route_table =
+            resource_graph.add_node(Node::Resource(ResourceType::RouteTable(RouteTable {
+                id: "rt-id-1".to_string(),
+            })));
+
+        resource_graph.extend_with_edges(&[
+            (root, vpc, String::new()),
+            (vpc, subnet, String::new()),
+            (vpc, route_table, String::new()),
+            (route_table, subnet, String::new()),
+        ]);
 
         let mut ec2_client_mock = client::Ec2::default();
-        let mut iam_client_mock = client::IAM::default();
-        let mut ecr_client_mock = client::ECR::default();
+        let iam_client_mock = client::IAM::default();
+        let ecr_client_mock = client::ECR::default();
         let route53_client_mock = client::Route53::default();
 
-        // Expectations for resource destruction
-        ec2_client_mock
-            .expect_terminate_instance()
-            .with(eq(String::from("vm-id-1")))
-            .return_once(|_| Ok(()));
-
-        // VmManager::is_terminated mock
-        ec2_client_mock
-            .expect_describe_instances()
-            .with(eq(String::from("vm-id-1")))
-            .return_once(|_| {
-                Ok(aws_sdk_ec2::types::Instance::builder()
-                    .state(
-                        aws_sdk_ec2::types::InstanceState::builder()
-                            .name(aws_sdk_ec2::types::InstanceStateName::Terminated)
-                            .build(),
-                    )
-                    .build())
-            });
-
-        iam_client_mock
-            .expect_delete_instance_profile()
-            .with(
-                eq(String::from("instance_profile_1")),
-                eq(vec![String::from("instance-role-1")]),
-            )
-            .return_once(|_, _| Ok(()));
-
-        ec2_client_mock
-            .expect_delete_security_group()
-            .with(eq(String::from("sg-id-1")))
-            .return_once(|_| Ok(()));
-
-        // Simulate subnet deletion failure
         ec2_client_mock
             .expect_disassociate_route_table_with_subnet()
             .with(eq(String::from("rt-id-1")), eq(String::from("subnet-id-1")))
-            .return_once(|_, _| Err("Subnet deletion failed".into()));
+            .return_once(|_, _| Ok(()));
 
-        // Even if subnet deletion fails, other deletions should be attempted.
         ec2_client_mock
             .expect_delete_route_table()
             .with(eq(String::from("rt-id-1")))
             .return_once(|_| Ok(()));
 
         ec2_client_mock
-            .expect_delete_internet_gateway()
-            .with(eq(String::from("igw-id-1")), eq(String::from("vpc-id-1")))
-            .return_once(|_, _| Ok(()));
-
-        ecr_client_mock
-            .expect_delete_repository()
-            .with(eq(String::from("ecr_1")))
+            .expect_delete_subnet()
+            .with(eq(String::from("subnet-id-1")))
             .return_once(|_| Ok(()));
-
-        iam_client_mock
-            .expect_delete_instance_iam_role()
-            .with(
-                eq(String::from("instance-role-1")),
-                eq(vec![String::from(
-                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-                )]),
-            )
-            .return_once(|_, _| Ok(()));
 
         ec2_client_mock
             .expect_delete_vpc()
             .with(eq(String::from("vpc-id-1")))
-            .return_once(|_| Ok(()));
+            .return_once(|_| Err("VPC destruction failed".into()));
 
         let graph_manager = GraphManager::new_with_clients(
             ec2_client_mock,
@@ -1238,10 +1232,23 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let destroy_result = graph_manager.destroy(&resource_graph).await;
+        let destroy_result = graph_manager.destroy(&mut resource_graph).await;
 
         // Assert
-        assert!(destroy_result.is_ok());
+        assert!(destroy_result.is_err());
+
+        // 1 root + VPC
+        assert_eq!(resource_graph.node_count(), 2);
+        assert_eq!(resource_graph.edge_count(), 1);
+
+        let vpc_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::Vpc(_))));
+        assert!(vpc_node_exists);
+        let subnet_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::Subnet(_))));
+        assert!(!subnet_node_exists);
     }
 
     fn get_test_resource_graph() -> Graph<Node, String> {
