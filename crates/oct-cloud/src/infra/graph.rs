@@ -392,10 +392,9 @@ impl GraphManager {
             };
 
             let Ok(created_node) = deployed_node else {
-                //TODO: Handle failed resource creation
                 log::error!("Failed to create a resource {node_to_deploy:?}");
 
-                continue;
+                break;
             };
 
             let created_resource_node_index = resource_graph.add_node(created_node.clone());
@@ -963,61 +962,45 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
     #[tokio::test]
     async fn test_deploy_resource_creation_fails() {
         // Arrange
-        let number_of_instances = 1;
-        let instance_type = InstanceType::T2Micro;
-        let domain_name = None;
-
-        let spec_graph =
-            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+        let mut spec_graph = Graph::<SpecNode, String>::new();
+        let root = spec_graph.add_node(SpecNode::Root);
+        let vpc_1 = spec_graph.add_node(SpecNode::Resource(ResourceSpecType::Vpc(VpcSpec {
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-1"),
+        })));
+        let subnet_1 =
+            spec_graph.add_node(SpecNode::Resource(ResourceSpecType::Subnet(SubnetSpec {
+                name: String::from("vpc-1-subnet"),
+                cidr_block: String::from("10.0.1.0/24"),
+                availability_zone: String::from("us-west-2a"),
+            })));
+        let edges = vec![
+            (root, vpc_1, String::new()),
+            (vpc_1, subnet_1, String::new()),
+        ];
+        spec_graph.extend_with_edges(&edges);
 
         let mut ec2_client_mock = client::Ec2::default();
-        let mut iam_client_mock = client::IAM::default();
-        let mut ecr_client_mock = client::ECR::default();
+        let iam_client_mock = client::IAM::default();
+        let ecr_client_mock = client::ECR::default();
         let route53_client_mock = client::Route53::default();
 
-        // Expectations for resource creation
-        iam_client_mock
-            .expect_create_instance_iam_role()
-            .with(
-                eq(String::from("instance-role-1")),
-                eq(String::from(
-                    r#"{ 
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Principal": {
-                                    "Service": "ec2.amazonaws.com"
-                                },
-                                "Action": "sts:AssumeRole"
-                            }
-                        ]
-                    }"#,
-                )),
-                eq(vec![String::from(
-                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-                )]),
-            )
-            .return_once(|_, _, _| Ok(()));
-
-        iam_client_mock
-            .expect_create_instance_profile()
-            .with(
-                eq(String::from("instance_profile_1")),
-                eq(vec![String::from("instance-role-1")]),
-            )
-            .return_once(|_, _| Ok(()));
-
-        ecr_client_mock
-            .expect_create_repository()
-            .with(eq(String::from("ecr_1")))
-            .return_once(|_| Ok((String::from("ecr-id-1"), String::from("ecr-uri-1/foo"))));
-
-        // Simulate VPC creation failure
         ec2_client_mock
             .expect_create_vpc()
             .with(eq(String::from("10.0.0.0/16")), eq(String::from("vpc-1")))
-            .return_once(|_, _| Err("VPC creation failed".into()));
+            .return_once(|_, _| Ok(String::from("vpc-id-1")));
+
+        // Simulate Subnet creation failure
+        ec2_client_mock
+            .expect_create_subnet()
+            .with(
+                eq(String::from("vpc-id-1")),
+                eq(String::from("10.0.1.0/24")),
+                eq(String::from("us-west-2a")),
+                eq(String::from("vpc-1-subnet")),
+            )
+            .return_once(|_, _, _, _| Err("Subnet creation failed".into()));
 
         let graph_manager = GraphManager::new_with_clients(
             ec2_client_mock,
@@ -1030,31 +1013,20 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
 
         // Assert
-        // 1 root + ECR + InstanceRole + InstanceProfile
-        assert_eq!(resource_graph.node_count(), 4);
-        assert_eq!(resource_graph.edge_count(), 3);
+        // 1 root + VPC
+        assert_eq!(resource_graph.node_count(), 2);
+        assert_eq!(resource_graph.edge_count(), 1);
         assert!(vms.is_empty());
-        assert!(ecr.is_some());
-
-        let ecr_node_exists = resource_graph
-            .node_weights()
-            .any(|w| matches!(w, Node::Resource(ResourceType::Ecr(_))));
-        assert!(ecr_node_exists);
-
-        let instance_role_node_exists = resource_graph
-            .node_weights()
-            .any(|w| matches!(w, Node::Resource(ResourceType::InstanceRole(_))));
-        assert!(instance_role_node_exists);
-
-        let instance_profile_node_exists = resource_graph
-            .node_weights()
-            .any(|w| matches!(w, Node::Resource(ResourceType::InstanceProfile(_))));
-        assert!(instance_profile_node_exists);
+        assert!(ecr.is_none());
 
         let vpc_node_exists = resource_graph
             .node_weights()
             .any(|w| matches!(w, Node::Resource(ResourceType::Vpc(_))));
-        assert!(!vpc_node_exists);
+        assert!(vpc_node_exists);
+        let subnet_node_exists = resource_graph
+            .node_weights()
+            .any(|w| matches!(w, Node::Resource(ResourceType::Subnet(_))));
+        assert!(!subnet_node_exists);
     }
 
     #[tokio::test]
