@@ -124,22 +124,33 @@ impl OrchestratorWithGraph {
             backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
         let (_user_state, _loaded) = user_state_backend.load().await?;
 
-        let resource_graph = infra_state.to_graph();
+        let mut resource_graph = infra_state.to_graph();
 
         let graph_manager = infra::graph::GraphManager::new().await;
-        let destroy_result = graph_manager.destroy(&resource_graph).await;
+        let destroy_result = graph_manager.destroy(&mut resource_graph).await;
 
         match destroy_result {
             Ok(()) => {
                 infra_state_backend.remove().await?;
                 user_state_backend.remove().await?;
+
+                Ok(())
             }
             Err(e) => {
-                log::error!("{e}");
+                log::error!("Failed to destroy: {e}");
+
+                let current_infra_state = infra::state::State::from_graph(&resource_graph);
+
+                if let Err(save_err) = infra_state_backend.save(&current_infra_state).await {
+                    return Err(format!(
+                        "Destruction failed: {e}. Additionally, failed to save state: {save_err}"
+                    )
+                    .into());
+                }
+
+                Err(format!("Partial destruction: {e}. Remaining resources saved to state.").into())
             }
         }
-
-        Ok(())
     }
 }
 
