@@ -1,0 +1,14 @@
+[project]
+name = "fastapi-python-sdk"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.118.0",
+    "opencloudtool",
+    "uvicorn>=0.37.0",
+]
+
+[tool.uv.sources]
+opencloudtool = { path = "../../../crates/oct-py", editable = true }
+
