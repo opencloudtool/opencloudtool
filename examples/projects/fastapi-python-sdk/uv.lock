@@ -86,7 +86,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.118.0" },
-    { name = "opencloudtool" },
+    { name = "opencloudtool", editable = "../../../crates/oct-py" },
     { name = "uvicorn", specifier = ">=0.37.0" },
 ]
 
@@ -110,12 +110,13 @@ wheels = [
 
 [[package]]
 name = "opencloudtool"
-version = "0.4.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6a/34/299fd580a0782fa2a94d44b380dcbf9434315b868c633e0a1cd91c0e44c9/opencloudtool-0.4.2.tar.gz", hash = "sha256:38e0ac8703318bf667d5c7afe5ef0e32d335726fceceff3a77c82c17c2d1d467", size = 87034, upload-time = "2025-09-02T04:44:19.6Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/e8/0fe51e7539ea3be2bb750bb5c6990f0f51f74f1c2b3bbb3edb9b6013e5b5/opencloudtool-0.4.2-cp312-abi3-macosx_11_0_arm64.whl", hash = "sha256:ddc96cc25736d667a211352a5a12afaf221468e9e4657190f1161138a5d2fd2d", size = 11692085, upload-time = "2025-09-02T04:44:17.709Z" },
-]
+version = "0.5.1"
+source = { editable = "../../../crates/oct-py" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "maturin", specifier = ">=1.9.3" }]
 
 [[package]]
 name = "pydantic"

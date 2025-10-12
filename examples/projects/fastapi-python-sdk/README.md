@@ -19,11 +19,11 @@ uv sync
 ### 3. Run deployment script
 
 ```bash
-python clouder.py
+uv run deploy.py
 ```
 
 To destroy created infrastructure run this command in current directory
 
 ```bash
- cargo run -p oct-cli destroy
+uv run destroy.py
 ```
