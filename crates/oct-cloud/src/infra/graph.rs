@@ -245,7 +245,7 @@ impl GraphManager {
         let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
 
-        let result = Self::kahn_traverse(graph);
+        let result = kahn_traverse(graph);
 
         for node_index in &result {
             let parent_node_indexes = match parents.get(node_index) {
@@ -461,7 +461,7 @@ impl GraphManager {
             }
         }
 
-        let result = Self::kahn_traverse(graph);
+        let result = kahn_traverse(graph);
 
         let mut destroyed_nodes: Vec<NodeIndex> = Vec::new();
 
@@ -554,41 +554,41 @@ impl GraphManager {
             Err("Failed to destroy some resources".into())
         }
     }
+}
 
-    /// Kahn's Algorithm Implementation
-    fn kahn_traverse<T>(graph: &Graph<T, String>) -> Vec<NodeIndex> {
-        // 1. Calculate the in-degree for each node.
-        let mut in_degrees: Vec<usize> = graph
-            .node_indices()
-            .map(|i| graph.neighbors_directed(i, Incoming).count())
-            .collect();
+/// Kahn's Algorithm Implementation
+pub fn kahn_traverse<T>(graph: &Graph<T, String>) -> Vec<NodeIndex> {
+    // 1. Calculate the in-degree for each node.
+    let mut in_degrees: Vec<usize> = graph
+        .node_indices()
+        .map(|i| graph.neighbors_directed(i, Incoming).count())
+        .collect();
 
-        // 2. Initialize a queue with all nodes having an in-degree of 0.
-        let mut queue: VecDeque<NodeIndex> = graph
-            .node_indices()
-            .filter(|&i| in_degrees[i.index()] == 0)
-            .collect();
+    // 2. Initialize a queue with all nodes having an in-degree of 0.
+    let mut queue: VecDeque<NodeIndex> = graph
+        .node_indices()
+        .filter(|&i| in_degrees[i.index()] == 0)
+        .collect();
 
-        let mut result = Vec::new();
+    let mut result = Vec::new();
 
-        // 3. Process the queue.
-        while let Some(node) = queue.pop_front() {
-            result.push(node);
+    // 3. Process the queue.
+    while let Some(node) = queue.pop_front() {
+        result.push(node);
 
-            // For each neighbor of the processed node, decrement its in-degree.
-            for neighbor in graph.neighbors_directed(node, Outgoing) {
-                let neighbor_idx = neighbor.index();
-                in_degrees[neighbor_idx] -= 1;
+        // For each neighbor of the processed node, decrement its in-degree.
+        for neighbor in graph.neighbors_directed(node, Outgoing) {
+            let neighbor_idx = neighbor.index();
+            in_degrees[neighbor_idx] -= 1;
 
-                // If a neighbor's in-degree becomes 0, add it to the queue.
-                if in_degrees[neighbor_idx] == 0 {
-                    queue.push_back(neighbor);
-                }
+            // If a neighbor's in-degree becomes 0, add it to the queue.
+            if in_degrees[neighbor_idx] == 0 {
+                queue.push_back(neighbor);
             }
         }
-
-        result
     }
+
+    result
 }
 
 #[cfg(test)]
@@ -1346,5 +1346,148 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         ]);
 
         graph
+    }
+
+    #[test]
+    fn test_kahn_traverse_empty_graph() {
+        // Arrange
+        let graph = Graph::<&str, String>::new();
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_kahn_traverse_single_node() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        assert_eq!(result, vec![a]);
+    }
+
+    #[test]
+    fn test_kahn_traverse_simple_linear_graph() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+        let b = graph.add_node("b");
+        let c = graph.add_node("c");
+        graph.extend_with_edges(&[(a, b, String::new()), (b, c, String::new())]);
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        assert_eq!(result, vec![a, b, c]);
+    }
+
+    #[test]
+    fn test_kahn_traverse_multiple_roots() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+        let b = graph.add_node("b");
+        let c = graph.add_node("c");
+        let d = graph.add_node("d");
+        graph.extend_with_edges(&[(a, c, String::new()), (b, d, String::new())]);
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        // The order of a and b is deterministic because of node_indices() order.
+        assert_eq!(result, vec![a, b, c, d]);
+    }
+
+    #[test]
+    fn test_kahn_traverse_complex_dag() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let node_a = graph.add_node("a");
+        let node_b = graph.add_node("b");
+        let node_c = graph.add_node("c");
+        let node_d = graph.add_node("d");
+        let node_e = graph.add_node("e");
+        let node_f = graph.add_node("f");
+
+        let edges = [
+            (node_a, node_b, String::new()),
+            (node_a, node_c, String::new()),
+            (node_b, node_d, String::new()),
+            (node_c, node_d, String::new()),
+            (node_d, node_e, String::new()),
+            (node_f, node_c, String::new()),
+        ];
+        graph.extend_with_edges(&edges);
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        assert_eq!(result.len(), 6);
+
+        let pos: HashMap<NodeIndex, usize> =
+            result.iter().enumerate().map(|(i, &n)| (n, i)).collect();
+
+        for (u, v, _) in &edges {
+            assert!(
+                pos[u] < pos[v],
+                "edge {:?} -> {:?} is not respected",
+                graph[*u],
+                graph[*v]
+            );
+        }
+    }
+
+    #[test]
+    fn test_kahn_traverse_graph_with_cycle() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+        let b = graph.add_node("b");
+        let c = graph.add_node("c");
+        graph.extend_with_edges(&[
+            (a, b, String::new()),
+            (b, c, String::new()),
+            (c, a, String::new()), // Cycle a -> b -> c -> a
+        ]);
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        // The result should be empty because all nodes are part of a cycle
+        // and there are no nodes with in-degree 0.
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_kahn_traverse_graph_with_unreachable_cycle() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+        let b = graph.add_node("b");
+        let c = graph.add_node("c");
+        let d = graph.add_node("d");
+        graph.extend_with_edges(&[
+            (a, b, String::new()),
+            (c, d, String::new()),
+            (d, c, String::new()), // Cycle c -> d -> c
+        ]);
+
+        // Act
+        let result = kahn_traverse(&graph);
+
+        // Assert
+        // Only a and b should be in the result.
+        assert_eq!(result, vec![a, b]);
     }
 }
