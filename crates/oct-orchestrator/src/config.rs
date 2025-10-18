@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::fs;
 
+use petgraph::Graph;
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::user_state;
@@ -8,6 +10,24 @@ use crate::user_state;
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Config {
     pub(crate) project: Project,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) enum Node {
+    /// The synthetic root node.
+    #[default]
+    Root,
+    /// A user service in the dependency graph.
+    Resource(Service),
+}
+
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Node::Root => write!(f, "Root"),
+            Node::Resource(service) => write!(f, "service: {service:?}"),
+        }
+    }
 }
 
 impl Config {
@@ -28,6 +48,41 @@ impl Config {
         let toml_data: Config = toml::from_str(&config_with_injected_envs)?;
 
         Ok(toml_data)
+    }
+
+    pub(crate) fn to_graph(&self) -> Graph<Node, String> {
+        let mut graph = Graph::<Node, String>::new();
+        let mut edges = Vec::new();
+        let root = graph.add_node(Node::Root);
+
+        let mut services_map: HashMap<String, NodeIndex> = HashMap::new();
+        for (service_name, service) in &self.project.services {
+            let node = graph.add_node(Node::Resource(service.clone()));
+
+            services_map.insert(service_name.clone(), node);
+        }
+
+        for (service_name, service) in &self.project.services {
+            let resource = services_map
+                .get(service_name)
+                .expect("Missed resource value in resource_map");
+
+            if service.depends_on.is_empty() {
+                edges.push((root, *resource, String::new()));
+            } else {
+                for dependency_name in &service.depends_on {
+                    let dependency_resource = services_map
+                        .get(dependency_name)
+                        .expect("Missed dependency resource value in resource_map");
+
+                    edges.push((*dependency_resource, *resource, String::new()));
+                }
+            }
+        }
+
+        graph.extend_with_edges(&edges);
+
+        graph
     }
 
     /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
@@ -86,7 +141,7 @@ pub(crate) struct Project {
 
 /// Configuration for a service
 /// This configuration is managed by the user and used to deploy the service
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct Service {
     /// Image to use for the container
     pub(crate) image: String,
@@ -103,7 +158,8 @@ pub(crate) struct Service {
     /// Memory in MB
     pub(crate) memory: u64,
     /// List of services that this service depends on
-    pub(crate) depends_on: Option<Vec<String>>,
+    #[serde(default)]
+    pub(crate) depends_on: Vec<String>,
     /// Raw environment variables to set in the container
     /// All values are rendered using in `render_envs` method
     #[serde(default)]
@@ -217,7 +273,7 @@ depends_on = ["app_1"]
                                 external_port: Some(80),
                                 cpus: 250,
                                 memory: 64,
-                                depends_on: None,
+                                depends_on: vec![],
                                 envs: HashMap::from([
                                     ("KEY1".to_string(), "VALUE1".to_string()),
                                     ("KEY2".to_string(), "Multiline\nstring".to_string()),
@@ -242,7 +298,7 @@ depends_on = ["app_1"]
                                 external_port: None,
                                 cpus: 250,
                                 memory: 64,
-                                depends_on: Some(vec!("app_1".to_string())),
+                                depends_on: vec!("app_1".to_string()),
                                 envs: HashMap::new(),
                             }
                         ),
@@ -251,6 +307,144 @@ depends_on = ["app_1"]
                 }
             }
         );
+    }
+
+    #[test]
+    fn test_config_to_graph_empty() {
+        // Arrange
+        let config = Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: HashMap::new(),
+                domain: None,
+            },
+        };
+
+        // Act
+        let graph = config.to_graph();
+
+        // Assert
+        assert_eq!(graph.node_count(), 1); // Root node
+        assert_eq!(graph.edge_count(), 0);
+    }
+
+    #[test]
+    fn test_config_to_graph_single_node() {
+        // Arrange
+        let service = Service {
+            image: "nginx:latest".to_string(),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec![],
+            envs: HashMap::new(),
+        };
+        let config = Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: HashMap::from([("app_1".to_string(), service)]),
+                domain: None,
+            },
+        };
+
+        // Act
+        let graph = config.to_graph();
+
+        // Assert
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
+
+        let root_node_index = graph
+            .node_indices()
+            .find(|i| matches!(graph[*i], Node::Root))
+            .expect("Root node not found");
+        let service_node_index = graph
+            .node_indices()
+            .find(|i| matches!(graph[*i], Node::Resource(_)))
+            .expect("Service node not found");
+
+        assert!(graph.contains_edge(root_node_index, service_node_index));
+    }
+
+    #[test]
+    fn test_config_to_graph_with_dependencies() {
+        // Arrange
+        let service1 = Service {
+            image: "nginx:latest".to_string(),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec![],
+            envs: HashMap::new(),
+        };
+        let service2 = Service {
+            image: "nginx:latest".to_string(),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec!["app_1".to_string()],
+            envs: HashMap::new(),
+        };
+        let config = Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: HashMap::from([
+                    ("app_1".to_string(), service1.clone()),
+                    ("app_2".to_string(), service2.clone()),
+                ]),
+                domain: None,
+            },
+        };
+
+        // Act
+        let graph = config.to_graph();
+
+        // Assert
+        assert_eq!(graph.node_count(), 3);
+        assert_eq!(graph.edge_count(), 2);
+
+        let root_node_index = graph
+            .node_indices()
+            .find(|i| matches!(graph[*i], Node::Root))
+            .expect("Root node not found");
+        let service1_node_index = graph
+            .node_indices()
+            .find(|i| graph[*i] == Node::Resource(service1.clone()))
+            .expect("Service 1 node not found");
+        let service2_node_index = graph
+            .node_indices()
+            .find(|i| graph[*i] == Node::Resource(service2.clone()))
+            .expect("Service 2 node not found");
+
+        assert!(graph.contains_edge(root_node_index, service1_node_index));
+        assert!(graph.contains_edge(service1_node_index, service2_node_index));
     }
 
     #[test]
@@ -264,7 +458,7 @@ depends_on = ["app_1"]
             external_port: None,
             cpus: 250,
             memory: 64,
-            depends_on: Some(vec!["app_1".to_string()]),
+            depends_on: vec!["app_1".to_string()],
             envs: HashMap::from([(
                 "KEY".to_string(),
                 "Service public_ip={{ services.app_1.public_ip }}".to_string(),
@@ -299,7 +493,7 @@ depends_on = ["app_1"]
             external_port: None,
             cpus: 250,
             memory: 64,
-            depends_on: Some(vec!["app_1".to_string()]),
+            depends_on: vec!["app_1".to_string()],
             envs: HashMap::from([(
                 "KEY".to_string(),
                 "Service public_ip={{ UNKNOWN_VAR }}".to_string(),

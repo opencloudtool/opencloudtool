@@ -2314,6 +2314,7 @@ dependencies = [
  "log",
  "mockito",
  "oct-cloud",
+ "petgraph",
  "reqwest",
  "serde",
  "serde_json",
