@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
+use petgraph::Graph;
 use petgraph::dot::Dot;
 
 use oct_cloud::aws::types::InstanceType;
@@ -21,8 +22,9 @@ impl OrchestratorWithGraph {
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
-        log::info!("User services graph: {}", Dot::new(&config.to_graph()));
+        let services_graph = config.to_graph();
 
+        log::info!("User services graph: {}", Dot::new(&services_graph));
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         // let (mut infra_state, _loaded) = state_backend.load().await?;
@@ -37,8 +39,10 @@ impl OrchestratorWithGraph {
         log::info!("Services to create: {services_to_create:?}");
         log::info!("Services to remove: {services_to_remove:?}");
         log::info!("Services to update: {services_to_update:?}");
+        let number_of_instances =
+            get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE);
 
-        let number_of_instances = get_number_of_needed_instances(&config, &Self::INSTANCE_TYPE);
+        log::info!("Instances to be created: {number_of_instances}");
 
         let spec_graph = infra::graph::GraphManager::get_spec_graph(
             number_of_instances,
@@ -161,18 +165,33 @@ impl OrchestratorWithGraph {
 /// Calculates the number of instances needed to run the services
 /// For now we expect that an individual service required resources will not exceed
 /// a single EC2 instance capacity
-fn get_number_of_needed_instances(config: &config::Config, instance_type: &InstanceType) -> u32 {
-    let total_services_cpus = config
-        .project
-        .services
-        .values()
+fn get_number_of_needed_instances(
+    services_graph: &Graph<config::Node, String>,
+    instance_type: &InstanceType,
+) -> u32 {
+    let sorted_graph = infra::graph::kahn_traverse(services_graph);
+
+    let total_services_cpus = sorted_graph
+        .iter()
+        .filter_map(|node_index| {
+            if let config::Node::Resource(service) = &services_graph[*node_index] {
+                return Some(service);
+            }
+
+            None
+        })
         .map(|service| service.cpus)
         .sum::<u32>();
 
-    let total_services_memory = config
-        .project
-        .services
-        .values()
+    let total_services_memory = sorted_graph
+        .iter()
+        .filter_map(|node_index| {
+            if let config::Node::Resource(service) = &services_graph[*node_index] {
+                return Some(service);
+            }
+
+            None
+        })
         .map(|service| service.memory)
         .sum::<u64>();
 
