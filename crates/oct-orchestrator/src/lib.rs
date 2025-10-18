@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
+use petgraph::dot::Dot;
+
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::infra;
 
@@ -18,6 +20,8 @@ impl OrchestratorWithGraph {
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
+
+        log::info!("User services graph: {}", Dot::new(&config.to_graph()));
 
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
@@ -201,8 +205,7 @@ fn get_user_services_to_create_and_delete(
 
     let expected_services_dependencies: Vec<String> = expected_services
         .iter()
-        .filter_map(|service| config.project.services[service].depends_on.clone())
-        .flatten()
+        .flat_map(|service| config.project.services[service].depends_on.clone())
         .filter(|service| !user_state_services.contains(service))
         .collect();
 
@@ -224,8 +227,7 @@ fn get_user_services_to_create_and_delete(
     let services_to_update_dependencies: Vec<String> = expected_services
         .iter()
         .filter(|service| user_state_services.contains(service))
-        .filter_map(|service| config.project.services[service].depends_on.clone())
-        .flatten()
+        .flat_map(|service| config.project.services[service].depends_on.clone())
         .collect();
 
     let services_to_update: Vec<String> = expected_services
