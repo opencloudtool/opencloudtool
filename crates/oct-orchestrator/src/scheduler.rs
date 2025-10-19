@@ -1,6 +1,5 @@
 use crate::backend;
 use crate::config::Service;
-use crate::oct_ctl_sdk;
 use crate::user_state;
 
 /// Schedules services on EC2 instances
