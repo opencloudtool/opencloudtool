@@ -10,14 +10,13 @@ use oct_cloud::infra;
 
 mod backend;
 mod config;
-mod oct_ctl_sdk;
 mod scheduler;
 mod user_state;
 
 pub struct OrchestratorWithGraph;
 
 impl OrchestratorWithGraph {
-    const INSTANCE_TYPE: InstanceType = InstanceType::T3Medium;
+    const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
 
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
@@ -25,6 +24,7 @@ impl OrchestratorWithGraph {
         let services_graph = config.to_graph();
 
         log::info!("User services graph: {}", Dot::new(&services_graph));
+
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         // let (mut infra_state, _loaded) = state_backend.load().await?;
@@ -36,9 +36,6 @@ impl OrchestratorWithGraph {
         let (services_to_create, services_to_remove, services_to_update) =
             get_user_services_to_create_and_delete(&config, &user_state);
 
-        log::info!("Services to create: {services_to_create:?}");
-        log::info!("Services to remove: {services_to_remove:?}");
-        log::info!("Services to update: {services_to_update:?}");
         let number_of_instances =
             get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE);
 
@@ -50,12 +47,13 @@ impl OrchestratorWithGraph {
             config.project.domain.clone(),
         );
 
-        let graph_manager = infra::graph::GraphManager::new().await;
-        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+        let infra_graph_manager = infra::graph::GraphManager::new().await;
+        let (resource_graph, vms, ecr) = infra_graph_manager.deploy(&spec_graph).await;
 
         let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
 
+        // TODO: Move instances health check to instance deployment
         for vm in &vms {
             let oct_ctl_client = oct_ctl_sdk::Client::new(vm.public_ip.clone());
 
@@ -82,9 +80,6 @@ impl OrchestratorWithGraph {
             );
         }
 
-        // All instances are healthy and ready to serve user services
-        let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
-
         if let Some(ecr) = ecr {
             let known_base_ecr_url = ecr.get_base_uri();
 
@@ -108,6 +103,8 @@ impl OrchestratorWithGraph {
                 service.image.clone_from(&image_tag);
             }
         }
+
+        let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
         deploy_user_services(
             &config,
@@ -277,7 +274,7 @@ fn get_user_services_to_create_and_delete(
 async fn check_host_health(
     oct_ctl_client: &oct_ctl_sdk::Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let public_ip = &oct_ctl_client.public_ip;
+    let public_ip = &oct_ctl_client.public_ip();
 
     let max_tries = 24;
     let sleep_duration_s = 5;

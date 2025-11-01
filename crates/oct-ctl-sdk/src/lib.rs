@@ -4,9 +4,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 /// HTTP client to access `oct-ctl`'s API
-pub(crate) struct Client {
-    // TODO: Use reference instead
-    pub(crate) public_ip: String,
+pub struct Client {
+    public_ip: String,
     port: u16,
 }
 
@@ -30,14 +29,18 @@ struct RemoveContainerRequest {
 impl Client {
     const DEFAULT_PORT: u16 = 31888;
 
-    pub(crate) fn new(public_ip: String) -> Self {
+    pub fn new(public_ip: String) -> Self {
         Self {
             public_ip,
             port: Self::DEFAULT_PORT,
         }
     }
 
-    pub(crate) async fn run_container(
+    pub fn public_ip(&self) -> &str {
+        &self.public_ip
+    }
+
+    pub async fn run_container(
         &self,
         name: String,
         image: String,
@@ -78,10 +81,7 @@ impl Client {
         }
     }
 
-    pub(crate) async fn remove_container(
-        &self,
-        name: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn remove_container(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let request = RemoveContainerRequest { name };
@@ -103,7 +103,7 @@ impl Client {
         }
     }
 
-    pub(crate) async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let response = client

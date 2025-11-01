@@ -1,6 +1,5 @@
 use crate::backend;
 use crate::config::Service;
-use crate::oct_ctl_sdk;
 use crate::user_state;
 
 /// Schedules services on EC2 instances
@@ -63,7 +62,7 @@ impl<'a> Scheduler<'a> {
                             log::info!(
                                 "Service {} is available at http://{}:{port}",
                                 service_name,
-                                oct_ctl_client.public_ip
+                                oct_ctl_client.public_ip()
                             );
                         }
                         None => {
