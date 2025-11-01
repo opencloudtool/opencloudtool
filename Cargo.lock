@@ -2217,6 +2217,7 @@ dependencies = [
  "base64 0.22.1",
  "log",
  "mockall",
+ "oct-ctl-sdk",
  "petgraph",
  "serde",
  "tempfile",
@@ -2244,6 +2245,7 @@ dependencies = [
 name = "oct-ctl-sdk"
 version = "0.5.1"
 dependencies = [
+ "log",
  "mockito",
  "reqwest",
  "serde",

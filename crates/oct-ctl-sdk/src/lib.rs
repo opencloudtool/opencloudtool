@@ -51,6 +51,8 @@ impl Client {
         memory: u64,
         envs: HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
         let client = reqwest::Client::new();
 
         let request = RunContainerRequest {
@@ -82,6 +84,8 @@ impl Client {
     }
 
     pub async fn remove_container(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
         let client = reqwest::Client::new();
 
         let request = RemoveContainerRequest { name };
@@ -103,7 +107,48 @@ impl Client {
         }
     }
 
-    pub async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn check_host_health(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let max_tries = 24;
+        let sleep_duration_s = 5;
+
+        log::info!("Waiting for host '{}' to be ready", self.public_ip);
+
+        let mut is_healthy = false;
+        for _ in 0..max_tries {
+            is_healthy = match self.health_check().await {
+                Ok(()) => {
+                    log::info!("Host '{}' is ready", self.public_ip);
+
+                    true
+                }
+                Err(err) => {
+                    log::info!("Host '{}' responded with error: {}", self.public_ip, err);
+
+                    false
+                }
+            };
+
+            if is_healthy {
+                break;
+            }
+
+            log::info!("Retrying in {sleep_duration_s} sec...");
+
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+        }
+
+        if is_healthy {
+            Ok(())
+        } else {
+            Err(format!(
+                "Host '{}' failed to become ready after max retries",
+                self.public_ip
+            )
+            .into())
+        }
+    }
+
+    async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let response = client
