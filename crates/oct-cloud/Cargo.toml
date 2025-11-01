@@ -14,6 +14,8 @@ keywords = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+oct-ctl-sdk = { workspace = true }
+
 aws-config = { workspace = true }
 aws-sdk-ec2 = { workspace = true }
 aws-sdk-iam = { workspace = true }
