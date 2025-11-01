@@ -1673,7 +1673,7 @@ mod tests {
         let route_table = RouteTable {
             id: String::from("rt-id"),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Vpc(vpc)),
             Node::Resource(ResourceType::RouteTable(route_table)),
         ];
@@ -1785,7 +1785,7 @@ mod tests {
         let route_table = RouteTable {
             id: String::from("rt-id"),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Vpc(vpc)),
             Node::Resource(ResourceType::RouteTable(route_table)),
         ];
@@ -1920,7 +1920,7 @@ mod tests {
         let igw = InternetGateway {
             id: String::from("igw-id"),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Vpc(vpc)),
             Node::Resource(ResourceType::InternetGateway(igw)),
         ];
@@ -2017,7 +2017,7 @@ mod tests {
         let igw = InternetGateway {
             id: String::from("igw-id"),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Vpc(vpc)),
             Node::Resource(ResourceType::InternetGateway(igw)),
         ];
@@ -2113,7 +2113,7 @@ mod tests {
             ami: String::from("ami-123"),
             user_data: String::new(),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::HostedZone(hosted_zone)),
             Node::Resource(ResourceType::Vm(vm)),
         ];
@@ -2228,7 +2228,7 @@ mod tests {
             ami: String::from("ami-123"),
             user_data: String::new(),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::HostedZone(hosted_zone)),
             Node::Resource(ResourceType::Vm(vm)),
         ];
@@ -2746,7 +2746,7 @@ mod tests {
             inbound_rules: vec![],
         };
 
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Subnet(subnet)),
             Node::Resource(ResourceType::Ecr(ecr)),
             Node::Resource(ResourceType::InstanceProfile(instance_profile)),
@@ -2797,7 +2797,7 @@ mod tests {
             name: String::from("sg-name"),
             inbound_rules: vec![],
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Ecr(ecr)),
             Node::Resource(ResourceType::InstanceProfile(instance_profile)),
             Node::Resource(ResourceType::SecurityGroup(security_group)),
@@ -2840,7 +2840,7 @@ mod tests {
             name: String::from("sg-name"),
             inbound_rules: vec![],
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Subnet(subnet)),
             Node::Resource(ResourceType::InstanceProfile(instance_profile)),
             Node::Resource(ResourceType::SecurityGroup(security_group)),
@@ -2885,7 +2885,7 @@ mod tests {
             name: String::from("sg-name"),
             inbound_rules: vec![],
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Subnet(subnet)),
             Node::Resource(ResourceType::Ecr(ecr)),
             Node::Resource(ResourceType::SecurityGroup(security_group)),
@@ -2928,7 +2928,7 @@ mod tests {
         let instance_profile = InstanceProfile {
             name: String::from("instance-profile-name"),
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Subnet(subnet)),
             Node::Resource(ResourceType::Ecr(ecr)),
             Node::Resource(ResourceType::InstanceProfile(instance_profile)),
@@ -2981,7 +2981,7 @@ mod tests {
             name: String::from("sg-name"),
             inbound_rules: vec![],
         };
-        let parents = vec![
+        let parents = [
             Node::Resource(ResourceType::Subnet(subnet)),
             Node::Resource(ResourceType::Ecr(ecr)),
             Node::Resource(ResourceType::InstanceProfile(instance_profile)),
