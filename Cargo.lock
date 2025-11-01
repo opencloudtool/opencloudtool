@@ -2283,6 +2283,7 @@ dependencies = [
  "base64 0.22.1",
  "log",
  "mockall",
+ "oct-ctl-sdk",
  "petgraph",
  "serde",
  "tempfile",
@@ -2307,6 +2308,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oct-ctl-sdk"
+version = "0.5.1"
+dependencies = [
+ "mockito",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "oct-orchestrator"
 version = "0.5.1"
 dependencies = [
@@ -2314,6 +2326,7 @@ dependencies = [
  "log",
  "mockito",
  "oct-cloud",
+ "oct-ctl-sdk",
  "petgraph",
  "reqwest",
  "serde",

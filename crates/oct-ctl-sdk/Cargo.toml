@@ -1,5 +1,5 @@
 [package]
-name = "oct-orchestrator"
+name = "oct-ctl-sdk"
 description = { workspace = true }
 version = { workspace = true }
 authors = { workspace = true }
@@ -14,22 +14,13 @@ keywords = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-oct-cloud = { workspace = true }
-oct-ctl-sdk = { workspace = true }
-
-async-trait = { workspace = true }
-log = { workspace = true }
-petgraph = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-toml = { workspace = true }
-tera = { workspace = true }
 
 [dev-dependencies]
 mockito = { workspace = true }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

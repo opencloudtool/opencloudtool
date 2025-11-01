@@ -27,6 +27,7 @@ resolver = "3"
 [workspace.dependencies]
 oct-cloud = { package = "oct-cloud", path = "crates/oct-cloud", version = "0.5.1" }
 oct-orchestrator = { package = "oct-orchestrator", path = "crates/oct-orchestrator", version = "0.5.1" }
+oct-ctl-sdk = { package = "oct-ctl-sdk", path = "crates/oct-ctl-sdk", version = "0.5.1" }
 
 assert_cmd = "2.0.17"
 async-trait = "0.1.89"
