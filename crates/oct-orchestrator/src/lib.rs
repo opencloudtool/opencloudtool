@@ -18,6 +18,28 @@ pub struct OrchestratorWithGraph;
 impl OrchestratorWithGraph {
     const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
 
+    /// Deploys the configured infrastructure and user services based on the current project configuration.
+    ///
+    /// This performs a full deployment flow: it computes the required resources from the service graph,
+    /// provisions infrastructure, verifies host health, persists infra and user state, optionally builds
+    /// and pushes container images to ECR when configured, and schedules service lifecycle actions
+    /// (create, remove, update) to match the desired configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful deployment; `Err` when any step of the deployment (configuration load,
+    /// infra provisioning, host health check, image build/push, state persistence, or service scheduling)
+    /// fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn try_main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let orchestrator = crate::OrchestratorWithGraph {};
+    /// orchestrator.deploy().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
