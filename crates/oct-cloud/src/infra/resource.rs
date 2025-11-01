@@ -694,6 +694,49 @@ impl VmManager<'_> {
         None
     }
 
+    /// Waits for a host to be healthy
+    async fn check_host_health(
+        &self,
+        public_ip: &String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let max_tries = 24;
+        let sleep_duration_s = 5;
+
+        log::info!("Waiting for host '{public_ip}' to be ready");
+
+        let oct_ctl_client = oct_ctl_sdk::Client::new(public_ip.clone());
+
+        let mut is_healthy = false;
+        for _ in 0..max_tries {
+            is_healthy = match oct_ctl_client.health_check().await {
+                Ok(()) => {
+                    log::info!("Host '{public_ip}' is ready");
+
+                    true
+                }
+                Err(err) => {
+                    log::info!("Host '{public_ip}' responded with error: {err}");
+
+                    false
+                }
+            };
+
+            if is_healthy {
+                break;
+            }
+
+            log::info!("Retrying in {sleep_duration_s} sec...");
+
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+        }
+
+        if is_healthy {
+            Ok(())
+        } else {
+            Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
+        }
+    }
+
     async fn is_terminated(&self, id: String) -> Result<(), Box<dyn std::error::Error>> {
         let max_attempts = 24;
         let sleep_duration = 5;
@@ -710,10 +753,8 @@ impl VmManager<'_> {
                 return Ok(());
             }
 
-            log::info!(
-                "VM is not terminated yet... 
-                 retrying in {sleep_duration} sec...",
-            );
+            log::info!("VM is not terminated yet. Retrying in {sleep_duration} sec...",);
+
             tokio::time::sleep(std::time::Duration::from_secs(sleep_duration)).await;
         }
 
@@ -808,13 +849,16 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
             .await
             .expect("In this implementation we always expect public ip");
 
-        Ok(Vm {
-            id: instance_id.clone(),
-            public_ip,
-            instance_type: input.instance_type.clone(),
-            ami: input.ami.clone(),
-            user_data,
-        })
+        match self.check_host_health(&public_ip).await {
+            Ok(()) => Ok(Vm {
+                id: instance_id.clone(),
+                public_ip,
+                instance_type: input.instance_type.clone(),
+                ami: input.ami.clone(),
+                user_data,
+            }),
+            Err(e) => Err(format!("{public_ip} host is not healthy. Error: {e}").into()),
+        }
     }
 
     async fn destroy(
