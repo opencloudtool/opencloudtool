@@ -52,6 +52,8 @@ aws configure sso
 - [Inject system env variables](./examples/projects/inject-system-env-var/)
 - [HTTP server with single dockerfile](./examples/projects/http-server-with-dockerfile/)
 - [HTTP server with multiple dockerfiles](./examples/projects/http-server-with-multiple-dockerfiles/)
+- [Dedicated CS2 server](./examples/projects/cs2-server/)
+- [FastAPI app via python library](./examples/projects/fastapi-python-sdk/)
 
 ## High Level Design
 
