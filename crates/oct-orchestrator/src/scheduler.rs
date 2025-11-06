@@ -92,6 +92,7 @@ impl<'a> Scheduler<'a> {
     }
 
     /// Stops a running container and removes it from the state
+    #[allow(dead_code)]
     pub(crate) async fn stop(
         &mut self,
         service_name: &str,
