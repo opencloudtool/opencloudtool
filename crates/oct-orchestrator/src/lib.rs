@@ -33,9 +33,6 @@ impl OrchestratorWithGraph {
             backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
         let (mut user_state, _loaded) = user_state_backend.load().await?;
 
-        let (services_to_create, services_to_remove, services_to_update) =
-            get_user_services_to_create_and_delete(&config, &user_state);
-
         let number_of_instances =
             get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE);
 
@@ -98,14 +95,7 @@ impl OrchestratorWithGraph {
 
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
-        deploy_user_services(
-            &config,
-            &mut scheduler,
-            &services_to_create,
-            &services_to_remove,
-            &services_to_update,
-        )
-        .await?;
+        deploy_user_services(&config, &mut scheduler).await?;
 
         Ok(())
     }
@@ -195,114 +185,14 @@ fn get_number_of_needed_instances(
     )
 }
 
-/// Gets list of services to remove/create/update
-/// The order of created services depends on `depends_on` field in the config,
-/// dependencies are created first
-fn get_user_services_to_create_and_delete(
-    config: &config::Config,
-    user_state: &user_state::UserState,
-) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let expected_services: Vec<String> = config.project.services.keys().cloned().collect();
-
-    let user_state_services: Vec<String> = user_state
-        .instances
-        .values()
-        .flat_map(|instance| instance.services.keys())
-        .cloned()
-        .collect();
-
-    let expected_services_dependencies: Vec<String> = expected_services
-        .iter()
-        .flat_map(|service| config.project.services[service].depends_on.clone())
-        .filter(|service| !user_state_services.contains(service))
-        .collect();
-
-    let services_to_create: Vec<String> = expected_services
-        .iter()
-        .filter(|service| {
-            !user_state_services.contains(service)
-                && !expected_services_dependencies.contains(service)
-        })
-        .cloned()
-        .collect();
-
-    let services_to_remove: Vec<String> = user_state_services
-        .iter()
-        .filter(|service| !expected_services.contains(service))
-        .cloned()
-        .collect();
-
-    let services_to_update_dependencies: Vec<String> = expected_services
-        .iter()
-        .filter(|service| user_state_services.contains(service))
-        .flat_map(|service| config.project.services[service].depends_on.clone())
-        .collect();
-
-    let services_to_update: Vec<String> = expected_services
-        .iter()
-        .filter(|service| {
-            user_state_services.contains(service)
-                && !services_to_update_dependencies.contains(service)
-        })
-        .cloned()
-        .collect();
-
-    (
-        expected_services_dependencies
-            .iter()
-            .chain(services_to_create.iter())
-            .cloned()
-            .collect(),
-        services_to_remove,
-        services_to_update_dependencies
-            .iter()
-            .chain(services_to_update.iter())
-            .cloned()
-            .collect(),
-    )
-}
-
-/// Deploys and destroys user services
-/// TODO: Use it in `destroy`. Needs some modifications to correctly handle state file removal
+/// Deploys user services
 async fn deploy_user_services(
     config: &config::Config,
-    scheduler: &mut scheduler::Scheduler<'_>, // TODO: Figure out why lifetime is needed
-    services_to_create: &[String],
-    services_to_remove: &[String],
-    services_to_update: &[String],
+    scheduler: &mut scheduler::Scheduler<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for service_name in services_to_remove {
-        log::info!("Stopping container for service: {service_name}");
-
-        let _ = scheduler.stop(service_name).await;
-    }
-
-    for service_name in services_to_create {
-        let service = config.project.services.get(service_name);
-        let Some(service) = service else {
-            log::error!("Service '{service_name}' not found in config");
-
-            continue;
-        };
-
+    for (service_name, service) in &config.project.services {
         log::info!("Running service: {service_name}");
 
-        let _ = scheduler.run(service_name, service).await;
-    }
-
-    for service_name in services_to_update {
-        log::info!("Updating service: {service_name}");
-
-        let service = config.project.services.get(service_name);
-        let Some(service) = service else {
-            log::error!("Service '{service_name}' not found in config");
-
-            continue;
-        };
-
-        log::info!("Recreating container for service: {service_name}");
-
-        let _ = scheduler.stop(service_name).await;
         let _ = scheduler.run(service_name, service).await;
     }
 
