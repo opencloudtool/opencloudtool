@@ -95,7 +95,7 @@ impl OrchestratorWithGraph {
 
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
-        deploy_user_services(&config, &mut scheduler).await?;
+        deploy_user_services(&services_graph, &mut scheduler).await?;
 
         Ok(())
     }
@@ -187,13 +187,17 @@ fn get_number_of_needed_instances(
 
 /// Deploys user services
 async fn deploy_user_services(
-    config: &config::Config,
+    services_graph: &Graph<config::Node, String>,
     scheduler: &mut scheduler::Scheduler<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for (service_name, service) in &config.project.services {
-        log::info!("Running service: {service_name}");
+    let sorted_graph = infra::graph::kahn_traverse(services_graph);
 
-        let _ = scheduler.run(service_name, service).await;
+    for node_index in &sorted_graph {
+        if let config::Node::Resource(service) = &services_graph[*node_index] {
+            log::info!("Running service: {}", service.name);
+
+            let _ = scheduler.run(&service.name, service).await;
+        }
     }
 
     Ok(())
