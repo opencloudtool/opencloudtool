@@ -51,6 +51,8 @@ impl Client {
         memory: u64,
         envs: HashMap<String, String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
         let client = reqwest::Client::new();
 
         let request = RunContainerRequest {
@@ -82,6 +84,8 @@ impl Client {
     }
 
     pub async fn remove_container(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
         let client = reqwest::Client::new();
 
         let request = RemoveContainerRequest { name };
@@ -103,7 +107,48 @@ impl Client {
         }
     }
 
-    pub async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn check_host_health(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let max_tries = 24;
+        let sleep_duration_s = 5;
+
+        log::info!("Waiting for host '{}' to be ready", self.public_ip);
+
+        let mut is_healthy = false;
+        for _ in 0..max_tries {
+            is_healthy = match self.health_check().await {
+                Ok(()) => {
+                    log::info!("Host '{}' is ready", self.public_ip);
+
+                    true
+                }
+                Err(err) => {
+                    log::info!("Host '{}' responded with error: {}", self.public_ip, err);
+
+                    false
+                }
+            };
+
+            if is_healthy {
+                break;
+            }
+
+            log::info!("Retrying in {sleep_duration_s} sec...");
+
+            tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
+        }
+
+        if is_healthy {
+            Ok(())
+        } else {
+            Err(format!(
+                "Host '{}' failed to become ready after max retries",
+                self.public_ip
+            )
+            .into())
+        }
+    }
+
+    async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
 
         let response = client
@@ -139,7 +184,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let run_container_mock = server
             .mock("POST", "/run-container")
             .with_status(201)
             .match_header("Content-Type", "application/json")
@@ -167,7 +217,9 @@ mod tests {
 
         // Assert
         assert!(response.is_ok());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        run_container_mock.assert();
     }
 
     #[tokio::test]
@@ -175,7 +227,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let run_container_mock = server
             .mock("POST", "/run-container")
             .with_status(500)
             .match_header("Content-Type", "application/json")
@@ -203,7 +260,9 @@ mod tests {
 
         // Assert
         assert!(response.is_err());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        run_container_mock.assert();
     }
 
     #[tokio::test]
@@ -211,7 +270,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let remove_container_mock = server
             .mock("POST", "/remove-container")
             .with_status(200)
             .match_header("Content-Type", "application/json")
@@ -228,7 +292,9 @@ mod tests {
 
         // Assert
         assert!(response.is_ok());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        remove_container_mock.assert();
     }
 
     #[tokio::test]
@@ -236,7 +302,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let remove_container_mock = server
             .mock("POST", "/remove-container")
             .with_status(500)
             .match_header("Content-Type", "application/json")
@@ -253,6 +324,8 @@ mod tests {
 
         // Assert
         assert!(response.is_err());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        remove_container_mock.assert();
     }
 }

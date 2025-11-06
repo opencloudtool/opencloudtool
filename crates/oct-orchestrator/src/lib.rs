@@ -53,15 +53,7 @@ impl OrchestratorWithGraph {
         let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
 
-        // TODO: Move instances health check to instance deployment
         for vm in &vms {
-            let oct_ctl_client = oct_ctl_sdk::Client::new(vm.public_ip.clone());
-
-            let host_health = check_host_health(&oct_ctl_client).await;
-            if host_health.is_err() {
-                return Err("Failed to check host health".into());
-            }
-
             // Add missing instances to state
             // TODO: Handle removing instances
             if user_state.instances.contains_key(&vm.public_ip) {
@@ -268,38 +260,6 @@ fn get_user_services_to_create_and_delete(
             .cloned()
             .collect(),
     )
-}
-
-/// Waits for a host to be healthy
-async fn check_host_health(
-    oct_ctl_client: &oct_ctl_sdk::Client,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let public_ip = &oct_ctl_client.public_ip();
-
-    let max_tries = 24;
-    let sleep_duration_s = 5;
-
-    log::info!("Waiting for host '{public_ip}' to be ready");
-
-    for _ in 0..max_tries {
-        match oct_ctl_client.health_check().await {
-            Ok(()) => {
-                log::info!("Host '{public_ip}' is ready");
-
-                return Ok(());
-            }
-            Err(err) => {
-                log::info!(
-                    "Host '{public_ip}' responded with error: {err}. \
-                        Retrying in {sleep_duration_s} sec..."
-                );
-
-                tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
-            }
-        }
-    }
-
-    Err(format!("Host '{public_ip}' failed to become ready after max retries").into())
 }
 
 /// Deploys and destroys user services
