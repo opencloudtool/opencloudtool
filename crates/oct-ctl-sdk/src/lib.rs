@@ -184,7 +184,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let run_container_mock = server
             .mock("POST", "/run-container")
             .with_status(201)
             .match_header("Content-Type", "application/json")
@@ -212,7 +217,9 @@ mod tests {
 
         // Assert
         assert!(response.is_ok());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        run_container_mock.assert();
     }
 
     #[tokio::test]
@@ -220,7 +227,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let run_container_mock = server
             .mock("POST", "/run-container")
             .with_status(500)
             .match_header("Content-Type", "application/json")
@@ -248,7 +260,9 @@ mod tests {
 
         // Assert
         assert!(response.is_err());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        run_container_mock.assert();
     }
 
     #[tokio::test]
@@ -256,7 +270,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let remove_container_mock = server
             .mock("POST", "/remove-container")
             .with_status(200)
             .match_header("Content-Type", "application/json")
@@ -273,7 +292,9 @@ mod tests {
 
         // Assert
         assert!(response.is_ok());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        remove_container_mock.assert();
     }
 
     #[tokio::test]
@@ -281,7 +302,12 @@ mod tests {
         // Arrange
         let (ip, port, mut server) = setup_server().await;
 
-        let server_mock = server
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let remove_container_mock = server
             .mock("POST", "/remove-container")
             .with_status(500)
             .match_header("Content-Type", "application/json")
@@ -298,6 +324,8 @@ mod tests {
 
         // Assert
         assert!(response.is_err());
-        server_mock.assert();
+
+        health_check_mock.assert();
+        remove_container_mock.assert();
     }
 }
