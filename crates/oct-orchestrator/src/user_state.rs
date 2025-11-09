@@ -143,7 +143,7 @@ mod tests {
             memory: 1024,
             services: HashMap::from([
                 (
-                    "test".to_string(),
+                    "app_1".to_string(),
                     config::Service {
                         name: "app_1".to_string(),
                         image: "nginx:latest".to_string(),
@@ -158,9 +158,9 @@ mod tests {
                     },
                 ),
                 (
-                    "test2".to_string(),
+                    "app_2".to_string(),
                     config::Service {
-                        name: "app_1".to_string(),
+                        name: "app_2".to_string(),
                         image: "nginx:latest".to_string(),
                         dockerfile_path: None,
                         command: None,
