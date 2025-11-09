@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config;
+
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
 pub(crate) struct UserState {
     /// Key - public IP, Value - instance
@@ -43,7 +45,7 @@ pub(crate) struct Instance {
     pub(crate) memory: u64,
 
     /// Services running on instance
-    pub(crate) services: HashMap<String, Service>,
+    pub(crate) services: HashMap<String, config::Service>,
 }
 
 impl Instance {
@@ -56,14 +58,6 @@ impl Instance {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
-pub(crate) struct Service {
-    /// CPUs required by service
-    pub(crate) cpus: u32,
-    /// Memory required by service
-    pub(crate) memory: u64,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -71,29 +65,52 @@ mod tests {
     #[test]
     fn test_user_state_get_services_context() {
         let user_state = UserState {
-            instances: HashMap::from([(
-                "1.2.3.4".to_string(),
-                Instance {
-                    cpus: 1000,
-                    memory: 1024,
-                    services: HashMap::from([
-                        (
+            instances: HashMap::from([
+                (
+                    "1.2.3.4".to_string(),
+                    Instance {
+                        cpus: 1000,
+                        memory: 1024,
+                        services: HashMap::from([(
                             "app_1".to_string(),
-                            Service {
+                            config::Service {
+                                name: "app_1".to_string(),
+                                image: "nginx:latest".to_string(),
+                                dockerfile_path: None,
+                                command: None,
+                                internal_port: None,
+                                external_port: None,
                                 cpus: 1000,
                                 memory: 1024,
+                                depends_on: vec![],
+                                envs: HashMap::new(),
                             },
-                        ),
-                        (
+                        )]),
+                    },
+                ),
+                (
+                    "2.3.4.5".to_string(),
+                    Instance {
+                        cpus: 1000,
+                        memory: 1024,
+                        services: HashMap::from([(
                             "app_2".to_string(),
-                            Service {
-                                cpus: 250,
-                                memory: 256,
+                            config::Service {
+                                name: "app_2".to_string(),
+                                image: "nginx:latest".to_string(),
+                                dockerfile_path: None,
+                                command: None,
+                                internal_port: None,
+                                external_port: None,
+                                cpus: 1000,
+                                memory: 1024,
+                                depends_on: vec![],
+                                envs: HashMap::new(),
                             },
-                        ),
-                    ]),
-                },
-            )]),
+                        )]),
+                    },
+                ),
+            ]),
         };
 
         // Act
@@ -112,7 +129,7 @@ mod tests {
                 (
                     "app_2".to_string(),
                     ServiceContext {
-                        public_ip: "1.2.3.4".to_string()
+                        public_ip: "2.3.4.5".to_string()
                     }
                 )
             ])
@@ -127,16 +144,32 @@ mod tests {
             services: HashMap::from([
                 (
                     "test".to_string(),
-                    Service {
+                    config::Service {
+                        name: "app_1".to_string(),
+                        image: "nginx:latest".to_string(),
+                        dockerfile_path: None,
+                        command: None,
+                        internal_port: None,
+                        external_port: None,
                         cpus: 500,
                         memory: 512,
+                        depends_on: vec![],
+                        envs: HashMap::new(),
                     },
                 ),
                 (
                     "test2".to_string(),
-                    Service {
+                    config::Service {
+                        name: "app_1".to_string(),
+                        image: "nginx:latest".to_string(),
+                        dockerfile_path: None,
+                        command: None,
+                        internal_port: None,
+                        external_port: None,
                         cpus: 250,
                         memory: 256,
+                        depends_on: vec![],
+                        envs: HashMap::new(),
                     },
                 ),
             ]),
