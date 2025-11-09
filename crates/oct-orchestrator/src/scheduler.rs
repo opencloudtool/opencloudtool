@@ -1,6 +1,5 @@
-use crate::backend;
-use crate::config::Service;
 use crate::user_state;
+use crate::{backend, config};
 
 /// Schedules services on EC2 instances
 /// TODO:
@@ -26,7 +25,7 @@ impl<'a> Scheduler<'a> {
     pub(crate) async fn run(
         &mut self,
         service_name: &str,
-        service: &Service,
+        service: &config::Service,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let services_context = self.user_state.get_services_context();
 
@@ -70,13 +69,9 @@ impl<'a> Scheduler<'a> {
                         }
                     }
 
-                    instance.services.insert(
-                        service_name.to_string(),
-                        user_state::Service {
-                            cpus: service.cpus,
-                            memory: service.memory,
-                        },
-                    );
+                    instance
+                        .services
+                        .insert(service_name.to_string(), service.clone());
 
                     break;
                 }
