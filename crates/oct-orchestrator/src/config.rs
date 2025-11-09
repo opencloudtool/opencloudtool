@@ -45,7 +45,11 @@ impl Config {
 
         let config_with_injected_envs = Self::render_system_envs(config);
 
-        let toml_data: Config = toml::from_str(&config_with_injected_envs)?;
+        let mut toml_data: Config = toml::from_str(&config_with_injected_envs)?;
+
+        for (service_name, service) in &mut toml_data.project.services {
+            service.name.clone_from(service_name);
+        }
 
         Ok(toml_data)
     }
@@ -143,6 +147,9 @@ pub(crate) struct Project {
 /// This configuration is managed by the user and used to deploy the service
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub(crate) struct Service {
+    /// Service name, injected from the key in the services map.
+    #[serde(skip_deserializing, default)]
+    pub(crate) name: String,
     /// Image to use for the container
     pub(crate) image: String,
     /// Path to the Dockerfile
@@ -266,6 +273,7 @@ depends_on = ["app_1"]
                         (
                             "app_1".to_string(),
                             Service {
+                                name: "app_1".to_string(),
                                 image: String::new(),
                                 dockerfile_path: Some("Dockerfile".to_string()),
                                 command: Some("echo Hello World!".to_string()),
@@ -291,6 +299,7 @@ depends_on = ["app_1"]
                         (
                             "app_2".to_string(),
                             Service {
+                                name: "app_2".to_string(),
                                 image: "nginx:latest".to_string(),
                                 dockerfile_path: None,
                                 command: None,
@@ -298,7 +307,7 @@ depends_on = ["app_1"]
                                 external_port: None,
                                 cpus: 250,
                                 memory: 64,
-                                depends_on: vec!("app_1".to_string()),
+                                depends_on: vec!["app_1".to_string()],
                                 envs: HashMap::new(),
                             }
                         ),
@@ -338,6 +347,7 @@ depends_on = ["app_1"]
     fn test_config_to_graph_single_node() {
         // Arrange
         let service = Service {
+            name: "app_1".to_string(),
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
             command: None,
@@ -385,6 +395,7 @@ depends_on = ["app_1"]
     fn test_config_to_graph_with_dependencies() {
         // Arrange
         let service1 = Service {
+            name: "app_1".to_string(),
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
             command: None,
@@ -396,6 +407,7 @@ depends_on = ["app_1"]
             envs: HashMap::new(),
         };
         let service2 = Service {
+            name: "app_2".to_string(),
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
             command: None,
@@ -451,6 +463,7 @@ depends_on = ["app_1"]
     fn test_service_render_envs_success() {
         // Arrange
         let service = Service {
+            name: "app_2".to_string(),
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
             command: None,
@@ -486,6 +499,7 @@ depends_on = ["app_1"]
     fn test_service_render_envs_failure() {
         // Arrange
         let service = Service {
+            name: "app_2".to_string(),
             image: "nginx:latest".to_string(),
             dockerfile_path: None,
             command: None,
