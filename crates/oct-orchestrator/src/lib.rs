@@ -21,7 +21,7 @@ impl OrchestratorWithGraph {
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
-        let services_graph = config.to_graph();
+        let services_graph = config.to_graph()?;
 
         log::info!("User services graph: {}", Dot::new(&services_graph));
 
