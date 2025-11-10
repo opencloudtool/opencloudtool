@@ -54,7 +54,8 @@ impl Config {
         Ok(toml_data)
     }
 
-    pub(crate) fn to_graph(&self) -> Graph<Node, String> {
+    /// Converts user services to a graph
+    pub(crate) fn to_graph(&self) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
         let mut graph = Graph::<Node, String>::new();
         let mut edges = Vec::new();
         let root = graph.add_node(Node::Root);
@@ -75,18 +76,26 @@ impl Config {
                 edges.push((root, *resource, String::new()));
             } else {
                 for dependency_name in &service.depends_on {
-                    let dependency_resource = services_map
-                        .get(dependency_name)
-                        .expect("Missed dependency resource value in resource_map");
+                    let dependency_resource = services_map.get(dependency_name);
 
-                    edges.push((*dependency_resource, *resource, String::new()));
+                    match dependency_resource {
+                        Some(dependency_resource) => {
+                            edges.push((*dependency_resource, *resource, String::new()));
+                        }
+                        None => {
+                            return Err(format!(
+                                "Missed resource with name '{dependency_name}' referenced as dependency in '{service_name}' service"
+                            )
+                            .into());
+                        }
+                    }
                 }
             }
         }
 
         graph.extend_with_edges(&edges);
 
-        graph
+        Ok(graph)
     }
 
     /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
@@ -336,7 +345,7 @@ depends_on = ["app_1"]
         };
 
         // Act
-        let graph = config.to_graph();
+        let graph = config.to_graph().expect("Failed to get graph");
 
         // Assert
         assert_eq!(graph.node_count(), 1); // Root node
@@ -373,7 +382,7 @@ depends_on = ["app_1"]
         };
 
         // Act
-        let graph = config.to_graph();
+        let graph = config.to_graph().expect("Failed to get graph");
 
         // Assert
         assert_eq!(graph.node_count(), 2);
@@ -436,7 +445,7 @@ depends_on = ["app_1"]
         };
 
         // Act
-        let graph = config.to_graph();
+        let graph = config.to_graph().expect("Failed to get graph");
 
         // Assert
         assert_eq!(graph.node_count(), 3);
@@ -457,6 +466,46 @@ depends_on = ["app_1"]
 
         assert!(graph.contains_edge(root_node_index, service1_node_index));
         assert!(graph.contains_edge(service1_node_index, service2_node_index));
+    }
+
+    #[test]
+    fn test_config_to_graph_failed_to_get_dependency() {
+        // Arrange
+        let service = Service {
+            name: "app_1".to_string(),
+            image: "nginx:latest".to_string(),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec!["INCORRECT_SERVICE_NAME".to_string()],
+            envs: HashMap::new(),
+        };
+        let config = Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: HashMap::from([("app_1".to_string(), service)]),
+                domain: None,
+            },
+        };
+
+        // Act
+        let graph = config.to_graph();
+
+        // Assert
+        assert!(graph.is_err());
+        assert_eq!(
+            graph.expect_err("Expected error").to_string(),
+            "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in 'app_1' service"
+        );
     }
 
     #[test]
