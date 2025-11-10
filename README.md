@@ -63,9 +63,9 @@ aws configure sso
 
 Each version of OpenCloudTool has a mini-project to prove the design and implementation.
 
-#### v0.6.0 "Refactor: User services deployment scalability"
+#### v0.7.0 "VMs deployment based on user services resources"
 
-![v0.6.0](./docs/v0.6.0.excalidraw.png)
+![v0.7.0](./docs/v0.7.0.excalidraw.png)
 
 ### Fixed infra graph
 
