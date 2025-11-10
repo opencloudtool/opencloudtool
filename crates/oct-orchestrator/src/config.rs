@@ -84,7 +84,7 @@ impl Config {
                         }
                         None => {
                             return Err(format!(
-                                "Missed resource with name '{dependency_name}' references as dependency in '{service_name}'"
+                                "Missed resource with name '{dependency_name}' referenced as dependency in '{service_name}' service"
                             )
                             .into());
                         }
@@ -504,7 +504,7 @@ depends_on = ["app_1"]
         assert!(graph.is_err());
         assert_eq!(
             graph.expect_err("Expected error").to_string(),
-            "Missed resource with name 'INCORRECT_SERVICE_NAME' references as dependency in 'app_1'"
+            "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in 'app_1' service"
         );
     }
 
