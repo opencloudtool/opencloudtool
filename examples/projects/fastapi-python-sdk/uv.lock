@@ -110,13 +110,16 @@ wheels = [
 
 [[package]]
 name = "opencloudtool"
-version = "0.5.1"
+version = "0.6.0"
 source = { editable = "../../../crates/oct-py" }
 
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "maturin", specifier = ">=1.9.3" }]
+dev = [
+    { name = "maturin", specifier = ">=1.9.3" },
+    { name = "ruff", specifier = ">=0.14.0" },
+]
 
 [[package]]
 name = "pydantic"
