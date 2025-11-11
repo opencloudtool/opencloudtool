@@ -34,7 +34,7 @@ impl OrchestratorWithGraph {
         let (mut user_state, _loaded) = user_state_backend.load().await?;
 
         let number_of_instances =
-            get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE);
+            get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE)?;
 
         log::info!("Instances to be created: {number_of_instances}");
 
@@ -45,7 +45,7 @@ impl OrchestratorWithGraph {
         );
 
         let infra_graph_manager = infra::graph::GraphManager::new().await;
-        let (resource_graph, vms, ecr) = infra_graph_manager.deploy(&spec_graph).await;
+        let (resource_graph, vms, ecr) = infra_graph_manager.deploy(&spec_graph).await?;
 
         let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
@@ -147,8 +147,8 @@ impl OrchestratorWithGraph {
 fn get_number_of_needed_instances(
     services_graph: &Graph<config::Node, String>,
     instance_type: &InstanceType,
-) -> u32 {
-    let sorted_graph = infra::graph::kahn_traverse(services_graph);
+) -> Result<u32, Box<dyn std::error::Error>> {
+    let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
     let total_services_cpus = sorted_graph
         .iter()
@@ -179,10 +179,10 @@ fn get_number_of_needed_instances(
     let needed_instances_count_by_cpus = total_services_cpus.div_ceil(instance_info.cpus);
     let needed_instances_count_by_memory = total_services_memory.div_ceil(instance_info.memory);
 
-    std::cmp::max(
+    Ok(std::cmp::max(
         needed_instances_count_by_cpus,
         u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
-    )
+    ))
 }
 
 /// Deploys user services
@@ -190,7 +190,7 @@ async fn deploy_user_services(
     services_graph: &Graph<config::Node, String>,
     scheduler: &mut scheduler::Scheduler<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let sorted_graph = infra::graph::kahn_traverse(services_graph);
+    let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
     for node_index in &sorted_graph {
         if let config::Node::Resource(service) = &services_graph[*node_index] {

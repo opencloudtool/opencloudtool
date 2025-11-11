@@ -236,7 +236,7 @@ impl GraphManager {
     pub async fn deploy(
         &self,
         graph: &Graph<SpecNode, String>,
-    ) -> (Graph<Node, String>, Vec<Vm>, Option<Ecr>) {
+    ) -> Result<(Graph<Node, String>, Vec<Vm>, Option<Ecr>), Box<dyn std::error::Error>> {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
 
@@ -245,7 +245,7 @@ impl GraphManager {
         let mut ecr: Option<Ecr> = None;
         let mut vms: Vec<Vm> = Vec::new();
 
-        let result = kahn_traverse(graph);
+        let result = kahn_traverse(graph)?;
 
         for node_index in &result {
             let parent_node_indexes = match parents.get(node_index) {
@@ -419,7 +419,7 @@ impl GraphManager {
 
         log::info!("Created graph {}", Dot::new(&resource_graph));
 
-        (resource_graph, vms, ecr)
+        Ok((resource_graph, vms, ecr))
     }
 
     /// Destroys resource graph
@@ -461,7 +461,7 @@ impl GraphManager {
             }
         }
 
-        let result = kahn_traverse(graph);
+        let result = kahn_traverse(graph)?;
 
         let mut destroyed_nodes: Vec<NodeIndex> = Vec::new();
 
@@ -557,7 +557,9 @@ impl GraphManager {
 }
 
 /// Kahn's Algorithm Implementation
-pub fn kahn_traverse<T>(graph: &Graph<T, String>) -> Vec<NodeIndex> {
+pub fn kahn_traverse<T>(
+    graph: &Graph<T, String>,
+) -> Result<Vec<NodeIndex>, Box<dyn std::error::Error>> {
     // 1. Calculate the in-degree for each node.
     let mut in_degrees: Vec<usize> = graph
         .node_indices()
@@ -588,7 +590,11 @@ pub fn kahn_traverse<T>(graph: &Graph<T, String>) -> Vec<NodeIndex> {
         }
     }
 
-    result
+    if result.len() < graph.node_count() {
+        return Err("Cycle detected in graph".into());
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -903,7 +909,10 @@ mod tests {
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+        let (resource_graph, vms, ecr) = graph_manager
+            .deploy(&spec_graph)
+            .await
+            .expect("Failed to deploy");
 
         // Assert
         assert_eq!(resource_graph.node_count(), 10); // root + 9 resources
@@ -964,7 +973,10 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+        let (resource_graph, vms, ecr) = graph_manager
+            .deploy(&spec_graph)
+            .await
+            .expect("Failed to deploy");
 
         // Assert
         assert_eq!(resource_graph.node_count(), 0);
@@ -1024,7 +1036,10 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager.deploy(&spec_graph).await;
+        let (resource_graph, vms, ecr) = graph_manager
+            .deploy(&spec_graph)
+            .await
+            .expect("Failed to deploy");
 
         // Assert
         // 1 root + VPC
@@ -1354,7 +1369,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         let graph = Graph::<&str, String>::new();
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
         assert!(result.is_empty());
@@ -1367,7 +1382,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         let a = graph.add_node("a");
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
         assert_eq!(result, vec![a]);
@@ -1383,7 +1398,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         graph.extend_with_edges(&[(a, b, String::new()), (b, c, String::new())]);
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
         assert_eq!(result, vec![a, b, c]);
@@ -1400,7 +1415,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         graph.extend_with_edges(&[(a, c, String::new()), (b, d, String::new())]);
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
         // The order of a and b is deterministic because of node_indices() order.
@@ -1429,7 +1444,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         graph.extend_with_edges(&edges);
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
         assert_eq!(result.len(), 6);
@@ -1461,12 +1476,10 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         ]);
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect_err("Graph should have a cycle");
 
         // Assert
-        // The result should be empty because all nodes are part of a cycle
-        // and there are no nodes with in-degree 0.
-        assert!(result.is_empty());
+        assert_eq!(result.to_string(), "Cycle detected in graph");
     }
 
     #[test]
@@ -1484,10 +1497,9 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         ]);
 
         // Act
-        let result = kahn_traverse(&graph);
+        let result = kahn_traverse(&graph).expect_err("Graph should have a cycle");
 
         // Assert
-        // Only a and b should be in the result.
-        assert_eq!(result, vec![a, b]);
+        assert_eq!(result.to_string(), "Cycle detected in graph");
     }
 }
