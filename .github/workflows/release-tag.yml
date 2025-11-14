@@ -16,8 +16,10 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  publish-rust:
     runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +29,18 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Publish oct-cloud
+        run: cargo publish -p oct-cloud
+          
+      - name: Publish oct-ctl-sdk
+        run: cargo publish -p oct-ctl-sdk
+
+      - name: Publish oct-orchestrator
+        run: cargo publish -p oct-orchestrator
+
+      - name: Publish oct-cli
+        run: cargo publish -p oct-cli
+      
       - name: Build oct binaries
         run: cargo build -p oct-ctl -p oct-cli --release --verbose
 
@@ -40,3 +54,23 @@ jobs:
           files: |
             target/release/oct-ctl
             target/release/oct-cli
+
+  publish-python:
+    runs-on: ubuntu-latest
+    env:
+      UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build Python package with uv
+        run: uv build --out-dir target/wheels crates/oct-py
+
+      - name: Publish oct-py to PyPI with uv
+        run: uv publish --verbose target/wheels/*.tar.gz # source code only
