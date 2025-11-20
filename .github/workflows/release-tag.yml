@@ -31,7 +31,7 @@ jobs:
 
       - name: Publish oct-cloud
         run: cargo publish -p oct-cloud
-          
+
       - name: Publish oct-ctl-sdk
         run: cargo publish -p oct-ctl-sdk
 
@@ -56,11 +56,19 @@ jobs:
             target/release/oct-cli
 
   publish-python:
+    needs: publish-rust
     runs-on: ubuntu-latest
     env:
       UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
