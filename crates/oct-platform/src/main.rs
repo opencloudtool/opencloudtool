@@ -245,5 +245,5 @@ async fn github_login_redirect(
             .into_response();
     };
 
-    Redirect::permanent("/repos").into_response()
+    Redirect::to("/repos").into_response()
 }
