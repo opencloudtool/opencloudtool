@@ -84,7 +84,7 @@ async fn index() -> impl IntoResponse {
     match index_template.render() {
         Ok(response) => (StatusCode::OK, Html(response)),
         Err(_) => (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             Html(String::from("Failed to render `IndexTemplate`")),
         ),
     }
@@ -94,7 +94,7 @@ async fn index() -> impl IntoResponse {
 async fn list_repos() -> impl IntoResponse {
     let Ok(user) = User::load() else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
             Html(String::from("Failed to load from `user.json`")),
         );
     };
@@ -106,7 +106,7 @@ async fn list_repos() -> impl IntoResponse {
     match repo_template.render() {
         Ok(response) => (StatusCode::OK, Html(response)),
         Err(_) => (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             Html(String::from("Failed to render `RepoTemplate`")),
         ),
     }
@@ -190,7 +190,7 @@ async fn github_login_redirect(
         .await
     else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::BAD_GATEWAY,
             Html(String::from("Failed to send `access_token` request")),
         )
             .into_response();
@@ -198,7 +198,7 @@ async fn github_login_redirect(
     let Ok(access_token_response) = access_token_response.json::<AccessTokenResponse>().await
     else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::BAD_GATEWAY,
             Html(String::from(
                 "Failed to parse JSON from `access_token` request",
             )),
@@ -218,14 +218,14 @@ async fn github_login_redirect(
         .await
     else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::BAD_GATEWAY,
             Html(String::from("Failed to sent `user` request")),
         )
             .into_response();
     };
     let Ok(user_data_response) = user_data_response.json::<UserDataResponse>().await else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::BAD_GATEWAY,
             Html(String::from("Failed to parse JSON from `user` request")),
         )
             .into_response();
@@ -237,7 +237,7 @@ async fn github_login_redirect(
     };
     let Ok(()) = user.save() else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             Html(String::from("Failed to `user.json`")),
         )
             .into_response();
