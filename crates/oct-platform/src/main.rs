@@ -221,7 +221,7 @@ async fn github_login_redirect(
     else {
         return (
             StatusCode::BAD_GATEWAY,
-            Html(String::from("Failed to sent `user` request")),
+            Html(String::from("Failed to send `user` request")),
         )
             .into_response();
     };
