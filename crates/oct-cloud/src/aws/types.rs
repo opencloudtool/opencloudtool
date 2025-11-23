@@ -86,6 +86,21 @@ impl InstanceType {
         }
     }
 
+    /// Tries to get the smallest possible instance type for to fit requested resources
+    // NOTE: The instances list must be sorted by size from smallest to largest
+    pub fn from_resources(cpus: u32, memory: u64) -> Option<Self> {
+        let instances = [Self::T2Micro, Self::T3Medium];
+
+        for instance in instances {
+            let info = instance.get_info();
+            if cpus <= info.cpus && memory <= info.memory {
+                return Some(instance);
+            }
+        }
+
+        None
+    }
+
     pub fn get_info(&self) -> InstanceInfo {
         match self {
             InstanceType::T2Micro => InstanceInfo {
@@ -218,5 +233,68 @@ mod tests {
     #[should_panic(expected = "Invalid instance type: invalid")]
     fn test_instance_type_from_str_invalid() {
         let _ = InstanceType::from("invalid");
+    }
+
+    #[test]
+    fn test_from_resources_fits_t2_micro_small_request() {
+        assert_eq!(
+            InstanceType::from_resources(500, 512),
+            Some(InstanceType::T2Micro)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t2_micro_exact_request() {
+        assert_eq!(
+            InstanceType::from_resources(1000, 1024),
+            Some(InstanceType::T2Micro)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t3_medium_cpu_overflow() {
+        assert_eq!(
+            InstanceType::from_resources(1001, 1024),
+            Some(InstanceType::T3Medium)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t3_medium_cpu_exact() {
+        assert_eq!(
+            InstanceType::from_resources(2000, 1024),
+            Some(InstanceType::T3Medium)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t3_medium_mem_overflow() {
+        assert_eq!(
+            InstanceType::from_resources(1000, 2048),
+            Some(InstanceType::T3Medium)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t3_medium_exact_request() {
+        assert_eq!(
+            InstanceType::from_resources(2000, 4096),
+            Some(InstanceType::T3Medium)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_no_fit_cpu_overflow() {
+        assert_eq!(InstanceType::from_resources(2001, 4096), None);
+    }
+
+    #[test]
+    fn test_from_resources_no_fit_mem_overflow() {
+        assert_eq!(InstanceType::from_resources(2000, 4097), None);
+    }
+
+    #[test]
+    fn test_from_resources_no_fit_large_request() {
+        assert_eq!(InstanceType::from_resources(u32::MAX, u64::MAX), None);
     }
 }

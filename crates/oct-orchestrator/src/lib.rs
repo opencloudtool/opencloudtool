@@ -16,8 +16,6 @@ mod user_state;
 pub struct OrchestratorWithGraph;
 
 impl OrchestratorWithGraph {
-    const INSTANCE_TYPE: InstanceType = InstanceType::T2Micro;
-
     pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
@@ -33,8 +31,12 @@ impl OrchestratorWithGraph {
             backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
         let (mut user_state, _loaded) = user_state_backend.load().await?;
 
+        let instance_type = get_instance_type(&services_graph)?;
+
+        log::info!("Instance to be created: {instance_type:?}");
+
         let spec_graph = infra::graph::GraphManager::get_spec_graph(
-            &Self::INSTANCE_TYPE,
+            &instance_type,
             config.project.domain.clone(),
         );
 
@@ -126,6 +128,44 @@ impl OrchestratorWithGraph {
                 Err(format!("Partial destruction: {e}. Remaining resources saved to state.").into())
             }
         }
+    }
+}
+
+/// Tries to find an instance type which can fit all user-requested services
+fn get_instance_type(
+    services_graph: &Graph<config::Node, String>,
+) -> Result<InstanceType, Box<dyn std::error::Error>> {
+    let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
+
+    let total_services_cpus = sorted_graph
+        .iter()
+        .filter_map(|node_index| {
+            if let config::Node::Resource(service) = &services_graph[*node_index] {
+                return Some(service);
+            }
+
+            None
+        })
+        .map(|service| service.cpus)
+        .sum::<u32>();
+
+    let total_services_memory = sorted_graph
+        .iter()
+        .filter_map(|node_index| {
+            if let config::Node::Resource(service) = &services_graph[*node_index] {
+                return Some(service);
+            }
+
+            None
+        })
+        .map(|service| service.memory)
+        .sum::<u64>();
+
+    let instance_type = InstanceType::from_resources(total_services_cpus, total_services_memory);
+
+    match instance_type {
+        Some(instance_type) => Ok(instance_type),
+        None => Err("Failed to get instance type to fit all services".into()),
     }
 }
 
