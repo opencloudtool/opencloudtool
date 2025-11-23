@@ -2327,7 +2327,6 @@ version = "0.6.1"
 dependencies = [
  "askama",
  "axum",
- "log",
  "reqwest",
  "serde",
  "serde_json",
