@@ -177,13 +177,15 @@ async fn github_login_redirect(
 
     let client = reqwest::Client::new();
 
+    let body = HashMap::from([
+        ("client_id", &github_config.client_id),
+        ("client_secret", &github_config.client_secret),
+        ("code", code),
+    ]);
+
     let Ok(access_token_response) = client
-        .post(format!(
-            "https://github.com/login/oauth/access_token?client_id={client_id}&client_secret={client_secret}&code={code}",
-            client_id = github_config.client_id,
-            client_secret = github_config.client_secret,
-            code = code,
-        ))
+        .post("https://github.com/login/oauth/access_token")
+        .json(&body)
         .header("Accept", "application/json")
         .timeout(std::time::Duration::from_secs(5))
         .send()
