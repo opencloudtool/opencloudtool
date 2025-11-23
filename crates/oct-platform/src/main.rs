@@ -119,7 +119,7 @@ async fn github_login(State(github_config): State<GithubConfig>) -> impl IntoRes
         [(
             "HX-Redirect",
             format!(
-                "https://github.com/login/oauth/authorize?client_id={client_id}&login",
+                "https://github.com/login/oauth/authorize?client_id={client_id}",
                 client_id = github_config.client_id
             ),
         )],
