@@ -74,22 +74,40 @@ pub struct InstanceInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InstanceType {
-    T2Micro,
+    T3Nano,
+    T3Micro,
+    T3Small,
     T3Medium,
+    T3Large,
+    T3Xlarge,
+    T32xlarge,
 }
 
 impl InstanceType {
     pub fn as_str(&self) -> &str {
         match self {
-            InstanceType::T2Micro => "t2.micro",
+            InstanceType::T3Nano => "t3.nano",
+            InstanceType::T3Micro => "t3.micro",
+            InstanceType::T3Small => "t3.small",
             InstanceType::T3Medium => "t3.medium",
+            InstanceType::T3Large => "t3.large",
+            InstanceType::T3Xlarge => "t3.xlarge",
+            InstanceType::T32xlarge => "t3.2xlarge",
         }
     }
 
     /// Tries to get the smallest possible instance type for to fit requested resources
     // NOTE: The instances list must be sorted by size from smallest to largest
     pub fn from_resources(cpus: u32, memory: u64) -> Option<Self> {
-        let instances = [Self::T2Micro, Self::T3Medium];
+        let instances = [
+            Self::T3Nano,
+            Self::T3Micro,
+            Self::T3Small,
+            Self::T3Medium,
+            Self::T3Large,
+            Self::T3Xlarge,
+            Self::T32xlarge,
+        ];
 
         for instance in instances {
             let info = instance.get_info();
@@ -103,13 +121,33 @@ impl InstanceType {
 
     pub fn get_info(&self) -> InstanceInfo {
         match self {
-            InstanceType::T2Micro => InstanceInfo {
-                cpus: 1000,
+            Self::T3Nano => InstanceInfo {
+                cpus: 2000,
+                memory: 512,
+            },
+            Self::T3Micro => InstanceInfo {
+                cpus: 2000,
                 memory: 1024,
             },
-            InstanceType::T3Medium => InstanceInfo {
+            Self::T3Small => InstanceInfo {
+                cpus: 2000,
+                memory: 2048,
+            },
+            Self::T3Medium => InstanceInfo {
                 cpus: 2000,
                 memory: 4096,
+            },
+            Self::T3Large => InstanceInfo {
+                cpus: 2000,
+                memory: 8192,
+            },
+            Self::T3Xlarge => InstanceInfo {
+                cpus: 4000,
+                memory: 16384,
+            },
+            Self::T32xlarge => InstanceInfo {
+                cpus: 8000,
+                memory: 32768,
             },
         }
     }
@@ -123,8 +161,13 @@ impl From<&str> for InstanceType {
     /// Panics if the string is not a valid instance type.
     fn from(value: &str) -> Self {
         match value {
-            "t2.micro" => InstanceType::T2Micro,
-            "t3.medium" => InstanceType::T3Medium,
+            "t3.nano" => Self::T3Nano,
+            "t3.micro" => Self::T3Micro,
+            "t3.small" => Self::T3Small,
+            "t3.medium" => Self::T3Medium,
+            "t3.large" => Self::T3Large,
+            "t3.xlarge" => Self::T3Xlarge,
+            "t3.2xlarge" => Self::T32xlarge,
             _ => panic!("Invalid instance type: {value}"),
         }
     }
@@ -201,32 +244,32 @@ mod tests {
 
     #[test]
     fn test_instance_type_as_str() {
-        assert_eq!(InstanceType::T2Micro.as_str(), "t2.micro");
-        assert_eq!(InstanceType::T3Medium.as_str(), "t3.medium");
+        assert_eq!(InstanceType::T3Nano.as_str(), "t3.nano");
+        assert_eq!(InstanceType::T32xlarge.as_str(), "t3.2xlarge");
     }
 
     #[test]
     fn test_instance_type_get_info() {
         assert_eq!(
-            InstanceType::T2Micro.get_info(),
+            InstanceType::T3Nano.get_info(),
             InstanceInfo {
-                cpus: 1000,
-                memory: 1024
+                cpus: 2000,
+                memory: 512
             }
         );
         assert_eq!(
-            InstanceType::T3Medium.get_info(),
+            InstanceType::T32xlarge.get_info(),
             InstanceInfo {
-                cpus: 2000,
-                memory: 4096
+                cpus: 8000,
+                memory: 32768
             }
         );
     }
 
     #[test]
     fn test_instance_type_from_str() {
-        assert_eq!(InstanceType::from("t2.micro"), InstanceType::T2Micro);
-        assert_eq!(InstanceType::from("t3.medium"), InstanceType::T3Medium);
+        assert_eq!(InstanceType::from("t3.nano"), InstanceType::T3Nano);
+        assert_eq!(InstanceType::from("t3.2xlarge"), InstanceType::T32xlarge);
     }
 
     #[test]
@@ -236,61 +279,69 @@ mod tests {
     }
 
     #[test]
-    fn test_from_resources_fits_t2_micro_small_request() {
+    fn test_from_resources_fits_t3_nano_small_request() {
         assert_eq!(
             InstanceType::from_resources(500, 512),
-            Some(InstanceType::T2Micro)
+            Some(InstanceType::T3Nano)
         );
     }
 
     #[test]
-    fn test_from_resources_fits_t2_micro_exact_request() {
+    fn test_from_resources_fits_t3_nano_exact_request() {
         assert_eq!(
-            InstanceType::from_resources(1000, 1024),
-            Some(InstanceType::T2Micro)
+            InstanceType::from_resources(2000, 512),
+            Some(InstanceType::T3Nano)
+        );
+    }
+
+    #[test]
+    fn test_from_resources_fits_t3_micro_mem_overflow() {
+        assert_eq!(
+            InstanceType::from_resources(2000, 513),
+            Some(InstanceType::T3Micro)
         );
     }
 
     #[test]
     fn test_from_resources_fits_t3_medium_cpu_overflow() {
         assert_eq!(
-            InstanceType::from_resources(1001, 1024),
-            Some(InstanceType::T3Medium)
+            InstanceType::from_resources(2001, 8192),
+            Some(InstanceType::T3Xlarge)
         );
     }
 
     #[test]
-    fn test_from_resources_fits_t3_medium_cpu_exact() {
+    fn test_from_resources_fits_t3_xlarge_exact() {
         assert_eq!(
-            InstanceType::from_resources(2000, 1024),
-            Some(InstanceType::T3Medium)
+            InstanceType::from_resources(4000, 16384),
+            Some(InstanceType::T3Xlarge)
         );
     }
 
     #[test]
-    fn test_from_resources_fits_t3_medium_mem_overflow() {
+    fn test_from_resources_fits_t3_2xlarge_mem_overflow() {
         assert_eq!(
-            InstanceType::from_resources(1000, 2048),
-            Some(InstanceType::T3Medium)
+            InstanceType::from_resources(4000, 16385),
+            Some(InstanceType::T32xlarge)
         );
     }
 
     #[test]
-    fn test_from_resources_fits_t3_medium_exact_request() {
+    fn test_from_resources_fits_t3_2xlarge_exact_request() {
         assert_eq!(
-            InstanceType::from_resources(2000, 4096),
-            Some(InstanceType::T3Medium)
+            InstanceType::from_resources(8000, 32768),
+            Some(InstanceType::T32xlarge)
         );
     }
 
     #[test]
     fn test_from_resources_no_fit_cpu_overflow() {
-        assert_eq!(InstanceType::from_resources(2001, 4096), None);
+        assert_eq!(InstanceType::from_resources(8001, 32768), None);
     }
 
     #[test]
     fn test_from_resources_no_fit_mem_overflow() {
-        assert_eq!(InstanceType::from_resources(2000, 4097), None);
+        assert_eq!(InstanceType::from_resources(8000, 32769), None);
     }
 
     #[test]

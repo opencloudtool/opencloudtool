@@ -2107,7 +2107,7 @@ mod tests {
         let vm = Vm {
             id: String::from("vm-id"),
             public_ip: String::from("1.2.3.4"),
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::new(),
         };
@@ -2148,7 +2148,7 @@ mod tests {
         let vm = Vm {
             id: String::from("vm-id"),
             public_ip: String::from("1.2.3.4"),
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::new(),
         };
@@ -2222,7 +2222,7 @@ mod tests {
         let vm = Vm {
             id: String::from("vm-id"),
             public_ip: String::from("1.2.3.4"),
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::new(),
         };
@@ -2719,7 +2719,7 @@ mod tests {
         };
 
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -2761,7 +2761,7 @@ mod tests {
             Vm {
                 id: String::from("vm-id"),
                 public_ip: String::from("1.2.3.4"),
-                instance_type: types::InstanceType::T2Micro,
+                instance_type: types::InstanceType::T3Micro,
                 ami: String::from("ami-123"),
                 user_data: String::from(
                     "user-data\naws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin dkr.ecr.region.amazonaws.com",
@@ -2778,7 +2778,7 @@ mod tests {
             client: &ec2_client_mock,
         };
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -2820,7 +2820,7 @@ mod tests {
             client: &ec2_client_mock,
         };
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -2863,7 +2863,7 @@ mod tests {
             client: &ec2_client_mock,
         };
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -2908,7 +2908,7 @@ mod tests {
             client: &ec2_client_mock,
         };
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -2956,7 +2956,7 @@ mod tests {
         };
 
         let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -3019,7 +3019,7 @@ mod tests {
         let vm = Vm {
             id: String::from("vm-id"),
             public_ip: String::from("1.2.3.4"),
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
@@ -3047,7 +3047,7 @@ mod tests {
         let vm = Vm {
             id: String::from("vm-id"),
             public_ip: String::from("1.2.3.4"),
-            instance_type: types::InstanceType::T2Micro,
+            instance_type: types::InstanceType::T3Micro,
             ami: String::from("ami-123"),
             user_data: String::from("user-data"),
         };
