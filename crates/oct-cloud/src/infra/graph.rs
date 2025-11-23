@@ -606,10 +606,8 @@ mod tests {
         let graph = GraphManager::get_spec_graph(&instance_type, domain_name);
 
         // Assert
-        let number_of_nodes = 10;
-        let number_of_edges = 10 + 4;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
+        assert_eq!(graph.node_count(), 10);
+        assert_eq!(graph.edge_count(), 10 + 4);
 
         let vm_nodes_count = graph
             .raw_nodes()
@@ -629,10 +627,8 @@ mod tests {
         let graph = GraphManager::get_spec_graph(&instance_type, domain_name);
 
         // Assert
-        let number_of_nodes = 10 + 2;
-        let number_of_edges = 11 + 6;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
+        assert_eq!(graph.node_count(), 10 + 2);
+        assert_eq!(graph.edge_count(), 11 + 6);
 
         let vm_nodes_count = graph
             .raw_nodes()
