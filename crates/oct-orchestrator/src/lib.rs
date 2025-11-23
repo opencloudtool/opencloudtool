@@ -33,34 +33,22 @@ impl OrchestratorWithGraph {
             backend::get_state_backend::<user_state::UserState>(&config.project.user_state_backend);
         let (mut user_state, _loaded) = user_state_backend.load().await?;
 
-        let number_of_instances =
-            get_number_of_needed_instances(&services_graph, &Self::INSTANCE_TYPE)?;
-
-        log::info!("Instances to be created: {number_of_instances}");
-
         let spec_graph = infra::graph::GraphManager::get_spec_graph(
-            number_of_instances,
             &Self::INSTANCE_TYPE,
             config.project.domain.clone(),
         );
 
         let infra_graph_manager = infra::graph::GraphManager::new().await;
-        let (resource_graph, vms, ecr) = infra_graph_manager.deploy(&spec_graph).await?;
+        let (resource_graph, vm, ecr) = infra_graph_manager.deploy(&spec_graph).await?;
 
         let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;
 
-        for vm in &vms {
-            // Add missing instances to state
-            // TODO: Handle removing instances
-            if user_state.instances.contains_key(&vm.public_ip) {
-                continue;
-            }
-
+        if let Some(vm) = vm {
             let instance_info = vm.instance_type.get_info();
 
             user_state.instances.insert(
-                vm.public_ip.clone(),
+                vm.public_ip,
                 user_state::Instance {
                     cpus: instance_info.cpus,
                     memory: instance_info.memory,
@@ -139,50 +127,6 @@ impl OrchestratorWithGraph {
             }
         }
     }
-}
-
-/// Calculates the number of instances needed to run the services
-/// For now we expect that an individual service required resources will not exceed
-/// a single EC2 instance capacity
-fn get_number_of_needed_instances(
-    services_graph: &Graph<config::Node, String>,
-    instance_type: &InstanceType,
-) -> Result<u32, Box<dyn std::error::Error>> {
-    let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
-
-    let total_services_cpus = sorted_graph
-        .iter()
-        .filter_map(|node_index| {
-            if let config::Node::Resource(service) = &services_graph[*node_index] {
-                return Some(service);
-            }
-
-            None
-        })
-        .map(|service| service.cpus)
-        .sum::<u32>();
-
-    let total_services_memory = sorted_graph
-        .iter()
-        .filter_map(|node_index| {
-            if let config::Node::Resource(service) = &services_graph[*node_index] {
-                return Some(service);
-            }
-
-            None
-        })
-        .map(|service| service.memory)
-        .sum::<u64>();
-
-    let instance_info = instance_type.get_info();
-
-    let needed_instances_count_by_cpus = total_services_cpus.div_ceil(instance_info.cpus);
-    let needed_instances_count_by_memory = total_services_memory.div_ceil(instance_info.memory);
-
-    Ok(std::cmp::max(
-        needed_instances_count_by_cpus,
-        u32::try_from(needed_instances_count_by_memory).unwrap_or_default(),
-    ))
 }
 
 /// Deploys user services
