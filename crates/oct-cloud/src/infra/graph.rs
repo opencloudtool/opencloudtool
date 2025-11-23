@@ -66,7 +66,6 @@ impl GraphManager {
     }
 
     pub fn get_spec_graph(
-        number_of_instances: u32,
         instance_type: &types::InstanceType,
         domain_name: Option<String>,
     ) -> Graph<SpecNode, String> {
@@ -167,16 +166,11 @@ impl GraphManager {
         );
 
         // TODO: Add instance profile with instance role
-        let mut instances = Vec::new();
-        for _ in 0..number_of_instances {
-            let instance_node = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
-                instance_type: instance_type.clone(),
-                ami: String::from("ami-04dd23e62ed049936"),
-                user_data: user_data.clone(),
-            })));
-
-            instances.push(instance_node);
-        }
+        let vm = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
+            instance_type: instance_type.clone(),
+            ami: String::from("ami-04dd23e62ed049936"),
+            user_data,
+        })));
 
         // Order of the edges matters in this implementation
         // Nodes within the same parent are traversed from
@@ -192,13 +186,12 @@ impl GraphManager {
             (igw_1, route_table_1, String::new()),                // 7
             (route_table_1, subnet_1, String::new()),             // 8
             (instance_role_1, instance_profile_1, String::new()), // 9
+            // VM
+            (subnet_1, vm, String::new()),
+            (instance_profile_1, vm, String::new()),
+            (security_group_1, vm, String::new()),
+            (ecr_1, vm, String::new()),
         ];
-        for instance in &instances {
-            edges.push((subnet_1, *instance, String::new()));
-            edges.push((instance_profile_1, *instance, String::new()));
-            edges.push((security_group_1, *instance, String::new()));
-            edges.push((ecr_1, *instance, String::new()));
-        }
 
         if let Some(domain_name) = domain_name {
             let hosted_zone = deps.add_node(SpecNode::Resource(ResourceSpecType::HostedZone(
@@ -211,17 +204,15 @@ impl GraphManager {
             // Insert at the first place to deploy it after all other root's children
             edges.insert(0, (root, hosted_zone, String::new()));
 
-            for instance in instances {
-                let dns_record = deps.add_node(SpecNode::Resource(ResourceSpecType::DnsRecord(
-                    DnsRecordSpec {
-                        record_type: types::RecordType::A,
-                        ttl: Some(3600),
-                    },
-                )));
+            let dns_record = deps.add_node(SpecNode::Resource(ResourceSpecType::DnsRecord(
+                DnsRecordSpec {
+                    record_type: types::RecordType::A,
+                    ttl: Some(3600),
+                },
+            )));
 
-                edges.push((instance, dns_record, String::new()));
-                edges.push((hosted_zone, dns_record, String::new()));
-            }
+            edges.push((vm, dns_record, String::new()));
+            edges.push((hosted_zone, dns_record, String::new()));
         }
 
         deps.extend_with_edges(&edges);
@@ -236,14 +227,14 @@ impl GraphManager {
     pub async fn deploy(
         &self,
         graph: &Graph<SpecNode, String>,
-    ) -> Result<(Graph<Node, String>, Vec<Vm>, Option<Ecr>), Box<dyn std::error::Error>> {
+    ) -> Result<(Graph<Node, String>, Option<Vm>, Option<Ecr>), Box<dyn std::error::Error>> {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
 
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 
         let mut ecr: Option<Ecr> = None;
-        let mut vms: Vec<Vm> = Vec::new();
+        let mut vm: Option<Vm> = None;
 
         let result = kahn_traverse(graph)?;
 
@@ -381,7 +372,7 @@ impl GraphManager {
 
                         match output_vm {
                             Ok(output_vm) => {
-                                vms.push(output_vm.clone());
+                                vm = Some(output_vm.clone());
 
                                 Ok(Node::Resource(ResourceType::Vm(output_vm)))
                             }
@@ -419,7 +410,7 @@ impl GraphManager {
 
         log::info!("Created graph {}", Dot::new(&resource_graph));
 
-        Ok((resource_graph, vms, ecr))
+        Ok((resource_graph, vm, ecr))
     }
 
     /// Destroys resource graph
@@ -608,73 +599,43 @@ mod tests {
     #[test]
     fn test_get_spec_graph_with_one_instance_no_domain() {
         // Arrange
-        let number_of_instances = 1;
         let instance_type = InstanceType::T2Micro;
         let domain_name = None;
 
         // Act
-        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+        let graph = GraphManager::get_spec_graph(&instance_type, domain_name);
 
         // Assert
-        let number_of_nodes = 9 + number_of_instances;
-        let number_of_edges = 10 + 4 * number_of_instances;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
+        assert_eq!(graph.node_count(), 10);
+        assert_eq!(graph.edge_count(), 10 + 4);
 
         let vm_nodes_count = graph
             .raw_nodes()
             .iter()
             .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
             .count();
-        assert_eq!(vm_nodes_count, number_of_instances as usize);
-    }
-
-    #[test]
-    fn test_get_spec_graph_with_multiple_instances_no_domain() {
-        // Arrange
-        let number_of_instances = 3;
-        let instance_type = InstanceType::T2Micro;
-        let domain_name = None;
-
-        // Act
-        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
-
-        // Assert
-        let number_of_nodes = 9 + number_of_instances;
-        let number_of_edges = 10 + 4 * number_of_instances;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
-
-        let vm_nodes_count = graph
-            .raw_nodes()
-            .iter()
-            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
-            .count();
-        assert_eq!(vm_nodes_count, number_of_instances as usize);
+        assert_eq!(vm_nodes_count, 1);
     }
 
     #[test]
     fn test_get_spec_graph_with_one_instance_and_domain() {
         // Arrange
-        let number_of_instances = 1;
         let instance_type = InstanceType::T2Micro;
         let domain_name = Some(String::from("example.com"));
 
         // Act
-        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+        let graph = GraphManager::get_spec_graph(&instance_type, domain_name);
 
         // Assert
-        let number_of_nodes = 10 + 2 * number_of_instances;
-        let number_of_edges = 11 + 6 * number_of_instances;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
+        assert_eq!(graph.node_count(), 10 + 2);
+        assert_eq!(graph.edge_count(), 11 + 6);
 
         let vm_nodes_count = graph
             .raw_nodes()
             .iter()
             .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
             .count();
-        assert_eq!(vm_nodes_count, number_of_instances as usize);
+        assert_eq!(vm_nodes_count, 1);
 
         let hosted_zone_nodes_count = graph
             .raw_nodes()
@@ -698,66 +659,16 @@ mod tests {
                 )
             })
             .count();
-        assert_eq!(dns_record_nodes_count, number_of_instances as usize);
-    }
-
-    #[test]
-    fn test_get_spec_graph_with_multiple_instances_and_domain() {
-        // Arrange
-        let number_of_instances = 3;
-        let instance_type = InstanceType::T2Micro;
-        let domain_name = Some(String::from("example.com"));
-
-        // Act
-        let graph = GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
-
-        // Assert
-        let number_of_nodes = 10 + 2 * number_of_instances;
-        let number_of_edges = 11 + 6 * number_of_instances;
-        assert_eq!(graph.node_count(), number_of_nodes as usize);
-        assert_eq!(graph.edge_count(), number_of_edges as usize);
-
-        let vm_nodes_count = graph
-            .raw_nodes()
-            .iter()
-            .filter(|node| matches!(&node.weight, SpecNode::Resource(ResourceSpecType::Vm(_))))
-            .count();
-        assert_eq!(vm_nodes_count, number_of_instances as usize);
-
-        let hosted_zone_nodes_count = graph
-            .raw_nodes()
-            .iter()
-            .filter(|node| {
-                matches!(
-                    &node.weight,
-                    SpecNode::Resource(ResourceSpecType::HostedZone(_))
-                )
-            })
-            .count();
-        assert_eq!(hosted_zone_nodes_count, 1);
-
-        let dns_record_nodes_count = graph
-            .raw_nodes()
-            .iter()
-            .filter(|node| {
-                matches!(
-                    &node.weight,
-                    SpecNode::Resource(ResourceSpecType::DnsRecord(_))
-                )
-            })
-            .count();
-        assert_eq!(dns_record_nodes_count, number_of_instances as usize);
+        assert_eq!(dns_record_nodes_count, 1);
     }
 
     #[tokio::test]
     async fn test_deploy_with_one_instance_no_domain() {
         // Arrange
-        let number_of_instances = 1;
         let instance_type = InstanceType::T2Micro;
         let domain_name = None;
 
-        let spec_graph =
-            GraphManager::get_spec_graph(number_of_instances, &instance_type, domain_name);
+        let spec_graph = GraphManager::get_spec_graph(&instance_type, domain_name);
 
         let mut ec2_client_mock = client::Ec2::default();
         let mut iam_client_mock = client::IAM::default();
@@ -909,7 +820,7 @@ mod tests {
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager
+        let (resource_graph, vm, ecr) = graph_manager
             .deploy(&spec_graph)
             .await
             .expect("Failed to deploy");
@@ -919,8 +830,8 @@ mod tests {
         assert_eq!(resource_graph.edge_count(), 14);
 
         assert_eq!(
-            vms,
-            vec![Vm {
+            vm,
+            Some(Vm {
                 id: String::from("vm-id-1"),
                 public_ip: String::from("1.2.3.4"),
                 ami: String::from("ami-04dd23e62ed049936"),
@@ -942,7 +853,7 @@ mod tests {
         
 aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin ecr-uri-1"#
                 )
-            }]
+            })
         );
 
         assert_eq!(
@@ -973,7 +884,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager
+        let (resource_graph, vm, ecr) = graph_manager
             .deploy(&spec_graph)
             .await
             .expect("Failed to deploy");
@@ -981,7 +892,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         // Assert
         assert_eq!(resource_graph.node_count(), 0);
         assert_eq!(resource_graph.edge_count(), 0);
-        assert!(vms.is_empty());
+        assert!(vm.is_none());
         assert!(ecr.is_none());
     }
 
@@ -1036,7 +947,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         );
 
         // Act
-        let (resource_graph, vms, ecr) = graph_manager
+        let (resource_graph, vm, ecr) = graph_manager
             .deploy(&spec_graph)
             .await
             .expect("Failed to deploy");
@@ -1045,7 +956,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
         // 1 root + VPC
         assert_eq!(resource_graph.node_count(), 2);
         assert_eq!(resource_graph.edge_count(), 1);
-        assert!(vms.is_empty());
+        assert!(vm.is_none());
         assert!(ecr.is_none());
 
         let vpc_node_exists = resource_graph
