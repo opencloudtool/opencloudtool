@@ -30,6 +30,7 @@ oct-orchestrator = { package = "oct-orchestrator", path = "crates/oct-orchestrat
 oct-ctl-sdk = { package = "oct-ctl-sdk", path = "crates/oct-ctl-sdk", version = "0.6.1" }
 
 assert_cmd = "2.1.1"
+askama = "0.14.0"
 async-trait = "0.1.89"
 aws-config = "1.8.3"
 aws-sdk-ec2 = "1.154.0"
