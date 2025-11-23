@@ -599,7 +599,7 @@ mod tests {
     #[test]
     fn test_get_spec_graph_with_one_instance_no_domain() {
         // Arrange
-        let instance_type = InstanceType::T2Micro;
+        let instance_type = InstanceType::T3Micro;
         let domain_name = None;
 
         // Act
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn test_get_spec_graph_with_one_instance_and_domain() {
         // Arrange
-        let instance_type = InstanceType::T2Micro;
+        let instance_type = InstanceType::T3Micro;
         let domain_name = Some(String::from("example.com"));
 
         // Act
@@ -665,7 +665,7 @@ mod tests {
     #[tokio::test]
     async fn test_deploy_with_one_instance_no_domain() {
         // Arrange
-        let instance_type = InstanceType::T2Micro;
+        let instance_type = InstanceType::T3Micro;
         let domain_name = None;
 
         let spec_graph = GraphManager::get_spec_graph(&instance_type, domain_name);
@@ -835,7 +835,7 @@ mod tests {
                 id: String::from("vm-id-1"),
                 public_ip: String::from("1.2.3.4"),
                 ami: String::from("ami-04dd23e62ed049936"),
-                instance_type: InstanceType::T2Micro,
+                instance_type: InstanceType::T3Micro,
                 user_data: String::from(
                     r#"#!/bin/bash
         set -e
@@ -1250,7 +1250,7 @@ aws ecr get-login-password --region us-west-2 | podman login --username AWS --pa
             id: "vm-id-1".to_string(),
             public_ip: "1.2.3.4".to_string(),
             ami: "ami-04dd23e62ed049936".to_string(),
-            instance_type: InstanceType::T2Micro,
+            instance_type: InstanceType::T3Micro,
             user_data: String::new(), // Not used in destroy
         })));
 
