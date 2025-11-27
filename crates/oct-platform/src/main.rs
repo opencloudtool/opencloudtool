@@ -68,23 +68,6 @@ impl GithubConfig {
     }
 }
 
-/// Templates
-///
-/// - Page:
-///     - Template struct
-///     - Render handler
-///
-/// - Component:
-///     - Template struct
-///     - Render handler
-///
-/// - Form
-///     - Template struct
-///     - Render handler
-///     - Request struct
-///     - Request handler (JSON)
-///     - Response (?)
-///
 /// Index page template
 #[derive(Template)]
 #[template(path = "pages/index.html")]
