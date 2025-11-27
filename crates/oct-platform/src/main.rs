@@ -142,14 +142,24 @@ struct Service {
 async fn get_project() -> impl IntoResponse {
     let config_str = fs::read_to_string("oct.toml");
 
-    let Ok(config_str) = config_str else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to read oct.toml")),
-        );
-    };
+    let config = match config_str {
+        Ok(config_str) => toml::from_str(&config_str).expect("Failed to parse toml"),
+        Err(_e) => {
+            let config = Config {
+                project: Project {
+                    name: String::from("No Name"),
+                    services: vec![Service {
+                        name: String::from("No Name"),
+                    }],
+                },
+            };
 
-    let config: Config = toml::from_str(&config_str).expect("Failed to parse toml");
+            let toml_str = toml::to_string(&config).expect("Failed to toml::to_string");
+            fs::write("oct.toml", toml_str).expect("Failed to write to oct.toml");
+
+            config
+        }
+    };
 
     let project_template = ProjectTemplate {
         project: &config.project,
