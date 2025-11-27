@@ -230,3 +230,7 @@ Total: $92 per month
 - 1 EC2 [t4g.medium](https://aws.amazon.com/ec2/pricing/on-demand/) instance ($0.0336 per hour): $25.5 per month
 
 Total: $25.5 per month
+
+## Repo stats
+
+![Alt](https://repobeats.axiom.co/api/embed/7127395110cea0828bf52367026a5768d9c016e8.svg "Repobeats analytics image")
