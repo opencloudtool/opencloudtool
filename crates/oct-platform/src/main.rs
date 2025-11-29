@@ -145,7 +145,12 @@ async fn get_project() -> impl IntoResponse {
                 },
             };
 
-            let toml_str = toml::to_string(&config).expect("Failed to toml::to_string");
+            let Ok(toml_str) = toml::to_string(&config) else {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to serialize config")),
+                );
+            };
 
             if fs::write("oct.toml", &toml_str).is_err() {
                 return (
@@ -166,7 +171,7 @@ async fn get_project() -> impl IntoResponse {
         Ok(response) => (StatusCode::OK, Html(response)),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `IndexTemplate`")),
+            Html(String::from("Failed to render `ProjectTemplate`")),
         ),
     }
 }
@@ -181,7 +186,12 @@ async fn edit_project() -> impl IntoResponse {
         );
     };
 
-    let config: Config = toml::from_str(&config_str).expect("Failed to parse toml");
+    let Ok(config) = toml::from_str::<Config>(&config_str) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to parse oct.toml")),
+        );
+    };
 
     let edit_project_template = EditProjectTemplate {
         project: &config.project,
@@ -191,7 +201,7 @@ async fn edit_project() -> impl IntoResponse {
         Ok(response) => (StatusCode::OK, Html(response)),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `IndexTemplate`")),
+            Html(String::from("Failed to render `EditProjectTemplate`")),
         ),
     }
 }
@@ -206,12 +216,28 @@ async fn put_project(Json(payload): Json<PutProjectForm>) -> impl IntoResponse {
         );
     };
 
-    let mut config: Config = toml::from_str(&config_str).expect("Failed to parse toml");
+    let Ok(mut config) = toml::from_str::<Config>(&config_str) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to parse oct.toml")),
+        );
+    };
     config.project.name = payload.name;
     config.project.services = payload.services;
 
-    let toml_str = toml::to_string(&config).expect("Failed to toml::to_string");
-    fs::write("oct.toml", toml_str).expect("Failed to write to oct.toml");
+    let Ok(toml_str) = toml::to_string(&config) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to serialize config")),
+        );
+    };
+
+    if fs::write("oct.toml", &toml_str).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to write oct.toml")),
+        );
+    }
 
     let project_content_template = ProjectContentTemplate {
         project: &config.project,
@@ -221,7 +247,7 @@ async fn put_project(Json(payload): Json<PutProjectForm>) -> impl IntoResponse {
         Ok(response) => (StatusCode::OK, Html(response)),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `IndexTemplate`")),
+            Html(String::from("Failed to render `ProjectContentTemplate`")),
         ),
     }
 }
