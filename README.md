@@ -67,7 +67,12 @@ aws configure sso
 
 ### Deployment process
 
+The diagrams try to follow [C4Model notation](https://c4model.com) at component level.
+
 #### L1 infrastructure (cloud resources)
+
+In the current implementation `Infra Graph` is hard-coded.
+It'll be updated to be adaptive to the `User Services Graph` at L2.
 
 ![L1 infrastructure](./docs/l1-infrastructure.excalidraw.png)
 
