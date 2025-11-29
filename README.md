@@ -55,17 +55,25 @@ aws configure sso
 - [Dedicated CS2 server](./examples/projects/cs2-server/)
 - [FastAPI app via python library](./examples/projects/fastapi-python-sdk/)
 
-## High Level Design
+## Design
+
+### High-level
 
 ![OpenCloudTool Design](./docs/high-level-design.excalidraw.png)
 
-### Versions Design
+### User-cloud interaction
 
-Each version of OpenCloudTool has a mini-project to prove the design and implementation.
+![User-cloud](./docs/user-cloud.excalidraw.png)
 
-#### v0.7.0 "VMs deployment based on user services resources"
+### Deployment process
 
-![v0.7.0](./docs/v0.7.0.excalidraw.png)
+#### L1 infrastructure (cloud resources)
+
+![L1 infrastructure](./docs/l1-infrastructure.excalidraw.png)
+
+#### L2 infrastructure (user services)
+
+![L2 infrastructure](./docs/l2-infrastructure.excalidraw.png)
 
 ### Fixed infra graph
 
