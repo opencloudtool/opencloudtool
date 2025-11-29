@@ -126,7 +126,15 @@ async fn get_project() -> impl IntoResponse {
     let config_str = fs::read_to_string("oct.toml");
 
     let config = match config_str {
-        Ok(config_str) => toml::from_str(&config_str).expect("Failed to parse toml"),
+        Ok(config_str) => match toml::from_str(&config_str) {
+            Ok(config) => config,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to parse oct.toml")),
+                );
+            }
+        },
         Err(_e) => {
             let config = Config {
                 project: Project {
@@ -138,7 +146,13 @@ async fn get_project() -> impl IntoResponse {
             };
 
             let toml_str = toml::to_string(&config).expect("Failed to toml::to_string");
-            fs::write("oct.toml", toml_str).expect("Failed to write to oct.toml");
+
+            if fs::write("oct.toml", &toml_str).is_err() {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to write oct.toml")),
+                );
+            }
 
             config
         }
