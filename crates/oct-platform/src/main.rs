@@ -4,12 +4,12 @@ use std::{env, fs};
 use tower_http::trace::{self, TraceLayer};
 
 use axum::{
-    Router,
+    Json, Router,
     extract::Query,
     extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
-    routing::get,
+    routing::{get, put},
 };
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,9 @@ async fn main() {
     let app = Router::new()
         .route("/", get(index))
         .route("/repos", get(list_repos))
+        .route("/project", get(get_project))
+        .route("/project", put(put_project))
+        .route("/project/edit", get(edit_project))
         .route("/login/github", get(github_login))
         .route("/login/github/redirect", get(github_login_redirect))
         .layer(
@@ -67,14 +70,186 @@ impl GithubConfig {
 
 /// Index page template
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "pages/index.html")]
 struct IndexTemplate;
 
 /// Github repo info page template
 #[derive(Template)]
-#[template(path = "repo.html")]
+#[template(path = "pages/repos/index.html")]
 struct RepoTemplate<'a> {
     username: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "pages/projects/index.html")]
+struct ProjectTemplate<'a> {
+    project: &'a Project,
+}
+
+#[derive(Template)]
+#[template(path = "pages/projects/index.html", block = "content")]
+struct ProjectContentTemplate<'a> {
+    project: &'a Project,
+}
+
+#[derive(Template)]
+#[template(path = "pages/projects/edit.html")]
+struct EditProjectTemplate<'a> {
+    project: &'a Project,
+}
+
+#[derive(Debug, Deserialize)]
+struct PutProjectForm {
+    name: String,
+
+    services: Vec<Service>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct Config {
+    project: Project,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct Project {
+    name: String,
+
+    services: Vec<Service>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+struct Service {
+    name: String,
+}
+
+async fn get_project() -> impl IntoResponse {
+    let config_str = fs::read_to_string("oct.toml");
+
+    let config = match config_str {
+        Ok(config_str) => match toml::from_str(&config_str) {
+            Ok(config) => config,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to parse oct.toml")),
+                );
+            }
+        },
+        Err(_e) => {
+            let config = Config {
+                project: Project {
+                    name: String::from("No Name"),
+                    services: vec![Service {
+                        name: String::from("No Name"),
+                    }],
+                },
+            };
+
+            let Ok(toml_str) = toml::to_string(&config) else {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to serialize config")),
+                );
+            };
+
+            if fs::write("oct.toml", &toml_str).is_err() {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Html(String::from("Failed to write oct.toml")),
+                );
+            }
+
+            config
+        }
+    };
+
+    let project_template = ProjectTemplate {
+        project: &config.project,
+    };
+
+    match project_template.render() {
+        Ok(response) => (StatusCode::OK, Html(response)),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to render `ProjectTemplate`")),
+        ),
+    }
+}
+
+async fn edit_project() -> impl IntoResponse {
+    let config_str = fs::read_to_string("oct.toml");
+
+    let Ok(config_str) = config_str else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to read oct.toml")),
+        );
+    };
+
+    let Ok(config) = toml::from_str::<Config>(&config_str) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to parse oct.toml")),
+        );
+    };
+
+    let edit_project_template = EditProjectTemplate {
+        project: &config.project,
+    };
+
+    match edit_project_template.render() {
+        Ok(response) => (StatusCode::OK, Html(response)),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to render `EditProjectTemplate`")),
+        ),
+    }
+}
+
+async fn put_project(Json(payload): Json<PutProjectForm>) -> impl IntoResponse {
+    let config_str = fs::read_to_string("oct.toml");
+
+    let Ok(config_str) = config_str else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to read oct.toml")),
+        );
+    };
+
+    let Ok(mut config) = toml::from_str::<Config>(&config_str) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to parse oct.toml")),
+        );
+    };
+    config.project.name = payload.name;
+    config.project.services = payload.services;
+
+    let Ok(toml_str) = toml::to_string(&config) else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to serialize config")),
+        );
+    };
+
+    if fs::write("oct.toml", &toml_str).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to write oct.toml")),
+        );
+    }
+
+    let project_content_template = ProjectContentTemplate {
+        project: &config.project,
+    };
+
+    match project_content_template.render() {
+        Ok(response) => (StatusCode::OK, Html(response)),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Html(String::from("Failed to render `ProjectContentTemplate`")),
+        ),
+    }
 }
 
 /// Renders the index page.

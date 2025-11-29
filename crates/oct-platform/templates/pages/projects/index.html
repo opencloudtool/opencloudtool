@@ -1,0 +1,21 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Project{% endblock %}
+
+{% block content %}
+<div hx-target="this" hx-swap="outerHTML">
+    <div>Project</div>
+    <div>Name: {{ project.name }}</div>
+
+    {% for service in project.services %}
+    <div class="service">
+      <h4>Service {{ loop.index }}</h4>
+      <div>Name: {{ service.name }}</div>
+    </div>
+    {% endfor %}
+
+    <button hx-get="/project/edit"> 
+    Edit
+    </button>
+</div>
+{% endblock %}
