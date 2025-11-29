@@ -19,7 +19,7 @@ cargo run -p oct-platform
 
 /shared - shared base pages (e.g. `base.html` with base html page structure)
 
-/components - idependent components
+/components - independent components
 ```
 
 ### Template/handler specs
