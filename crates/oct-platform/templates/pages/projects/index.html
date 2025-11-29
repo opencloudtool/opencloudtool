@@ -5,12 +5,12 @@
 {% block content %}
 <div hx-target="this" hx-swap="outerHTML">
     <div>Project</div>
-    <div><label>Name: {{ project.name }}</div>
+    <div>Name: {{ project.name }}</div>
 
     {% for service in project.services %}
     <div class="service">
-      <h4>Service 1</h4>
-      <div><label>Name: {{ service.name }}</div>
+      <h4>Service {{ loop.index }}</h4>
+      <div>Name: {{ service.name }}</div>
     </div>
     {% endfor %}
 
