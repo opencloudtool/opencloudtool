@@ -55,6 +55,38 @@ aws configure sso
 - [Dedicated CS2 server](./examples/projects/cs2-server/)
 - [FastAPI app via python library](./examples/projects/fastapi-python-sdk/)
 
+## Goals
+
+- Best resource utilization
+- High performance
+
+- Centralized/Decentralized
+- Deployment process
+  - Plan
+  - Update
+  - Error handling
+- Monitoring
+- Security
+  - Least priviledge
+- Service agent (collects metrics, controls autoscaling, communicates with oct-ctl)
+- Autoscaling L2
+  - Horizontal ()
+  - Vertical ()
+- Autoscaling L1
+  - Horizontal ()
+  - Vertical ()
+- Platform
+  - UI Framework
+  - No-code user services definition and deployment
+- Backends
+  - AWS
+  - GCP
+  - Local
+  - Multi-cloud
+- Service Mesh
+  - Envoy
+- Documentation
+
 ## Design
 
 ### High-level
