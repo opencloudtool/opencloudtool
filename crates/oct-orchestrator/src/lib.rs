@@ -286,6 +286,25 @@ fn get_container_manager() -> Result<String, Box<dyn std::error::Error>> {
         .success();
 
     if podman_exists {
+        // Check if the Podman machine is running
+        let is_running = Command::new("podman")
+            .arg("info")
+            .output()?
+            .status
+            .success();
+
+        if !is_running {
+            log::info!("Podman machine is not running. Starting podman machine...");
+
+            let start_podman = Command::new("podman").args(["machine", "start"]).status();
+
+            match start_podman {
+                Ok(status) if status.success() => {
+                    log::info!("Podman machine started successfully.");
+                }
+                _ => log::error!("Failed to start podman machine."),
+            }
+        }
         return Ok("podman".to_string());
     }
 
