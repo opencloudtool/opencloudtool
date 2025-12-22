@@ -78,7 +78,7 @@ aws configure sso
 
 ![Infrastructure lifecycle](./docs/infrastructure-lifecycle.excalidraw.png)
 
-- Genesis - step to setup the initial infrastructure to deploye a leader node that'll control everything.
+- Genesis - step to setup the initial infrastructure to deploy a leader node that'll control everything.
 - Life - the main period of infrastructure lifecycle where the leader is already deployed and all main operations with infrastructure and user services happen.
 - Afterlife - the final step of the whole infrastructure destruction.
 
