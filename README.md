@@ -61,6 +61,36 @@ aws configure sso
 
 ![OpenCloudTool Design](./docs/high-level-design.excalidraw.png)
 
+### Decentralized `oct`
+
+#### Infrastructure layers
+
+![Infrastructure layers](./docs/infrastructure-layers.excalidraw.png)
+
+- Base - base cloud resources (networking, VMs, IAM, etc.).
+- `oct-ctl`:
+  - Consensus - [Raft](https://raft.github.io/)-based consensus mechanism to maintain a distributed state of the infrastructure.
+  - Management - management operations to control the infrastructure resources and user services.
+  - Service Discovery - DNS service to let the service communicate using domain name and hide the exact IPs.
+- Workload - user services deployed along with proxy sidecars to implement service mesh approach.
+
+#### Infrastructure lifecycle
+
+![Infrastructure lifecycle](./docs/infrastructure-lifecycle.excalidraw.png)
+
+- Genesis - step to setup the initial infrastructure to deploy a leader node that'll control everything.
+- Life - the main period of infrastructure lifecycle where the leader is already deployed and all main operations with infrastructure and user services happen.
+- Afterlife - the final step of the whole infrastructure destruction.
+
+#### Node
+
+![Node](./docs/node.excalidraw.png)
+
+Node can play the following roles:
+
+- Leader - the main node that controls all infrastructure components (follower nodes and underlying infrastructure for them), the user services on the node itself and sends commands to the follower nodes to CRUD user services.
+- Follower - the node type that accepts commands from the leader to CRUD user services. The follower node can become a leader if the current leader is not available anymore, according to [the Raft consensus algorithm](https://raft.github.io/).
+
 ### User-cloud interaction
 
 ![User-cloud](./docs/user-cloud.excalidraw.png)
