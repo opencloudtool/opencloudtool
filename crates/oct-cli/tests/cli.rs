@@ -2,12 +2,12 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 #[tokio::test]
-async fn test_deploy_no_oct_toml() {
+async fn test_apply_no_oct_toml() {
     // Arrange
     let mut oct_cli_bin = Command::new(assert_cmd::cargo::cargo_bin!());
 
     // Act
-    let cmd = oct_cli_bin.arg("deploy");
+    let cmd = oct_cli_bin.arg("apply");
 
     // Assert
     cmd.assert().failure().stderr(predicate::str::contains(

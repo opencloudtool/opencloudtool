@@ -16,7 +16,7 @@ mod user_state;
 pub struct OrchestratorWithGraph;
 
 impl OrchestratorWithGraph {
-    pub async fn deploy(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
         let services_graph = config.to_graph()?;
@@ -85,7 +85,7 @@ impl OrchestratorWithGraph {
 
         let mut scheduler = scheduler::Scheduler::new(&mut user_state, &*user_state_backend);
 
-        deploy_user_services(&services_graph, &mut scheduler).await?;
+        apply_user_services_graph(&services_graph, &mut scheduler).await?;
 
         Ok(())
     }
@@ -169,8 +169,8 @@ fn get_instance_type(
     }
 }
 
-/// Deploys user services
-async fn deploy_user_services(
+/// Applies user services graph
+async fn apply_user_services_graph(
     services_graph: &Graph<config::Node, String>,
     scheduler: &mut scheduler::Scheduler<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {

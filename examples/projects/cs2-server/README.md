@@ -14,7 +14,7 @@ Get SRCDS token here:
 ```bash
 export SRCDS_TOKEN=YOUR_SRCDS_TOKEN
 
-cargo run -p oct-cli deploy
+cargo run -p oct-cli apply
 ```
 
 ### 3. Connect to server

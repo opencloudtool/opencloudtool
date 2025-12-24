@@ -21,8 +21,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Deploy the application
-    Deploy,
+    /// Apply the application
+    Apply,
     /// Destroy the application
     Destroy,
 }
@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let orchestrator_with_graph = oct_orchestrator::OrchestratorWithGraph;
 
     match &cli.command {
-        Commands::Deploy => orchestrator_with_graph.deploy().await?,
+        Commands::Apply => orchestrator_with_graph.apply().await?,
         Commands::Destroy => orchestrator_with_graph.destroy().await?,
     }
 
@@ -51,7 +51,7 @@ mod tests {
     #[test]
     fn test_cli_default_paths() {
         // Arrange
-        let cli = Cli::parse_from(["app", "deploy"]);
+        let cli = Cli::parse_from(["app", "apply"]);
 
         // Assert
         assert_eq!(cli.user_state_file_path, "./user_state.json");

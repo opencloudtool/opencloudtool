@@ -7,7 +7,7 @@ The deployment will work only on `t2.large` instance
 ## Deploy a cluster
 
 ```bash
-cargo run -p oct-cli deploy
+cargo run -p oct-cli apply
 ```
 
 ## Submit a job
