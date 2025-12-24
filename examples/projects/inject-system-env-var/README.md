@@ -7,5 +7,5 @@ runtime (`services`) variables into the `oct.toml` file.
 
 ```bash
 export IMAGE_TAG=latest
-cargo run -p oct-cli deploy
+cargo run -p oct-cli apply
 ```

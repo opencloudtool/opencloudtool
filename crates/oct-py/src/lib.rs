@@ -61,7 +61,7 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
             let _cwd_restore = DirRestoreGuard { prev: prev_cwd };
 
             let orchestrator = OrchestratorWithGraph;
-            let deploy_result = orchestrator.deploy().await;
+            let deploy_result = orchestrator.apply().await;
 
             match deploy_result {
                 Ok(()) => Ok(()),
