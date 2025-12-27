@@ -21,6 +21,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Run Genesis step
+    Genesis,
     /// Apply the application
     Apply,
     /// Destroy the application
@@ -36,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let orchestrator_with_graph = oct_orchestrator::OrchestratorWithGraph;
 
     match &cli.command {
+        Commands::Genesis => orchestrator_with_graph.genesis().await?,
         Commands::Apply => orchestrator_with_graph.apply().await?,
         Commands::Destroy => orchestrator_with_graph.destroy().await?,
     }
