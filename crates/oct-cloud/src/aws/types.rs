@@ -72,7 +72,7 @@ pub struct InstanceInfo {
     pub memory: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InstanceType {
     T3Nano,
     T3Micro,

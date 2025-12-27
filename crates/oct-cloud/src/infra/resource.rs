@@ -735,16 +735,6 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
             Err("VM expects Subnet as a parent")
         };
 
-        let ecr_node = parents
-            .iter()
-            .find(|parent| matches!(parent, Node::Resource(ResourceType::Ecr(_))));
-
-        let ecr = if let Some(Node::Resource(ResourceType::Ecr(ecr))) = ecr_node {
-            Ok(ecr.clone())
-        } else {
-            Err("VM expects Ecr as a parent")
-        };
-
         let instance_profile_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::InstanceProfile(_))));
@@ -771,21 +761,12 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
                 Err("SecurityGroup expects VPC as a parent")
             };
 
-        let ecr_login_string = format!(
-            "aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin {}",
-            ecr?.get_base_uri()
-        );
-        let user_data = format!(
-            "{}
-{}",
-            input.user_data, ecr_login_string
-        );
-        let user_data_base64 = general_purpose::STANDARD.encode(&user_data);
+        let user_data_base64 = general_purpose::STANDARD.encode(&input.user_data);
 
         let response = self
             .client
             .run_instances(
-                input.instance_type.clone(),
+                input.instance_type,
                 input.ami.clone(),
                 user_data_base64,
                 instance_profile_name?,
@@ -809,9 +790,9 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
         Ok(Vm {
             id: instance_id.clone(),
             public_ip,
-            instance_type: input.instance_type.clone(),
+            instance_type: input.instance_type,
             ami: input.ami.clone(),
-            user_data,
+            user_data: input.user_data.clone(),
         })
     }
 

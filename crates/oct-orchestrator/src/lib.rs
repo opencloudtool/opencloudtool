@@ -16,6 +16,27 @@ mod user_state;
 pub struct OrchestratorWithGraph;
 
 impl OrchestratorWithGraph {
+    /// Initial step of the `oct`-managed system deployment
+    pub async fn genesis(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let config = config::Config::new(None)?;
+
+        let infra_state_backend =
+            backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
+
+        let genesis_spec_graph =
+            infra::graph::GraphManager::get_genesis_graph(InstanceType::T3Nano);
+
+        let infra_graph_manager = infra::graph::GraphManager::new().await;
+        let (resource_graph, _vm) = infra_graph_manager
+            .deploy_genesis_graph(&genesis_spec_graph)
+            .await?;
+
+        let state = infra::state::State::from_graph(&resource_graph);
+        let () = infra_state_backend.save(&state).await?;
+
+        Ok(())
+    }
+
     pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
         let mut config = config::Config::new(None)?;
 
