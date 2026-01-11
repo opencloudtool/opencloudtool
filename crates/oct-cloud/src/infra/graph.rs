@@ -127,10 +127,11 @@ impl GraphManager {
                         ]
                     }"#,
                 ),
-                policy_arns: vec![String::from(
+                policy_arns: vec![
                     // TODO: Give more permissions to manage AWS infra
-                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-                )],
+                    String::from("arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"),
+                    String::from("arn:aws:iam::aws:policy/AmazonVPCFullAccess"),
+                ],
             },
         )));
 
@@ -526,7 +527,7 @@ impl GraphManager {
     ///
     /// Temporarily also returns a list of VMs and optional ECR
     /// to be used for user services deployment
-    pub async fn deploy(
+    pub async fn deploy_spec_graph(
         &self,
         graph: &Graph<SpecNode, String>,
     ) -> Result<(Graph<Node, String>, Option<Vm>, Option<Ecr>), Box<dyn std::error::Error>> {
@@ -713,6 +714,187 @@ impl GraphManager {
         log::info!("Created graph {}", Dot::new(&resource_graph));
 
         Ok((resource_graph, vm, ecr))
+    }
+
+    /// Deploy arbitrary graph
+    pub async fn deploy(
+        &self,
+        graph: &Graph<SpecNode, String>,
+    ) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
+        let mut resource_graph = Graph::<Node, String>::new();
+        let mut edges = vec![];
+
+        let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
+
+        let result = kahn_traverse(graph)?;
+
+        for node_index in &result {
+            let parent_node_indexes = match parents.get(node_index) {
+                Some(parent_node_indexes) => parent_node_indexes.clone(),
+                None => Vec::new(),
+            };
+            let parent_nodes = parent_node_indexes
+                .iter()
+                .filter_map(|x| resource_graph.node_weight(*x))
+                .collect();
+
+            let node_to_deploy = &graph[*node_index];
+            let deployed_node = match node_to_deploy {
+                SpecNode::Root => Ok(Node::Root),
+                SpecNode::Resource(resource_type) => match resource_type {
+                    ResourceSpecType::HostedZone(resource) => {
+                        let manager = HostedZoneManager {
+                            client: &self.route53,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::HostedZone(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::DnsRecord(resource) => {
+                        let manager = DnsRecordManager {
+                            client: &self.route53,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::DnsRecord(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vpc(resource) => {
+                        let manager = VpcManager { client: &self.ec2 };
+                        let output_vpc = manager.create(resource, parent_nodes).await;
+
+                        match output_vpc {
+                            Ok(output_vpc) => Ok(Node::Resource(ResourceType::Vpc(output_vpc))),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InternetGateway(resource) => {
+                        let manager = InternetGatewayManager { client: &self.ec2 };
+                        let output_igw = manager.create(resource, parent_nodes).await;
+
+                        match output_igw {
+                            Ok(output_igw) => {
+                                Ok(Node::Resource(ResourceType::InternetGateway(output_igw)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::RouteTable(resource) => {
+                        let manager = RouteTableManager { client: &self.ec2 };
+                        let output_route_table = manager.create(resource, parent_nodes).await;
+
+                        match output_route_table {
+                            Ok(output_route_table) => {
+                                Ok(Node::Resource(ResourceType::RouteTable(output_route_table)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Subnet(resource) => {
+                        let manager = SubnetManager { client: &self.ec2 };
+                        let output_subnet = manager.create(resource, parent_nodes).await;
+
+                        match output_subnet {
+                            Ok(output_subnet) => {
+                                Ok(Node::Resource(ResourceType::Subnet(output_subnet)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::SecurityGroup(resource) => {
+                        let manager = SecurityGroupManager { client: &self.ec2 };
+                        let output_security_group = manager.create(resource, parent_nodes).await;
+
+                        match output_security_group {
+                            Ok(output_security_group) => Ok(Node::Resource(
+                                ResourceType::SecurityGroup(output_security_group),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceRole(resource) => {
+                        let manager = InstanceRoleManager { client: &self.iam };
+                        let output_instance_role = manager.create(resource, parent_nodes).await;
+
+                        match output_instance_role {
+                            Ok(output_instance_role) => Ok(Node::Resource(
+                                ResourceType::InstanceRole(output_instance_role),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceProfile(resource) => {
+                        let manager = InstanceProfileManager { client: &self.iam };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => Ok(Node::Resource(
+                                ResourceType::InstanceProfile(output_resource),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Ecr(resource) => {
+                        let manager = EcrManager { client: &self.ecr };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::Ecr(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vm(resource) => {
+                        let manager = VmManager { client: &self.ec2 };
+                        let output_vm = manager.create(resource, parent_nodes).await;
+
+                        match output_vm {
+                            Ok(output_vm) => Ok(Node::Resource(ResourceType::Vm(output_vm))),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                },
+            };
+
+            let Ok(created_node) = deployed_node else {
+                log::error!("Failed to create a resource {node_to_deploy:?}");
+
+                break;
+            };
+
+            let created_resource_node_index = resource_graph.add_node(created_node.clone());
+
+            for parent_node_index in parent_node_indexes {
+                edges.push((
+                    parent_node_index,
+                    created_resource_node_index,
+                    String::new(),
+                ));
+            }
+
+            for neighbor_index in graph.neighbors(*node_index) {
+                parents
+                    .entry(neighbor_index)
+                    .or_insert_with(Vec::new)
+                    .push(created_resource_node_index);
+            }
+        }
+
+        resource_graph.extend_with_edges(&edges);
+
+        log::info!("Created graph {}", Dot::new(&resource_graph));
+
+        Ok(resource_graph)
     }
 
     /// Destroys resource graph
@@ -965,7 +1147,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_deploy_with_one_instance_no_domain() {
+    async fn test_deploy_spec_graph_with_one_instance_no_domain() {
         // Arrange
         let instance_type = InstanceType::T3Micro;
         let domain_name = None;
@@ -1123,7 +1305,7 @@ mod tests {
 
         // Act
         let (resource_graph, vm, ecr) = graph_manager
-            .deploy(&spec_graph)
+            .deploy_spec_graph(&spec_graph)
             .await
             .expect("Failed to deploy");
 
@@ -1168,7 +1350,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_deploy_empty_graph() {
+    async fn test_deploy_spec_graph_empty_graph() {
         // Arrange
         let spec_graph = Graph::<SpecNode, String>::new();
 
@@ -1186,7 +1368,7 @@ mod tests {
 
         // Act
         let (resource_graph, vm, ecr) = graph_manager
-            .deploy(&spec_graph)
+            .deploy_spec_graph(&spec_graph)
             .await
             .expect("Failed to deploy");
 
@@ -1198,7 +1380,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_deploy_resource_creation_fails() {
+    async fn test_deploy_spec_graph_resource_creation_fails() {
         // Arrange
         let mut spec_graph = Graph::<SpecNode, String>::new();
         let root = spec_graph.add_node(SpecNode::Root);
@@ -1249,7 +1431,7 @@ mod tests {
 
         // Act
         let (resource_graph, vm, ecr) = graph_manager
-            .deploy(&spec_graph)
+            .deploy_spec_graph(&spec_graph)
             .await
             .expect("Failed to deploy");
 
