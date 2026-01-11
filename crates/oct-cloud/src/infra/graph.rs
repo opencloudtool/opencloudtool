@@ -65,6 +65,318 @@ impl GraphManager {
         }
     }
 
+    /// Generates spec graph for the Genesis step
+    ///
+    /// Contains only the minimal required infra components to deploy the Leader node
+    pub fn get_genesis_graph(instance_type: types::InstanceType) -> Graph<SpecNode, String> {
+        let mut deps = Graph::<SpecNode, String>::new();
+        let root = deps.add_node(SpecNode::Root);
+
+        let vpc_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::Vpc(VpcSpec {
+            region: String::from("us-west-2"),
+            cidr_block: String::from("10.0.0.0/16"),
+            name: String::from("vpc-1"),
+        })));
+
+        let igw_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::InternetGateway(
+            InternetGatewaySpec,
+        )));
+
+        let route_table_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::RouteTable(
+            RouteTableSpec,
+        )));
+
+        let subnet_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::Subnet(SubnetSpec {
+            name: String::from("vpc-1-subnet"),
+            cidr_block: String::from("10.0.1.0/24"),
+            availability_zone: String::from("us-west-2a"),
+        })));
+
+        let security_group_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::SecurityGroup(
+            SecurityGroupSpec {
+                name: String::from("vpc-1-security-group"),
+                inbound_rules: vec![
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 80,
+                    },
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 31888,
+                    },
+                    InboundRule {
+                        cidr_block: "0.0.0.0/0".to_string(),
+                        protocol: "tcp".to_string(),
+                        port: 22,
+                    },
+                ],
+            },
+        )));
+
+        let instance_role_1 = deps.add_node(SpecNode::Resource(ResourceSpecType::InstanceRole(
+            InstanceRoleSpec {
+                name: String::from("instance-role-1"),
+                assume_role_policy: String::from(
+                    r#"{ 
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {
+                                    "Service": "ec2.amazonaws.com"
+                                },
+                                "Action": "sts:AssumeRole"
+                            }
+                        ]
+                    }"#,
+                ),
+                policy_arns: vec![String::from(
+                    // TODO: Give more permissions to manage AWS infra
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                )],
+            },
+        )));
+
+        let instance_profile_1 = deps.add_node(SpecNode::Resource(
+            ResourceSpecType::InstanceProfile(InstanceProfileSpec {
+                name: String::from("instance_profile_1"),
+            }),
+        ));
+
+        let user_data = String::from(
+            r#"#!/bin/bash
+        set -e
+        sudo apt update
+        sudo apt -y install podman
+        sudo systemctl start podman
+        sudo snap install aws-cli --classic
+
+        curl \
+            --output /home/ubuntu/oct-ctl \
+            -L \
+            https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
+            && sudo chmod +x /home/ubuntu/oct-ctl \
+            && /home/ubuntu/oct-ctl & 
+        "#,
+        );
+
+        let vm = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
+            instance_type,
+            ami: String::from("ami-04dd23e62ed049936"),
+            user_data,
+        })));
+
+        let edges = vec![
+            (root, instance_role_1, String::new()),
+            (root, vpc_1, String::new()),
+            (vpc_1, security_group_1, String::new()),
+            (vpc_1, subnet_1, String::new()),
+            (vpc_1, route_table_1, String::new()),
+            (vpc_1, igw_1, String::new()),
+            (igw_1, route_table_1, String::new()),
+            (route_table_1, subnet_1, String::new()),
+            (instance_role_1, instance_profile_1, String::new()),
+            (subnet_1, vm, String::new()),
+            (instance_profile_1, vm, String::new()),
+            (security_group_1, vm, String::new()),
+        ];
+
+        deps.extend_with_edges(&edges);
+
+        deps
+    }
+
+    /// Deploys Genesis graph
+    ///
+    /// Mostly duplicates logic of `deploy`, but without ECR creation
+    pub async fn deploy_genesis_graph(
+        &self,
+        graph: &Graph<SpecNode, String>,
+    ) -> Result<(Graph<Node, String>, Option<Vm>), Box<dyn std::error::Error>> {
+        let mut resource_graph = Graph::<Node, String>::new();
+        let mut edges = vec![];
+
+        let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
+
+        let mut vm: Option<Vm> = None;
+
+        let result = kahn_traverse(graph)?;
+
+        for node_index in &result {
+            let parent_node_indexes = match parents.get(node_index) {
+                Some(parent_node_indexes) => parent_node_indexes.clone(),
+                None => Vec::new(),
+            };
+            let parent_nodes = parent_node_indexes
+                .iter()
+                .filter_map(|x| resource_graph.node_weight(*x))
+                .collect();
+
+            let node_to_deploy = &graph[*node_index];
+            let deployed_node = match node_to_deploy {
+                SpecNode::Root => Ok(Node::Root),
+                SpecNode::Resource(resource_type) => match resource_type {
+                    ResourceSpecType::HostedZone(resource) => {
+                        let manager = HostedZoneManager {
+                            client: &self.route53,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::HostedZone(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::DnsRecord(resource) => {
+                        let manager = DnsRecordManager {
+                            client: &self.route53,
+                        };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::DnsRecord(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vpc(resource) => {
+                        let manager = VpcManager { client: &self.ec2 };
+                        let output_vpc = manager.create(resource, parent_nodes).await;
+
+                        match output_vpc {
+                            Ok(output_vpc) => Ok(Node::Resource(ResourceType::Vpc(output_vpc))),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InternetGateway(resource) => {
+                        let manager = InternetGatewayManager { client: &self.ec2 };
+                        let output_igw = manager.create(resource, parent_nodes).await;
+
+                        match output_igw {
+                            Ok(output_igw) => {
+                                Ok(Node::Resource(ResourceType::InternetGateway(output_igw)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::RouteTable(resource) => {
+                        let manager = RouteTableManager { client: &self.ec2 };
+                        let output_route_table = manager.create(resource, parent_nodes).await;
+
+                        match output_route_table {
+                            Ok(output_route_table) => {
+                                Ok(Node::Resource(ResourceType::RouteTable(output_route_table)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Subnet(resource) => {
+                        let manager = SubnetManager { client: &self.ec2 };
+                        let output_subnet = manager.create(resource, parent_nodes).await;
+
+                        match output_subnet {
+                            Ok(output_subnet) => {
+                                Ok(Node::Resource(ResourceType::Subnet(output_subnet)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::SecurityGroup(resource) => {
+                        let manager = SecurityGroupManager { client: &self.ec2 };
+                        let output_security_group = manager.create(resource, parent_nodes).await;
+
+                        match output_security_group {
+                            Ok(output_security_group) => Ok(Node::Resource(
+                                ResourceType::SecurityGroup(output_security_group),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceRole(resource) => {
+                        let manager = InstanceRoleManager { client: &self.iam };
+                        let output_instance_role = manager.create(resource, parent_nodes).await;
+
+                        match output_instance_role {
+                            Ok(output_instance_role) => Ok(Node::Resource(
+                                ResourceType::InstanceRole(output_instance_role),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::InstanceProfile(resource) => {
+                        let manager = InstanceProfileManager { client: &self.iam };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => Ok(Node::Resource(
+                                ResourceType::InstanceProfile(output_resource),
+                            )),
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Ecr(resource) => {
+                        let manager = EcrManager { client: &self.ecr };
+                        let output_resource = manager.create(resource, parent_nodes).await;
+
+                        match output_resource {
+                            Ok(output_resource) => {
+                                Ok(Node::Resource(ResourceType::Ecr(output_resource)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                    ResourceSpecType::Vm(resource) => {
+                        let manager = VmManager { client: &self.ec2 };
+                        let output_vm = manager.create(resource, parent_nodes).await;
+
+                        match output_vm {
+                            Ok(output_vm) => {
+                                vm = Some(output_vm.clone());
+
+                                Ok(Node::Resource(ResourceType::Vm(output_vm)))
+                            }
+                            Err(e) => Err(Box::new(e)),
+                        }
+                    }
+                },
+            };
+
+            let Ok(deployed_node) = deployed_node else {
+                log::error!("Failed to create a resource {node_to_deploy:?} {deployed_node:?}");
+
+                break;
+            };
+
+            let created_resource_node_index = resource_graph.add_node(deployed_node.clone());
+
+            for parent_node_index in parent_node_indexes {
+                edges.push((
+                    parent_node_index,
+                    created_resource_node_index,
+                    String::new(),
+                ));
+            }
+
+            for neighbor_index in graph.neighbors(*node_index) {
+                parents
+                    .entry(neighbor_index)
+                    .or_insert_with(Vec::new)
+                    .push(created_resource_node_index);
+            }
+        }
+
+        resource_graph.extend_with_edges(&edges);
+
+        log::info!("Created graph {}", Dot::new(&resource_graph));
+
+        Ok((resource_graph, vm))
+    }
+
     pub fn get_spec_graph(
         instance_type: &types::InstanceType,
         domain_name: Option<String>,
@@ -165,28 +477,23 @@ impl GraphManager {
         "#,
         );
 
-        // TODO: Add instance profile with instance role
         let vm = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
-            instance_type: instance_type.clone(),
+            instance_type: *instance_type,
             ami: String::from("ami-04dd23e62ed049936"),
             user_data,
         })));
 
-        // Order of the edges matters in this implementation
-        // Nodes within the same parent are traversed from
-        // the latest to the first
         let mut edges = vec![
-            (root, ecr_1, String::new()),                         // 2
-            (root, instance_role_1, String::new()),               // 1
-            (root, vpc_1, String::new()),                         // 0
-            (vpc_1, security_group_1, String::new()),             // 6
-            (vpc_1, subnet_1, String::new()),                     // 5
-            (vpc_1, route_table_1, String::new()),                // 4
-            (vpc_1, igw_1, String::new()),                        // 3
-            (igw_1, route_table_1, String::new()),                // 7
-            (route_table_1, subnet_1, String::new()),             // 8
-            (instance_role_1, instance_profile_1, String::new()), // 9
-            // VM
+            (root, ecr_1, String::new()),
+            (root, instance_role_1, String::new()),
+            (root, vpc_1, String::new()),
+            (vpc_1, security_group_1, String::new()),
+            (vpc_1, subnet_1, String::new()),
+            (vpc_1, route_table_1, String::new()),
+            (vpc_1, igw_1, String::new()),
+            (igw_1, route_table_1, String::new()),
+            (route_table_1, subnet_1, String::new()),
+            (instance_role_1, instance_profile_1, String::new()),
             (subnet_1, vm, String::new()),
             (instance_profile_1, vm, String::new()),
             (security_group_1, vm, String::new()),
@@ -850,8 +1157,7 @@ mod tests {
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
             && /home/ubuntu/oct-ctl & 
-        
-aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin ecr-uri-1"#
+        "#
                 )
             })
         );
