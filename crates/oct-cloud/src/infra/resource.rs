@@ -2744,9 +2744,7 @@ mod tests {
                 public_ip: String::from("1.2.3.4"),
                 instance_type: types::InstanceType::T3Micro,
                 ami: String::from("ami-123"),
-                user_data: String::from(
-                    "user-data\naws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin dkr.ecr.region.amazonaws.com",
-                ),
+                user_data: String::from("user-data"),
             }
         );
     }
@@ -2790,49 +2788,6 @@ mod tests {
         assert_eq!(
             result.expect_err("Expected error").to_string(),
             "VM expects Subnet as a parent"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_vm_manager_create_no_ecr_parent() {
-        // Arrange
-        let ec2_client_mock = client::Ec2::default();
-        let vm_manager = VmManager {
-            client: &ec2_client_mock,
-        };
-        let vm_spec = VmSpec {
-            instance_type: types::InstanceType::T3Micro,
-            ami: String::from("ami-123"),
-            user_data: String::from("user-data"),
-        };
-        let subnet = Subnet {
-            id: String::from("subnet-id"),
-            name: String::from("subnet-name"),
-            cidr_block: String::from("10.0.1.0/24"),
-            availability_zone: String::from("us-west-2a"),
-        };
-        let instance_profile = InstanceProfile {
-            name: String::from("instance-profile-name"),
-        };
-        let security_group = SecurityGroup {
-            id: String::from("sg-id"),
-            name: String::from("sg-name"),
-            inbound_rules: vec![],
-        };
-        let parents = [
-            Node::Resource(ResourceType::Subnet(subnet)),
-            Node::Resource(ResourceType::InstanceProfile(instance_profile)),
-            Node::Resource(ResourceType::SecurityGroup(security_group)),
-        ];
-
-        // Act
-        let result = vm_manager.create(&vm_spec, parents.iter().collect()).await;
-
-        // Assert
-        assert!(result.is_err());
-        assert_eq!(
-            result.expect_err("Expected error").to_string(),
-            "VM expects Ecr as a parent"
         );
     }
 

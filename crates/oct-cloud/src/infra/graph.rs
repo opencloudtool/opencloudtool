@@ -478,7 +478,7 @@ impl GraphManager {
         );
 
         let vm = deps.add_node(SpecNode::Resource(ResourceSpecType::Vm(VmSpec {
-            instance_type: instance_type.clone(),
+            instance_type: *instance_type,
             ami: String::from("ami-04dd23e62ed049936"),
             user_data,
         })));
@@ -1157,8 +1157,7 @@ mod tests {
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
             && /home/ubuntu/oct-ctl & 
-        
-aws ecr get-login-password --region us-west-2 | podman login --username AWS --password-stdin ecr-uri-1"#
+        "#
                 )
             })
         );
