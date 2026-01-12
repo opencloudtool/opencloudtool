@@ -28,11 +28,6 @@ impl GraphManager {
     pub async fn new() -> Self {
         let region_provider = aws_sdk_ec2::config::Region::new("us-west-2");
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .credentials_provider(
-                aws_config::profile::ProfileFileCredentialsProvider::builder()
-                    .profile_name("default")
-                    .build(),
-            )
             .region(region_provider)
             .load()
             .await;
