@@ -40,6 +40,40 @@ impl Client {
         &self.public_ip
     }
 
+    pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(format!("http://{}:{}/apply", self.public_ip, self.port))
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        match response.error_for_status() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
+    pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let () = self.check_host_health().await?;
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(format!("http://{}:{}/destroy", self.public_ip, self.port))
+            .header("Accept", "application/json")
+            .send()
+            .await?;
+
+        match response.error_for_status() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
+        }
+    }
+
     pub async fn run_container(
         &self,
         name: String,
@@ -177,6 +211,68 @@ mod tests {
         let addr = server.socket_address();
 
         (addr.ip().to_string(), addr.port(), server)
+    }
+
+    #[tokio::test]
+    async fn test_apply_success() {
+        // Arrange
+        let (ip, port, mut server) = setup_server().await;
+
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let apply_mock = server
+            .mock("POST", "/apply")
+            .with_status(201)
+            .match_header("Accept", "application/json")
+            .create();
+
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
+
+        // Act
+        let response = client.apply().await;
+
+        // Assert
+        assert!(response.is_ok());
+
+        health_check_mock.assert();
+        apply_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_destroy_success() {
+        // Arrange
+        let (ip, port, mut server) = setup_server().await;
+
+        let health_check_mock = server
+            .mock("GET", "/health-check")
+            .with_status(200)
+            .create();
+
+        let destroy_mock = server
+            .mock("POST", "/destroy")
+            .with_status(200)
+            .match_header("Accept", "application/json")
+            .create();
+
+        let client = Client {
+            public_ip: ip,
+            port,
+        };
+
+        // Act
+        let response = client.destroy().await;
+
+        // Assert
+        assert!(response.is_ok());
+
+        health_check_mock.assert();
+        destroy_mock.assert();
     }
 
     #[tokio::test]
