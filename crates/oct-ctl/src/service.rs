@@ -118,7 +118,7 @@ async fn apply() -> impl IntoResponse {
 /// Destroy endpoint definition for Axum
 ///
 /// Temporary endpoint implementation to show the ability of `oct-ctl`
-/// to destroy cloud infra resources from the Leader node reployed via `apply` endpoint
+/// to destroy cloud infra resources from the Leader node deployed via `apply` endpoint
 async fn destroy() -> impl IntoResponse {
     let state_backend = StateBackend::Local {
         path: String::from("/var/log/oct-state.json"),
