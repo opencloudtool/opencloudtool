@@ -13,11 +13,6 @@ impl S3Bucket {
         // Load AWS configuration
         let region_provider = aws_sdk_s3::config::Region::new(region.clone());
         let config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-            .credentials_provider(
-                aws_config::profile::ProfileFileCredentialsProvider::builder()
-                    .profile_name("default")
-                    .build(),
-            )
             .region(region_provider)
             .load()
             .await;
