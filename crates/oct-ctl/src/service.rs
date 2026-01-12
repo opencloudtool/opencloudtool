@@ -136,7 +136,10 @@ async fn destroy() -> impl IntoResponse {
     let graph_manager = GraphManager::new().await;
     match graph_manager.destroy(&mut graph).await {
         Ok(_resource_graph) => (StatusCode::OK, String::from("Success")),
-        Err(_err) => (StatusCode::BAD_REQUEST, String::from("Failed to destroy")),
+        Err(err) => (
+            StatusCode::BAD_REQUEST,
+            format!("Failed to destroy resources: {err}"),
+        ),
     }
 }
 
