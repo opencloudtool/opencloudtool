@@ -122,7 +122,7 @@ impl Config {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) enum StateBackend {
+pub enum StateBackend {
     #[serde(rename = "local")]
     Local {
         /// Local path to the state file

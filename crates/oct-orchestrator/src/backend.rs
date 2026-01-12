@@ -8,9 +8,9 @@ use crate::config;
 /// Creates a state backend based on the configuration.
 ///
 /// Returns a boxed trait object implementing the `StateBackend<T>` trait.
-pub(crate) fn get_state_backend<T>(
+pub fn get_state_backend<T>(
     state_backend_config: &config::StateBackend,
-) -> Box<dyn StateBackend<T>>
+) -> Box<dyn StateBackend<T> + Send + Sync>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
 {
@@ -27,7 +27,7 @@ where
 }
 
 #[async_trait::async_trait]
-pub(crate) trait StateBackend<T: 'static> {
+pub trait StateBackend<T: 'static>: Send + Sync {
     /// Saves state to a backend
     async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error>>;
 

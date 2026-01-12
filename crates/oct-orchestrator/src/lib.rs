@@ -8,8 +8,8 @@ use petgraph::dot::Dot;
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::infra;
 
-mod backend;
-mod config;
+pub mod backend;
+pub mod config;
 mod scheduler;
 mod user_state;
 
@@ -62,7 +62,7 @@ impl OrchestratorWithGraph {
         );
 
         let infra_graph_manager = infra::graph::GraphManager::new().await;
-        let (resource_graph, vm, ecr) = infra_graph_manager.deploy(&spec_graph).await?;
+        let (resource_graph, vm, ecr) = infra_graph_manager.deploy_spec_graph(&spec_graph).await?;
 
         let state = infra::state::State::from_graph(&resource_graph);
         let () = infra_state_backend.save(&state).await?;

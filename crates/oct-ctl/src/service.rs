@@ -2,11 +2,17 @@ use std::collections::HashMap;
 use std::fs::OpenOptions;
 
 use axum::{
-    Json, Router, extract::State, http::StatusCode, response::IntoResponse, routing::get,
-    routing::post,
+    Json, Router, extract, http::StatusCode, response::IntoResponse, routing::get, routing::post,
 };
+use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
+
+use oct_cloud::infra::graph::GraphManager;
+use oct_cloud::infra::resource::{ResourceSpecType, SpecNode, VpcSpec};
+use oct_cloud::infra::state::State;
+use oct_orchestrator::backend;
+use oct_orchestrator::config::StateBackend;
 
 #[cfg(not(test))]
 use crate::container::ContainerEngine;
@@ -48,6 +54,8 @@ fn prepare_router(server_config: ServerConfig) -> Router {
     tracing_subscriber::fmt().with_writer(log_file).init();
 
     Router::new()
+        .route("/apply", post(apply))
+        .route("/destroy", post(destroy))
         .route("/run-container", post(run_container))
         .route("/remove-container", post(remove_container))
         .route("/health-check", get(health_check))
@@ -57,6 +65,81 @@ fn prepare_router(server_config: ServerConfig) -> Router {
                 .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
         )
         .with_state(server_config)
+}
+
+/// Server config passed as a state to the endpoints.
+/// It is used as a Dependency Injection container.
+#[derive(Clone)]
+struct ServerConfig {
+    container_engine: ContainerEngine,
+}
+
+/// Apply endpoint definition for Axum
+///
+/// Temporary endpoint implementation to show the ability of `oct-ctl`
+/// to deploy cloud infra resources from the Leader node
+async fn apply() -> impl IntoResponse {
+    let mut graph = Graph::<SpecNode, String>::new();
+    let root = graph.add_node(SpecNode::Root);
+    let vpc_2 = graph.add_node(SpecNode::Resource(ResourceSpecType::Vpc(VpcSpec {
+        region: String::from("us-west-2"),
+        cidr_block: String::from("10.1.0.0/16"),
+        name: String::from("vpc-from-leader"),
+    })));
+    let edges = vec![(root, vpc_2, String::new())];
+    graph.extend_with_edges(&edges);
+
+    let graph_manager = GraphManager::new().await;
+
+    let Ok(resource_graph) = graph_manager.deploy(&graph).await else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            String::from("Failed to deploy graph"),
+        );
+    };
+
+    let state = State::from_graph(&resource_graph);
+
+    let state_backend = StateBackend::Local {
+        path: String::from("/var/log/oct-state.json"),
+    };
+    let infra_state_backend = backend::get_state_backend::<State>(&state_backend);
+
+    match infra_state_backend.save(&state).await {
+        Ok(()) => (StatusCode::CREATED, "Success".to_string()),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error to save state: {err}"),
+        ),
+    }
+}
+
+/// Destroy endpoint definition for Axum
+///
+/// Temporary endpoint implementation to show the ability of `oct-ctl`
+/// to destroy cloud infra resources from the Leader node deployed via `apply` endpoint
+async fn destroy() -> impl IntoResponse {
+    let state_backend = StateBackend::Local {
+        path: String::from("/var/log/oct-state.json"),
+    };
+    let infra_state_backend = backend::get_state_backend::<State>(&state_backend);
+    let Ok((state, _loaded)) = infra_state_backend.load().await else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            String::from("Failed to load state"),
+        );
+    };
+
+    let mut graph = state.to_graph();
+
+    let graph_manager = GraphManager::new().await;
+    match graph_manager.destroy(&mut graph).await {
+        Ok(_resource_graph) => (StatusCode::OK, String::from("Success")),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to destroy resources: {err}"),
+        ),
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -79,22 +162,9 @@ struct RunContainerPayload {
     envs: HashMap<String, String>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct RemoveContainerPayload {
-    /// Name of the container
-    name: String,
-}
-
-/// Server config passed as a state to the endpoints.
-/// It is used as a Dependency Injection container.
-#[derive(Clone)]
-struct ServerConfig {
-    container_engine: ContainerEngine,
-}
-
 /// Run container endpoint definition for Axum
 async fn run_container(
-    State(server_config): State<ServerConfig>,
+    extract::State(server_config): extract::State<ServerConfig>,
     Json(payload): Json<RunContainerPayload>,
 ) -> impl IntoResponse {
     let run_result = server_config.container_engine.run(
@@ -115,14 +185,20 @@ async fn run_container(
         }
         Err(err) => {
             log::error!("Failed to create container: {err}");
-            (StatusCode::BAD_REQUEST, format!("Error: {err}"))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
         }
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct RemoveContainerPayload {
+    /// Name of the container
+    name: String,
+}
+
 /// Remove container endpoint definition for Axum
 async fn remove_container(
-    State(server_config): State<ServerConfig>,
+    extract::State(server_config): extract::State<ServerConfig>,
     Json(payload): Json<RemoveContainerPayload>,
 ) -> impl IntoResponse {
     let command = server_config.container_engine.remove(payload.name.as_str());
@@ -134,7 +210,7 @@ async fn remove_container(
         }
         Err(err) => {
             log::error!("Failed to remove container: {err}");
-            (StatusCode::BAD_REQUEST, "Error")
+            (StatusCode::INTERNAL_SERVER_ERROR, "Error")
         }
     }
 }
@@ -244,7 +320,7 @@ mod tests {
             .await
             .expect("Failed to get response");
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
@@ -300,7 +376,7 @@ mod tests {
             .await
             .expect("Failed to get response");
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
