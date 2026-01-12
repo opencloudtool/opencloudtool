@@ -81,7 +81,6 @@ struct ServerConfig {
 async fn apply() -> impl IntoResponse {
     let mut graph = Graph::<SpecNode, String>::new();
     let root = graph.add_node(SpecNode::Root);
-
     let vpc_2 = graph.add_node(SpecNode::Resource(ResourceSpecType::Vpc(VpcSpec {
         region: String::from("us-west-2"),
         cidr_block: String::from("10.1.0.0/16"),
@@ -94,7 +93,7 @@ async fn apply() -> impl IntoResponse {
 
     let Ok(resource_graph) = graph_manager.deploy(&graph).await else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             String::from("Failed to deploy graph"),
         );
     };
@@ -109,7 +108,7 @@ async fn apply() -> impl IntoResponse {
     match infra_state_backend.save(&state).await {
         Ok(()) => (StatusCode::CREATED, "Success".to_string()),
         Err(err) => (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             format!("Error to save state: {err}"),
         ),
     }
@@ -126,7 +125,7 @@ async fn destroy() -> impl IntoResponse {
     let infra_state_backend = backend::get_state_backend::<State>(&state_backend);
     let Ok((state, _loaded)) = infra_state_backend.load().await else {
         return (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             String::from("Failed to load state"),
         );
     };
@@ -137,7 +136,7 @@ async fn destroy() -> impl IntoResponse {
     match graph_manager.destroy(&mut graph).await {
         Ok(_resource_graph) => (StatusCode::OK, String::from("Success")),
         Err(err) => (
-            StatusCode::BAD_REQUEST,
+            StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to destroy resources: {err}"),
         ),
     }
@@ -186,7 +185,7 @@ async fn run_container(
         }
         Err(err) => {
             log::error!("Failed to create container: {err}");
-            (StatusCode::BAD_REQUEST, format!("Error: {err}"))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
         }
     }
 }
@@ -211,7 +210,7 @@ async fn remove_container(
         }
         Err(err) => {
             log::error!("Failed to remove container: {err}");
-            (StatusCode::BAD_REQUEST, "Error")
+            (StatusCode::INTERNAL_SERVER_ERROR, "Error")
         }
     }
 }
@@ -321,7 +320,7 @@ mod tests {
             .await
             .expect("Failed to get response");
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
@@ -377,7 +376,7 @@ mod tests {
             .await
             .expect("Failed to get response");
 
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]
