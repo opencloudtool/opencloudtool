@@ -8,11 +8,9 @@ use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
 
-use oct_cloud::infra::graph::GraphManager;
-use oct_cloud::infra::resource::{ResourceSpecType, SpecNode, VpcSpec};
-use oct_cloud::infra::state::State;
-use oct_config::StateBackend;
-use oct_orchestrator::backend;
+use oct_cloud::infra::graph::kahn_traverse;
+use oct_config::{Config, Node, StateBackend};
+use oct_orchestrator::{backend, user_state};
 
 #[cfg(not(test))]
 use crate::container::ContainerEngine;
@@ -56,8 +54,6 @@ fn prepare_router(server_config: ServerConfig) -> Router {
     Router::new()
         .route("/apply", post(apply))
         .route("/destroy", post(destroy))
-        .route("/run-container", post(run_container))
-        .route("/remove-container", post(remove_container))
         .route("/health-check", get(health_check))
         .layer(
             TraceLayer::new_for_http()
@@ -74,44 +70,86 @@ struct ServerConfig {
     container_engine: ContainerEngine,
 }
 
+#[derive(Serialize, Deserialize)]
+struct ApplyPayload {
+    config: Config,
+}
+
 /// Apply endpoint definition for Axum
 ///
 /// Temporary endpoint implementation to show the ability of `oct-ctl`
 /// to deploy cloud infra resources from the Leader node
-async fn apply() -> impl IntoResponse {
-    let mut graph = Graph::<SpecNode, String>::new();
-    let root = graph.add_node(SpecNode::Root);
-    let vpc_2 = graph.add_node(SpecNode::Resource(ResourceSpecType::Vpc(VpcSpec {
-        region: String::from("us-west-2"),
-        cidr_block: String::from("10.1.0.0/16"),
-        name: String::from("vpc-from-leader"),
-    })));
-    let edges = vec![(root, vpc_2, String::new())];
-    graph.extend_with_edges(&edges);
-
-    let graph_manager = GraphManager::new().await;
-
-    let Ok(resource_graph) = graph_manager.deploy(&graph).await else {
+async fn apply(
+    extract::State(server_config): extract::State<ServerConfig>,
+    Json(payload): Json<ApplyPayload>,
+) -> impl IntoResponse {
+    let Ok(services_graph) = payload.config.to_graph() else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            String::from("Failed to deploy graph"),
+            String::from("Failed to get graph from request body"),
         );
     };
 
-    let state = State::from_graph(&resource_graph);
+    let apply_result = apply_user_services_graph(&server_config, &services_graph);
 
-    let state_backend = StateBackend::Local {
-        path: String::from("/var/log/oct-state.json"),
-    };
-    let infra_state_backend = backend::get_state_backend::<State>(&state_backend);
-
-    match infra_state_backend.save(&state).await {
+    match apply_result.await {
         Ok(()) => (StatusCode::CREATED, "Success".to_string()),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Error to save state: {err}"),
         ),
     }
+}
+
+/// Applies user services graph
+async fn apply_user_services_graph(
+    server_config: &ServerConfig,
+    services_graph: &Graph<Node, String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let state_backend = StateBackend::Local {
+        path: String::from("/var/log/oct-state.json"),
+    };
+    let user_state_backend = backend::get_state_backend::<user_state::UserState>(&state_backend);
+
+    let sorted_graph = kahn_traverse(services_graph)?;
+
+    let mut services = HashMap::new();
+    for node_index in &sorted_graph {
+        if let Node::Resource(service) = &services_graph[*node_index] {
+            log::info!("Running service: {}", service.name);
+
+            let run_result = server_config.container_engine.run(
+                service.name.clone(),
+                service.image.clone(),
+                service.command.clone(),
+                service.external_port,
+                service.internal_port,
+                service.cpus,
+                service.memory,
+                &service.envs,
+            );
+
+            let Ok(()) = run_result else {
+                log::error!("Failed to run service: {}", service.name);
+
+                continue;
+            };
+
+            services.insert(service.name.clone(), service.clone());
+        }
+    }
+
+    let instance_state = user_state::Instance {
+        cpus: 0,
+        memory: 0,
+        services,
+    };
+
+    let user_state = user_state::UserState {
+        instances: HashMap::from([(String::from("localhost"), instance_state)]),
+    };
+
+    user_state_backend.save(&user_state).await
 }
 
 /// Destroy endpoint definition for Axum
@@ -122,97 +160,18 @@ async fn destroy() -> impl IntoResponse {
     let state_backend = StateBackend::Local {
         path: String::from("/var/log/oct-state.json"),
     };
-    let infra_state_backend = backend::get_state_backend::<State>(&state_backend);
-    let Ok((state, _loaded)) = infra_state_backend.load().await else {
+    let user_state_backend = backend::get_state_backend::<user_state::UserState>(&state_backend);
+
+    let Ok((_state, _loaded)) = user_state_backend.load().await else {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             String::from("Failed to load state"),
         );
     };
 
-    let mut graph = state.to_graph();
+    log::info!("Skipping containers removal in this version");
 
-    let graph_manager = GraphManager::new().await;
-    match graph_manager.destroy(&mut graph).await {
-        Ok(_resource_graph) => (StatusCode::OK, String::from("Success")),
-        Err(err) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to destroy resources: {err}"),
-        ),
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct RunContainerPayload {
-    /// Name of the container
-    name: String,
-    /// Image to use for the container
-    image: String,
-    /// Command to run in the container
-    command: Option<String>,
-    /// External container port
-    external_port: Option<u32>,
-    /// Internal container port
-    internal_port: Option<u32>,
-    /// CPU millicores
-    cpus: u32,
-    /// Memory in MB
-    memory: u64,
-    /// Environment variables
-    envs: HashMap<String, String>,
-}
-
-/// Run container endpoint definition for Axum
-async fn run_container(
-    extract::State(server_config): extract::State<ServerConfig>,
-    Json(payload): Json<RunContainerPayload>,
-) -> impl IntoResponse {
-    let run_result = server_config.container_engine.run(
-        payload.name.clone(),
-        payload.image,
-        payload.command,
-        payload.external_port,
-        payload.internal_port,
-        payload.cpus,
-        payload.memory,
-        &payload.envs,
-    );
-
-    match run_result {
-        Ok(()) => {
-            log::info!("Created container: {}", payload.name);
-            (StatusCode::CREATED, "Success".to_string())
-        }
-        Err(err) => {
-            log::error!("Failed to create container: {err}");
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {err}"))
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct RemoveContainerPayload {
-    /// Name of the container
-    name: String,
-}
-
-/// Remove container endpoint definition for Axum
-async fn remove_container(
-    extract::State(server_config): extract::State<ServerConfig>,
-    Json(payload): Json<RemoveContainerPayload>,
-) -> impl IntoResponse {
-    let command = server_config.container_engine.remove(payload.name.as_str());
-
-    match command {
-        Ok(()) => {
-            log::info!("Removed container: {}", &payload.name);
-            (StatusCode::OK, "Success")
-        }
-        Err(err) => {
-            log::error!("Failed to remove container: {err}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Error")
-        }
-    }
+    (StatusCode::OK, String::from("Success"))
 }
 
 /// Health endpoint definition for Axum
@@ -251,132 +210,6 @@ mod tests {
             .returning(move || get_container_engine_mock(is_ok));
 
         container_engine_mock
-    }
-
-    #[tokio::test]
-    async fn test_run_container_success() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(true),
-        };
-
-        let app = Router::new()
-            .route("/run-container", post(run_container))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/run-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string_pretty(&RunContainerPayload {
-                            name: "test".to_string(),
-                            image: "nginx:latest".to_string(),
-                            command: Some("echo hello".to_string()),
-                            external_port: Some(8080),
-                            internal_port: Some(80),
-                            cpus: 250,
-                            memory: 64,
-                            envs: HashMap::new(),
-                        })
-                        .expect("Failed to dump JSON"),
-                    ))
-                    .expect("Failed to prepare body"),
-            )
-            .await
-            .expect("Failed to get response");
-
-        assert_eq!(response.status(), StatusCode::CREATED);
-    }
-
-    #[tokio::test]
-    async fn test_run_container_failure() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(false),
-        };
-
-        let app = Router::new()
-            .route("/run-container", post(run_container))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/run-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string_pretty(&RunContainerPayload {
-                            name: "test".to_string(),
-                            image: "nginx:latest".to_string(),
-                            command: Some("echo hello".to_string()),
-                            external_port: Some(8080),
-                            internal_port: Some(80),
-                            cpus: 250,
-                            memory: 64,
-                            envs: HashMap::new(),
-                        })
-                        .expect("Failed to dump JSON"),
-                    ))
-                    .expect("Failed to prepare body"),
-            )
-            .await
-            .expect("Failed to get response");
-
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_success() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(true),
-        };
-
-        let app = Router::new()
-            .route("/remove-container", post(remove_container))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/remove-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string_pretty(&RemoveContainerPayload {
-                            name: "test".to_string(),
-                        })
-                        .expect("Failed to dump JSON"),
-                    ))
-                    .expect("Failed to prepare body"),
-            )
-            .await
-            .expect("Failed to get response");
-
-        assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_failure() {
-        let server_config = ServerConfig {
-            container_engine: get_container_engine_mock(false),
-        };
-
-        let app = Router::new()
-            .route("/remove-container", post(remove_container))
-            .with_state(server_config);
-
-        let response = app
-            .oneshot(
-                Request::post("/remove-container")
-                    .header("content-type", "application/json")
-                    .body(Body::from(
-                        serde_json::to_string_pretty(&RemoveContainerPayload {
-                            name: "test".to_string(),
-                        })
-                        .expect("Failed to dump JSON"),
-                    ))
-                    .expect("Failed to prepare body"),
-            )
-            .await
-            .expect("Failed to get response");
-
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     #[tokio::test]

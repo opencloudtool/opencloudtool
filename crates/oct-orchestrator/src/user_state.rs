@@ -3,25 +3,25 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
-pub(crate) struct UserState {
+pub struct UserState {
     /// Key - public IP, Value - instance
-    pub(crate) instances: HashMap<String, Instance>,
+    pub instances: HashMap<String, Instance>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Eq, PartialEq)]
-pub(crate) struct Instance {
+pub struct Instance {
     /// CPUs available on instance
-    pub(crate) cpus: u32,
+    pub cpus: u32,
     /// Memory available on instance
-    pub(crate) memory: u64,
+    pub memory: u64,
 
     /// Services running on instance
-    pub(crate) services: HashMap<String, oct_config::Service>,
+    pub services: HashMap<String, oct_config::Service>,
 }
 
 impl Instance {
     /// Gets cpus and memory available on instance
-    pub(crate) fn get_available_resources(&self) -> (u32, u64) {
+    pub fn get_available_resources(&self) -> (u32, u64) {
         let available_cpus = self.cpus - self.services.values().map(|s| s.cpus).sum::<u32>();
         let available_memory = self.memory - self.services.values().map(|s| s.memory).sum::<u64>();
 

@@ -1,7 +1,7 @@
 /// TODO(#147): Generate this from `oct-ctl`'s `OpenAPI` spec
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
+
+use oct_config::Config;
 
 /// HTTP client to access `oct-ctl`'s API
 pub struct Client {
@@ -10,20 +10,8 @@ pub struct Client {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct RunContainerRequest {
-    name: String,
-    image: String,
-    command: Option<String>,
-    external_port: Option<u32>,
-    internal_port: Option<u32>,
-    cpus: u32,
-    memory: u64,
-    envs: HashMap<String, String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct RemoveContainerRequest {
-    name: String,
+struct ApplyRequest {
+    config: Config,
 }
 
 impl Client {
@@ -40,14 +28,18 @@ impl Client {
         &self.public_ip
     }
 
-    pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn apply(&self, config: Config) -> Result<(), Box<dyn std::error::Error>> {
         let () = self.check_host_health().await?;
 
         let client = reqwest::Client::new();
 
+        let request = ApplyRequest { config };
+
         let response = client
             .post(format!("http://{}:{}/apply", self.public_ip, self.port))
+            .header("Content-Type", "application/json")
             .header("Accept", "application/json")
+            .body(serde_json::to_string(&request)?)
             .send()
             .await?;
 
@@ -65,73 +57,6 @@ impl Client {
         let response = client
             .post(format!("http://{}:{}/destroy", self.public_ip, self.port))
             .header("Accept", "application/json")
-            .send()
-            .await?;
-
-        match response.error_for_status() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Box::new(e)),
-        }
-    }
-
-    pub async fn run_container(
-        &self,
-        name: String,
-        image: String,
-        command: Option<String>,
-        external_port: Option<u32>,
-        internal_port: Option<u32>,
-        cpus: u32,
-        memory: u64,
-        envs: HashMap<String, String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let () = self.check_host_health().await?;
-
-        let client = reqwest::Client::new();
-
-        let request = RunContainerRequest {
-            name,
-            image,
-            command,
-            external_port,
-            internal_port,
-            cpus,
-            memory,
-            envs,
-        };
-
-        let response = client
-            .post(format!(
-                "http://{}:{}/run-container",
-                self.public_ip, self.port
-            ))
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .body(serde_json::to_string(&request)?)
-            .send()
-            .await?;
-
-        match response.error_for_status() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(Box::new(e)),
-        }
-    }
-
-    pub async fn remove_container(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
-        let () = self.check_host_health().await?;
-
-        let client = reqwest::Client::new();
-
-        let request = RemoveContainerRequest { name };
-
-        let response = client
-            .post(format!(
-                "http://{}:{}/remove-container",
-                self.public_ip, self.port
-            ))
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .body(serde_json::to_string(&request)?)
             .send()
             .await?;
 
@@ -204,6 +129,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oct_config::{Project, StateBackend};
 
     async fn setup_server() -> (String, u16, mockito::ServerGuard) {
         let server = mockito::Server::new_async().await;
@@ -226,6 +152,7 @@ mod tests {
         let apply_mock = server
             .mock("POST", "/apply")
             .with_status(201)
+            .match_header("Content-Type", "application/json")
             .match_header("Accept", "application/json")
             .create();
 
@@ -234,8 +161,22 @@ mod tests {
             port,
         };
 
+        let config = Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: Vec::new(),
+                domain: None,
+            },
+        };
+
         // Act
-        let response = client.apply().await;
+        let response = client.apply(config).await;
 
         // Assert
         assert!(response.is_ok());
@@ -273,155 +214,5 @@ mod tests {
 
         health_check_mock.assert();
         destroy_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_run_container_success() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let health_check_mock = server
-            .mock("GET", "/health-check")
-            .with_status(200)
-            .create();
-
-        let run_container_mock = server
-            .mock("POST", "/run-container")
-            .with_status(201)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client {
-            public_ip: ip,
-            port,
-        };
-
-        // Act
-        let response = client
-            .run_container(
-                "test".to_string(),
-                "nginx:latest".to_string(),
-                Some("echo hello".to_string()),
-                Some(8080),
-                Some(80),
-                250,
-                64,
-                HashMap::new(),
-            )
-            .await;
-
-        // Assert
-        assert!(response.is_ok());
-
-        health_check_mock.assert();
-        run_container_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_run_container_failure() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let health_check_mock = server
-            .mock("GET", "/health-check")
-            .with_status(200)
-            .create();
-
-        let run_container_mock = server
-            .mock("POST", "/run-container")
-            .with_status(500)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client {
-            public_ip: ip,
-            port,
-        };
-
-        // Act
-        let response = client
-            .run_container(
-                "test".to_string(),
-                "nginx:latest".to_string(),
-                None,
-                Some(8080),
-                Some(80),
-                250,
-                64,
-                HashMap::new(),
-            )
-            .await;
-
-        // Assert
-        assert!(response.is_err());
-
-        health_check_mock.assert();
-        run_container_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_success() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let health_check_mock = server
-            .mock("GET", "/health-check")
-            .with_status(200)
-            .create();
-
-        let remove_container_mock = server
-            .mock("POST", "/remove-container")
-            .with_status(200)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client {
-            public_ip: ip,
-            port,
-        };
-
-        // Act
-        let response = client.remove_container("test".to_string()).await;
-
-        // Assert
-        assert!(response.is_ok());
-
-        health_check_mock.assert();
-        remove_container_mock.assert();
-    }
-
-    #[tokio::test]
-    async fn test_remove_container_failure() {
-        // Arrange
-        let (ip, port, mut server) = setup_server().await;
-
-        let health_check_mock = server
-            .mock("GET", "/health-check")
-            .with_status(200)
-            .create();
-
-        let remove_container_mock = server
-            .mock("POST", "/remove-container")
-            .with_status(500)
-            .match_header("Content-Type", "application/json")
-            .match_header("Accept", "application/json")
-            .create();
-
-        let client = Client {
-            public_ip: ip,
-            port,
-        };
-
-        // Act
-        let response = client.remove_container("test".to_string()).await;
-
-        // Assert
-        assert!(response.is_err());
-
-        health_check_mock.assert();
-        remove_container_mock.assert();
     }
 }
