@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use petgraph::Graph;
 use petgraph::graph::NodeIndex;
 
-use crate::infra::resource::{Node, ResourceType};
+use crate::infra::resource::{Node, ResourceType, Vm};
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct State {
@@ -20,6 +20,19 @@ struct ResourceState {
 }
 
 impl State {
+    pub fn get_vms(&self) -> Vec<Vm> {
+        self.resources
+            .iter()
+            .filter_map(|resource_state| {
+                if let ResourceType::Vm(vm) = &resource_state.resource {
+                    Some(vm.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     pub fn from_graph(graph: &Graph<Node, String>) -> Self {
         let mut resource_states: Vec<ResourceState> = Vec::new();
 
@@ -319,5 +332,32 @@ mod tests {
 
         assert!(graph.contains_edge(root_node_index, vpc_node_index));
         assert!(graph.contains_edge(vpc_node_index, subnet_node_index));
+    }
+
+    #[test]
+    fn test_get_vms() {
+        // Arrange
+        let vm = Vm {
+            id: String::from("vm-id"),
+            public_ip: String::from("1.2.3.4"),
+            instance_type: crate::aws::types::InstanceType::T3Micro,
+            ami: String::from("ami-id"),
+            user_data: String::from("user-data"),
+        };
+        let resource_state = ResourceState {
+            name: String::from("vm.vm-id"),
+            resource: ResourceType::Vm(vm.clone()),
+            dependencies: vec![],
+        };
+        let state = State {
+            resources: vec![resource_state],
+        };
+
+        // Act
+        let vms = state.get_vms();
+
+        // Assert
+        assert_eq!(vms.len(), 1);
+        assert_eq!(vms[0], vm);
     }
 }
