@@ -3,13 +3,11 @@ use std::fs;
 use oct_cloud::aws::resource::S3Bucket;
 use oct_cloud::resource::Resource;
 
-use crate::config;
-
 /// Creates a state backend based on the configuration.
 ///
 /// Returns a boxed trait object implementing the `StateBackend<T>` trait.
 pub fn get_state_backend<T>(
-    state_backend_config: &config::StateBackend,
+    state_backend_config: &oct_config::StateBackend,
 ) -> Box<dyn StateBackend<T> + Send + Sync>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
@@ -17,8 +15,8 @@ where
     log::info!("Using state backend: {state_backend_config:?}");
 
     match state_backend_config {
-        config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
-        config::StateBackend::S3 {
+        oct_config::StateBackend::Local { path } => Box::new(LocalStateBackend::new(path)),
+        oct_config::StateBackend::S3 {
             region,
             bucket,
             key,

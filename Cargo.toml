@@ -25,6 +25,7 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.dependencies]
+oct-config = { package = "oct-config", path = "crates/oct-config", version = "0.7.0" }
 oct-cloud = { package = "oct-cloud", path = "crates/oct-cloud", version = "0.7.0" }
 oct-orchestrator = { package = "oct-orchestrator", path = "crates/oct-orchestrator", version = "0.7.0" }
 oct-ctl-sdk = { package = "oct-ctl-sdk", path = "crates/oct-ctl-sdk", version = "0.7.0" }

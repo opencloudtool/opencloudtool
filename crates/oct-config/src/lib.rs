@@ -5,15 +5,13 @@ use petgraph::Graph;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
-use crate::user_state;
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct Config {
-    pub(crate) project: Project,
+pub struct Config {
+    pub project: Project,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) enum Node {
+pub enum Node {
     /// The synthetic root node.
     #[default]
     Root,
@@ -33,7 +31,7 @@ impl std::fmt::Display for Node {
 impl Config {
     const DEFAULT_CONFIG_PATH: &'static str = "oct.toml";
 
-    pub(crate) fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
         let config =
             fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH)).map_err(|e| {
                 format!(
@@ -55,7 +53,7 @@ impl Config {
     }
 
     /// Converts user services to a graph
-    pub(crate) fn to_graph(&self) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
+    pub fn to_graph(&self) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
         let mut graph = Graph::<Node, String>::new();
         let mut edges = Vec::new();
         let root = graph.add_node(Node::Root);
@@ -141,77 +139,45 @@ pub enum StateBackend {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct Project {
-    pub(crate) name: String,
+pub struct Project {
+    pub name: String,
 
-    pub(crate) state_backend: StateBackend,
-    pub(crate) user_state_backend: StateBackend,
+    pub state_backend: StateBackend,
+    pub user_state_backend: StateBackend,
 
-    pub(crate) services: HashMap<String, Service>,
+    pub services: HashMap<String, Service>,
 
-    pub(crate) domain: Option<String>,
+    pub domain: Option<String>,
 }
 
 /// Configuration for a service
 /// This configuration is managed by the user and used to deploy the service
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub(crate) struct Service {
+pub struct Service {
     /// Service name, injected from the key in the services map.
     #[serde(skip_deserializing, default)]
-    pub(crate) name: String,
+    pub name: String,
     /// Image to use for the container
-    pub(crate) image: String,
+    pub image: String,
     /// Path to the Dockerfile
-    pub(crate) dockerfile_path: Option<String>,
+    pub dockerfile_path: Option<String>,
     /// Command to run in the container
-    pub(crate) command: Option<String>,
+    pub command: Option<String>,
     /// Internal port exposed from the container
-    pub(crate) internal_port: Option<u32>,
+    pub internal_port: Option<u32>,
     /// External port exposed to the public internet
-    pub(crate) external_port: Option<u32>,
+    pub external_port: Option<u32>,
     /// CPU millicores
-    pub(crate) cpus: u32,
+    pub cpus: u32,
     /// Memory in MB
-    pub(crate) memory: u64,
+    pub memory: u64,
     /// List of services that this service depends on
     #[serde(default)]
-    pub(crate) depends_on: Vec<String>,
+    pub depends_on: Vec<String>,
     /// Raw environment variables to set in the container
     /// All values are rendered using in `render_envs` method
     #[serde(default)]
-    pub(crate) envs: HashMap<String, String>,
-}
-
-impl Service {
-    /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
-    /// Available variables:
-    /// - `services`: Map of all services
-    pub(crate) fn render_envs(
-        &self,
-        services_context: &HashMap<String, user_state::ServiceContext>,
-    ) -> HashMap<String, String> {
-        let mut context = tera::Context::new();
-        context.insert("services", services_context);
-
-        let mut rendered_envs = HashMap::new();
-
-        for (env_name, env_value) in &self.envs {
-            let rendered = tera::Tera::one_off(env_value, &context, true);
-
-            match rendered {
-                Ok(rendered) => {
-                    rendered_envs.insert(env_name.clone(), rendered);
-                }
-                Err(err) => {
-                    log::warn!("Failed to render string: '{env_value}', error: {err}");
-
-                    rendered_envs.insert(env_name.clone(), env_value.clone());
-                }
-            }
-        }
-
-        rendered_envs
-    }
+    pub envs: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -223,7 +189,7 @@ mod tests {
     #[test]
     fn test_config_new_success_path_privided() {
         // Arrange
-        let config_file_content = r#"
+        let config_file_content = r#" 
 [project]
 name = "example"
 domain = "opencloudtool.com"
@@ -245,7 +211,8 @@ memory = 64
 
 [project.services.app_1.envs]
 KEY1 = "VALUE1"
-KEY2 = """Multiline
+KEY2 = """
+Multiline
 string"""
 KEY_WITH_INJECTED_ENV = "{{ env.CARGO_PKG_NAME }}"
 KEY_WITH_OTHER_TEMPLATE_VARIABLE = "{{ other_vars.some_var }}"
@@ -296,7 +263,11 @@ depends_on = ["app_1"]
                                     ("KEY2".to_string(), "Multiline\nstring".to_string()),
                                     (
                                         "KEY_WITH_INJECTED_ENV".to_string(),
-                                        "oct-orchestrator".to_string()
+                                        // "oct-orchestrator" was the previous value because it was in that crate.
+                                        // Now it's in oct-config, so CARGO_PKG_NAME will be oct-config.
+                                        // Wait, the test uses {{ env.CARGO_PKG_NAME }}.
+                                        // When running tests for oct-config, CARGO_PKG_NAME is oct-config.
+                                        "oct-config".to_string()
                                     ),
                                     (
                                         "KEY_WITH_OTHER_TEMPLATE_VARIABLE".to_string(),
@@ -505,76 +476,6 @@ depends_on = ["app_1"]
         assert_eq!(
             graph.expect_err("Expected error").to_string(),
             "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in 'app_1' service"
-        );
-    }
-
-    #[test]
-    fn test_service_render_envs_success() {
-        // Arrange
-        let service = Service {
-            name: "app_2".to_string(),
-            image: "nginx:latest".to_string(),
-            dockerfile_path: None,
-            command: None,
-            internal_port: None,
-            external_port: None,
-            cpus: 250,
-            memory: 64,
-            depends_on: vec!["app_1".to_string()],
-            envs: HashMap::from([(
-                "KEY".to_string(),
-                "Service public_ip={{ services.app_1.public_ip }}".to_string(),
-            )]),
-        };
-
-        let services_context = HashMap::from([(
-            "app_1".to_string(),
-            user_state::ServiceContext {
-                public_ip: "1.2.3.4".to_string(),
-            },
-        )]);
-
-        // Act
-        let rendered_envs = service.render_envs(&services_context);
-
-        // Assert
-        assert_eq!(
-            rendered_envs,
-            HashMap::from([("KEY".to_string(), "Service public_ip=1.2.3.4".to_string())])
-        );
-    }
-
-    #[test]
-    fn test_service_render_envs_failure() {
-        // Arrange
-        let service = Service {
-            name: "app_2".to_string(),
-            image: "nginx:latest".to_string(),
-            dockerfile_path: None,
-            command: None,
-            internal_port: None,
-            external_port: None,
-            cpus: 250,
-            memory: 64,
-            depends_on: vec!["app_1".to_string()],
-            envs: HashMap::from([(
-                "KEY".to_string(),
-                "Service public_ip={{ UNKNOWN_VAR }}".to_string(),
-            )]),
-        };
-
-        let services_context = HashMap::new();
-
-        // Act
-        let rendered_envs = service.render_envs(&services_context);
-
-        // Assert
-        assert_eq!(
-            rendered_envs,
-            HashMap::from([(
-                "KEY".to_string(),
-                "Service public_ip={{ UNKNOWN_VAR }}".to_string()
-            )])
         );
     }
 }
