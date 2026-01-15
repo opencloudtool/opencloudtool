@@ -11,8 +11,8 @@ use tower_http::trace::{self, TraceLayer};
 use oct_cloud::infra::graph::GraphManager;
 use oct_cloud::infra::resource::{ResourceSpecType, SpecNode, VpcSpec};
 use oct_cloud::infra::state::State;
+use oct_config::StateBackend;
 use oct_orchestrator::backend;
-use oct_orchestrator::config::StateBackend;
 
 #[cfg(not(test))]
 use crate::container::ContainerEngine;

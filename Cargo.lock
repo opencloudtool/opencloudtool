@@ -2283,6 +2283,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "oct-config"
+version = "0.7.0"
+dependencies = [
+ "log",
+ "petgraph",
+ "serde",
+ "tempfile",
+ "tera",
+ "toml",
+]
+
+[[package]]
 name = "oct-ctl"
 version = "0.7.0"
 dependencies = [
@@ -2290,6 +2302,7 @@ dependencies = [
  "log",
  "mockall",
  "oct-cloud",
+ "oct-config",
  "oct-orchestrator",
  "petgraph",
  "serde",
@@ -2321,14 +2334,13 @@ dependencies = [
  "log",
  "mockito",
  "oct-cloud",
+ "oct-config",
  "oct-ctl-sdk",
  "petgraph",
  "serde",
  "serde_json",
  "tempfile",
- "tera",
  "tokio",
- "toml",
 ]
 
 [[package]]

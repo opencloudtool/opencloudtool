@@ -9,7 +9,6 @@ use oct_cloud::aws::types::InstanceType;
 use oct_cloud::infra;
 
 pub mod backend;
-pub mod config;
 mod scheduler;
 mod user_state;
 
@@ -18,7 +17,7 @@ pub struct OrchestratorWithGraph;
 impl OrchestratorWithGraph {
     /// Initial step of the `oct`-managed system deployment
     pub async fn genesis(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = config::Config::new(None)?;
+        let config = oct_config::Config::new(None)?;
 
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
@@ -38,7 +37,7 @@ impl OrchestratorWithGraph {
     }
 
     pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut config = config::Config::new(None)?;
+        let mut config = oct_config::Config::new(None)?;
 
         let services_graph = config.to_graph()?;
 
@@ -112,7 +111,7 @@ impl OrchestratorWithGraph {
     }
 
     pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = config::Config::new(None)?;
+        let config = oct_config::Config::new(None)?;
 
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
@@ -154,14 +153,14 @@ impl OrchestratorWithGraph {
 
 /// Tries to find an instance type which can fit all user-requested services
 fn get_instance_type(
-    services_graph: &Graph<config::Node, String>,
+    services_graph: &Graph<oct_config::Node, String>,
 ) -> Result<InstanceType, Box<dyn std::error::Error>> {
     let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
     let total_services_cpus = sorted_graph
         .iter()
         .filter_map(|node_index| {
-            if let config::Node::Resource(service) = &services_graph[*node_index] {
+            if let oct_config::Node::Resource(service) = &services_graph[*node_index] {
                 return Some(service);
             }
 
@@ -173,7 +172,7 @@ fn get_instance_type(
     let total_services_memory = sorted_graph
         .iter()
         .filter_map(|node_index| {
-            if let config::Node::Resource(service) = &services_graph[*node_index] {
+            if let oct_config::Node::Resource(service) = &services_graph[*node_index] {
                 return Some(service);
             }
 
@@ -192,13 +191,13 @@ fn get_instance_type(
 
 /// Applies user services graph
 async fn apply_user_services_graph(
-    services_graph: &Graph<config::Node, String>,
+    services_graph: &Graph<oct_config::Node, String>,
     scheduler: &mut scheduler::Scheduler<'_>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
     for node_index in &sorted_graph {
-        if let config::Node::Resource(service) = &services_graph[*node_index] {
+        if let oct_config::Node::Resource(service) = &services_graph[*node_index] {
             log::info!("Running service: {}", service.name);
 
             let _ = scheduler.run(&service.name, service).await;
