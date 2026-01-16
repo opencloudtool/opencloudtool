@@ -1036,18 +1036,18 @@ pub fn kahn_traverse<T>(
     graph: &Graph<T, String>,
 ) -> Result<Vec<NodeIndex>, Box<dyn std::error::Error>> {
     // 1. Calculate the in-degree for each node.
-    let mut in_degrees: Vec<usize> = graph
-        .node_indices()
-        .map(|i| graph.neighbors_directed(i, Incoming).count())
-        .collect();
+    let mut in_degrees = vec![0; graph.node_bound()];
+    for node in graph.node_indices() {
+        in_degrees[graph.to_index(node)] = graph.neighbors_directed(node, Incoming).count();
+    }
 
     // 2. Initialize a queue with all nodes having an in-degree of 0.
     let mut queue: VecDeque<NodeIndex> = graph
         .node_indices()
-        .filter(|&i| in_degrees[i.index()] == 0)
+        .filter(|&i| in_degrees[graph.to_index(i)] == 0)
         .collect();
 
-    let mut result = Vec::new();
+    let mut result = Vec::with_capacity(graph.node_count());
 
     // 3. Process the queue.
     while let Some(node) = queue.pop_front() {
@@ -1055,7 +1055,7 @@ pub fn kahn_traverse<T>(
 
         // For each neighbor of the processed node, decrement its in-degree.
         for neighbor in graph.neighbors_directed(node, Outgoing) {
-            let neighbor_idx = neighbor.index();
+            let neighbor_idx = graph.to_index(neighbor);
             in_degrees[neighbor_idx] -= 1;
 
             // If a neighbor's in-degree becomes 0, add it to the queue.
@@ -1895,5 +1895,35 @@ mod tests {
 
         // Assert
         assert_eq!(result.to_string(), "Cycle detected in graph");
+    }
+
+    #[test]
+    fn test_kahn_traverse_with_removed_nodes() {
+        // Arrange
+        let mut graph = Graph::<&str, String>::new();
+        let a = graph.add_node("a");
+        let b = graph.add_node("b");
+        let c = graph.add_node("c");
+
+        graph.add_edge(a, c, String::new());
+        graph.add_edge(b, c, String::new());
+
+        // Remove node 'b' (index 1) to create a hole in indices: 0, 2
+        graph.remove_node(b);
+
+        // Act
+        let result = kahn_traverse(&graph).expect("Failed to traverse graph");
+        let result_weights: Vec<&str> = result
+            .iter()
+            .map(|&i| {
+                *graph
+                    .node_weight(i)
+                    .expect("Node weight must exist for traversed indices")
+            })
+            .collect();
+
+        // Assert
+        // Expected order: "a" -> "c"
+        assert_eq!(result_weights, vec!["a", "c"]);
     }
 }
