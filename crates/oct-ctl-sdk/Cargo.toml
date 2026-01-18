@@ -14,10 +14,11 @@ keywords = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+oct-config = { workspace = true }
+
 log = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
