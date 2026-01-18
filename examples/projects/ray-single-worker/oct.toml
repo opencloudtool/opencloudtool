@@ -7,7 +7,8 @@ path = "./state.json"
 [project.user_state_backend.local]
 path = "./user_state.json"
 
-[project.services.head]
+[[project.services]]
+name = "head"
 image = "docker.io/rayproject/ray:latest"
 command = "ray start --head --port 6379 --dashboard-host 0.0.0.0 --dashboard-port 8265 --block"
 cpus = 1000
@@ -15,7 +16,8 @@ memory = 4096
 internal_port = 8265
 external_port = 80
 
-[project.services.worker_1]
+[[project.services]]
+name = "worker_1"
 image = "docker.io/rayproject/ray:latest"
 command = "ray start --address head:6379 --block"
 cpus = 1000
