@@ -43,11 +43,7 @@ impl Config {
 
         let config_with_injected_envs = Self::render_system_envs(config);
 
-        let mut toml_data: Config = toml::from_str(&config_with_injected_envs)?;
-
-        for (service_name, service) in &mut toml_data.project.services {
-            service.name.clone_from(service_name);
-        }
+        let toml_data: Config = toml::from_str(&config_with_injected_envs)?;
 
         Ok(toml_data)
     }
@@ -59,15 +55,18 @@ impl Config {
         let root = graph.add_node(Node::Root);
 
         let mut services_map: HashMap<String, NodeIndex> = HashMap::new();
-        for (service_name, service) in &self.project.services {
+        for service in &self.project.services {
+            if services_map.contains_key(&service.name) {
+                return Err(format!("Duplicate service name: '{}'", service.name).into());
+            }
             let node = graph.add_node(Node::Resource(service.clone()));
 
-            services_map.insert(service_name.clone(), node);
+            services_map.insert(service.name.clone(), node);
         }
 
-        for (service_name, service) in &self.project.services {
+        for service in &self.project.services {
             let resource = services_map
-                .get(service_name)
+                .get(&service.name)
                 .expect("Missed resource value in resource_map");
 
             if service.depends_on.is_empty() {
@@ -82,7 +81,8 @@ impl Config {
                         }
                         None => {
                             return Err(format!(
-                                "Missed resource with name '{dependency_name}' referenced as dependency in '{service_name}' service"
+                                "Missed resource with name '{dependency_name}' referenced as dependency in '{}' service",
+                                service.name
                             )
                             .into());
                         }
@@ -145,7 +145,7 @@ pub struct Project {
     pub state_backend: StateBackend,
     pub user_state_backend: StateBackend,
 
-    pub services: HashMap<String, Service>,
+    pub services: Vec<Service>,
 
     pub domain: Option<String>,
 }
@@ -154,8 +154,7 @@ pub struct Project {
 /// This configuration is managed by the user and used to deploy the service
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Service {
-    /// Service name, injected from the key in the services map.
-    #[serde(skip_deserializing, default)]
+    /// Service name
     pub name: String,
     /// Image to use for the container
     pub image: String,
@@ -200,7 +199,8 @@ path = "./state.json"
 [project.user_state_backend.local]
 path = "./user_state.json"
 
-[project.services.app_1]
+[[project.services]]
+name = "app_1"
 image = ""
 dockerfile_path = "Dockerfile"
 command = "echo Hello World!"
@@ -209,7 +209,7 @@ external_port = 80
 cpus = 250
 memory = 64
 
-[project.services.app_1.envs]
+[project.services.envs]
 KEY1 = "VALUE1"
 KEY2 = """
 Multiline
@@ -217,7 +217,8 @@ string"""
 KEY_WITH_INJECTED_ENV = "{{ env.CARGO_PKG_NAME }}"
 KEY_WITH_OTHER_TEMPLATE_VARIABLE = "{{ other_vars.some_var }}"
 
-[project.services.app_2]
+[[project.services]]
+name = "app_2"
 image = "nginx:latest"
 cpus = 250
 memory = 64
@@ -238,61 +239,55 @@ depends_on = ["app_1"]
             config,
             Config {
                 project: Project {
-                    name: "example".to_string(),
+                    name: String::from("example"),
                     state_backend: StateBackend::Local {
-                        path: "./state.json".to_string()
+                        path: String::from("./state.json")
                     },
                     user_state_backend: StateBackend::Local {
-                        path: "./user_state.json".to_string()
+                        path: String::from("./user_state.json")
                     },
-                    services: HashMap::from([
-                        (
-                            "app_1".to_string(),
-                            Service {
-                                name: "app_1".to_string(),
-                                image: String::new(),
-                                dockerfile_path: Some("Dockerfile".to_string()),
-                                command: Some("echo Hello World!".to_string()),
-                                internal_port: Some(80),
-                                external_port: Some(80),
-                                cpus: 250,
-                                memory: 64,
-                                depends_on: vec![],
-                                envs: HashMap::from([
-                                    ("KEY1".to_string(), "VALUE1".to_string()),
-                                    ("KEY2".to_string(), "Multiline\nstring".to_string()),
-                                    (
-                                        "KEY_WITH_INJECTED_ENV".to_string(),
-                                        // "oct-orchestrator" was the previous value because it was in that crate.
-                                        // Now it's in oct-config, so CARGO_PKG_NAME will be oct-config.
-                                        // Wait, the test uses {{ env.CARGO_PKG_NAME }}.
-                                        // When running tests for oct-config, CARGO_PKG_NAME is oct-config.
-                                        "oct-config".to_string()
-                                    ),
-                                    (
-                                        "KEY_WITH_OTHER_TEMPLATE_VARIABLE".to_string(),
-                                        "{{ other_vars.some_var }}".to_string()
-                                    ),
-                                ]),
-                            }
-                        ),
-                        (
-                            "app_2".to_string(),
-                            Service {
-                                name: "app_2".to_string(),
-                                image: "nginx:latest".to_string(),
-                                dockerfile_path: None,
-                                command: None,
-                                internal_port: None,
-                                external_port: None,
-                                cpus: 250,
-                                memory: 64,
-                                depends_on: vec!["app_1".to_string()],
-                                envs: HashMap::new(),
-                            }
-                        ),
-                    ]),
-                    domain: Some("opencloudtool.com".to_string()),
+                    services: vec![
+                        Service {
+                            name: String::from("app_1"),
+                            image: String::new(),
+                            dockerfile_path: Some(String::from("Dockerfile")),
+                            command: Some(String::from("echo Hello World!")),
+                            internal_port: Some(80),
+                            external_port: Some(80),
+                            cpus: 250,
+                            memory: 64,
+                            depends_on: vec![],
+                            envs: HashMap::from([
+                                (String::from("KEY1"), String::from("VALUE1")),
+                                (String::from("KEY2"), String::from("Multiline\nstring")),
+                                (
+                                    String::from("KEY_WITH_INJECTED_ENV"),
+                                    // "oct-orchestrator" was the previous value because it was in that crate.
+                                    // Now it's in oct-config, so CARGO_PKG_NAME will be oct-config.
+                                    // Wait, the test uses {{ env.CARGO_PKG_NAME }}.
+                                    // When running tests for oct-config, CARGO_PKG_NAME is oct-config.
+                                    String::from("oct-config")
+                                ),
+                                (
+                                    String::from("KEY_WITH_OTHER_TEMPLATE_VARIABLE"),
+                                    String::from("{{ other_vars.some_var }}")
+                                ),
+                            ]),
+                        },
+                        Service {
+                            name: String::from("app_2"),
+                            image: String::from("nginx:latest"),
+                            dockerfile_path: None,
+                            command: None,
+                            internal_port: None,
+                            external_port: None,
+                            cpus: 250,
+                            memory: 64,
+                            depends_on: vec![String::from("app_1")],
+                            envs: HashMap::new(),
+                        }
+                    ],
+                    domain: Some(String::from("opencloudtool.com")),
                 }
             }
         );
@@ -303,14 +298,14 @@ depends_on = ["app_1"]
         // Arrange
         let config = Config {
             project: Project {
-                name: "test".to_string(),
+                name: String::from("test"),
                 state_backend: StateBackend::Local {
-                    path: "state.json".to_string(),
+                    path: String::from("state.json"),
                 },
                 user_state_backend: StateBackend::Local {
-                    path: "user_state.json".to_string(),
+                    path: String::from("user_state.json"),
                 },
-                services: HashMap::new(),
+                services: Vec::new(),
                 domain: None,
             },
         };
@@ -327,8 +322,8 @@ depends_on = ["app_1"]
     fn test_config_to_graph_single_node() {
         // Arrange
         let service = Service {
-            name: "app_1".to_string(),
-            image: "nginx:latest".to_string(),
+            name: String::from("app_1"),
+            image: String::from("nginx:latest"),
             dockerfile_path: None,
             command: None,
             internal_port: None,
@@ -340,14 +335,14 @@ depends_on = ["app_1"]
         };
         let config = Config {
             project: Project {
-                name: "test".to_string(),
+                name: String::from("test"),
                 state_backend: StateBackend::Local {
-                    path: "state.json".to_string(),
+                    path: String::from("state.json"),
                 },
                 user_state_backend: StateBackend::Local {
-                    path: "user_state.json".to_string(),
+                    path: String::from("user_state.json"),
                 },
-                services: HashMap::from([("app_1".to_string(), service)]),
+                services: vec![service],
                 domain: None,
             },
         };
@@ -375,8 +370,8 @@ depends_on = ["app_1"]
     fn test_config_to_graph_with_dependencies() {
         // Arrange
         let service1 = Service {
-            name: "app_1".to_string(),
-            image: "nginx:latest".to_string(),
+            name: String::from("app_1"),
+            image: String::from("nginx:latest"),
             dockerfile_path: None,
             command: None,
             internal_port: None,
@@ -387,30 +382,27 @@ depends_on = ["app_1"]
             envs: HashMap::new(),
         };
         let service2 = Service {
-            name: "app_2".to_string(),
-            image: "nginx:latest".to_string(),
+            name: String::from("app_2"),
+            image: String::from("nginx:latest"),
             dockerfile_path: None,
             command: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
             memory: 64,
-            depends_on: vec!["app_1".to_string()],
+            depends_on: vec![String::from("app_1")],
             envs: HashMap::new(),
         };
         let config = Config {
             project: Project {
-                name: "test".to_string(),
+                name: String::from("test"),
                 state_backend: StateBackend::Local {
-                    path: "state.json".to_string(),
+                    path: String::from("state.json"),
                 },
                 user_state_backend: StateBackend::Local {
-                    path: "user_state.json".to_string(),
+                    path: String::from("user_state.json"),
                 },
-                services: HashMap::from([
-                    ("app_1".to_string(), service1.clone()),
-                    ("app_2".to_string(), service2.clone()),
-                ]),
+                services: vec![service1.clone(), service2.clone()],
                 domain: None,
             },
         };
@@ -443,27 +435,27 @@ depends_on = ["app_1"]
     fn test_config_to_graph_failed_to_get_dependency() {
         // Arrange
         let service = Service {
-            name: "app_1".to_string(),
-            image: "nginx:latest".to_string(),
+            name: String::from("app_1"),
+            image: String::from("nginx:latest"),
             dockerfile_path: None,
             command: None,
             internal_port: None,
             external_port: None,
             cpus: 250,
             memory: 64,
-            depends_on: vec!["INCORRECT_SERVICE_NAME".to_string()],
+            depends_on: vec![String::from("INCORRECT_SERVICE_NAME")],
             envs: HashMap::new(),
         };
         let config = Config {
             project: Project {
-                name: "test".to_string(),
+                name: String::from("test"),
                 state_backend: StateBackend::Local {
-                    path: "state.json".to_string(),
+                    path: String::from("state.json"),
                 },
                 user_state_backend: StateBackend::Local {
-                    path: "user_state.json".to_string(),
+                    path: String::from("user_state.json"),
                 },
-                services: HashMap::from([("app_1".to_string(), service)]),
+                services: vec![service],
                 domain: None,
             },
         };
@@ -476,6 +468,58 @@ depends_on = ["app_1"]
         assert_eq!(
             graph.expect_err("Expected error").to_string(),
             "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in 'app_1' service"
+        );
+    }
+
+    #[test]
+    fn test_config_to_graph_duplicate_service_names() {
+        // Arrange
+        let service1 = Service {
+            name: String::from("app_1"),
+            image: String::from("nginx:latest"),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec![],
+            envs: HashMap::new(),
+        };
+        let service2 = Service {
+            name: String::from("app_1"),
+            image: String::from("nginx:latest"),
+            dockerfile_path: None,
+            command: None,
+            internal_port: None,
+            external_port: None,
+            cpus: 250,
+            memory: 64,
+            depends_on: vec![],
+            envs: HashMap::new(),
+        };
+        let config = Config {
+            project: Project {
+                name: String::from("test"),
+                state_backend: StateBackend::Local {
+                    path: String::from("state.json"),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: String::from("user_state.json"),
+                },
+                services: vec![service1, service2],
+                domain: None,
+            },
+        };
+
+        // Act
+        let graph = config.to_graph();
+
+        // Assert
+        assert!(graph.is_err());
+        assert_eq!(
+            graph.expect_err("Expected error").to_string(),
+            "Duplicate service name: 'app_1'"
         );
     }
 }

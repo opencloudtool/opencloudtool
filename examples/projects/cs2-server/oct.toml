@@ -7,14 +7,15 @@ path = "./state.json"
 [project.user_state_backend.local]
 path = "./user_state.json"
 
-[project.services.cs2]
+[[project.services]]
+name = "cs2"
 image = "docker.io/joedwards32/cs2"
 cpus = 2000
 memory = 2048
 internal_port = 27015
 external_port = 80
 
-[project.services.cs2.envs]
+[project.services.envs]
 SRCDS_TOKEN = "{{ env.SRCDS_TOKEN }}"
 STEAMAPPVALIDATE = "0"
 CS2_SERVERNAME = "OpenCloudTool Server"

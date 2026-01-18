@@ -86,15 +86,18 @@ impl OrchestratorWithGraph {
 
             log::info!("Logged in to ECR {known_base_ecr_url}");
 
-            for (service_name, service) in &mut config.project.services {
+            for service in &mut config.project.services {
                 let Some(dockerfile_path) = &service.dockerfile_path else {
-                    log::debug!("Dockerfile path not specified for service '{service_name}'");
+                    log::debug!(
+                        "Dockerfile path not specified for service '{}'",
+                        service.name
+                    );
 
                     continue;
                 };
 
                 let ecr_url = ecr.uri.clone();
-                let image_tag = format!("{ecr_url}:{service_name}-latest");
+                let image_tag = format!("{ecr_url}:{}-latest", service.name);
 
                 build_image(dockerfile_path, &image_tag)?;
                 push_image(&image_tag)?;

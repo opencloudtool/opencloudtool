@@ -7,7 +7,8 @@ path = "./state.json"
 [project.user_state_backend.local]
 path = "./user_state.json"
 
-[project.services.app_11]
+[[project.services]]
+name = "app_11"
 image = "ghcr.io/opencloudtool/example-python-fastapi:latest"
 internal_port = 8000
 external_port = 80

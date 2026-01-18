@@ -110,7 +110,8 @@ path = "./state.json"
 [project.user_state_backend.local]
 path = "./user_state.json"
 
-[project.services.app_1]
+[[project.services]]
+name = "app_1"
 image = ""
 dockerfile_path = "Dockerfile"
 internal_port = 80
