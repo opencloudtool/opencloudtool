@@ -2322,7 +2322,6 @@ dependencies = [
  "oct-config",
  "reqwest",
  "serde",
- "serde_json",
  "tokio",
 ]
 
