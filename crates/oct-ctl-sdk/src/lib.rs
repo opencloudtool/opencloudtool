@@ -37,9 +37,8 @@ impl Client {
 
         let response = client
             .post(format!("http://{}:{}/apply", self.public_ip, self.port))
-            .header("Content-Type", "application/json")
             .header("Accept", "application/json")
-            .body(serde_json::to_string(&request)?)
+            .json(&request)
             .send()
             .await?;
 

@@ -96,10 +96,12 @@ async fn apply(
         Ok(()) => (StatusCode::CREATED, "Success".to_string()),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Error to save state: {err}"),
+            format!("Failed to apply services: {err}"),
         ),
     }
 }
+
+const USER_STATE_FILE_PATH: &str = "/var/log/oct-state.json";
 
 /// Applies user services graph
 async fn apply_user_services_graph(
@@ -107,7 +109,7 @@ async fn apply_user_services_graph(
     services_graph: &Graph<Node, String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let state_backend = StateBackend::Local {
-        path: String::from("/var/log/oct-state.json"),
+        path: String::from(USER_STATE_FILE_PATH),
     };
     let user_state_backend = backend::get_state_backend::<user_state::UserState>(&state_backend);
 
@@ -158,7 +160,7 @@ async fn apply_user_services_graph(
 /// to destroy cloud infra resources from the Leader node deployed via `apply` endpoint
 async fn destroy() -> impl IntoResponse {
     let state_backend = StateBackend::Local {
-        path: String::from("/var/log/oct-state.json"),
+        path: String::from(USER_STATE_FILE_PATH),
     };
     let user_state_backend = backend::get_state_backend::<user_state::UserState>(&state_backend);
 

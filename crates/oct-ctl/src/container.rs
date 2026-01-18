@@ -81,7 +81,7 @@ impl ContainerEngine {
 
     /// Removes container
     ///
-    /// Temporarily marked as dead until at least the containers destruction logic is implemented
+    /// Temporarily marked as unused until container destruction logic is implemented
     #[allow(dead_code)]
     pub(crate) fn remove(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let output = self

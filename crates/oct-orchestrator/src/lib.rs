@@ -42,7 +42,7 @@ impl OrchestratorWithGraph {
         let (infra_state, _loaded) = infra_state_backend.load().await?;
 
         let vms = infra_state.get_vms();
-        let leader_vm = vms.first().ok_or("No leader available")?;
+        let leader_vm = vms.first().ok_or("No VMs available")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(leader_vm.public_ip.clone());
         let () = oct_ctl_client.apply(config).await?;
@@ -58,7 +58,7 @@ impl OrchestratorWithGraph {
         let (infra_state, _loaded) = infra_state_backend.load().await?;
 
         let vms = infra_state.get_vms();
-        let leader_vm = vms.first().ok_or("No leader available")?;
+        let leader_vm = vms.first().ok_or("No VMs available")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(leader_vm.public_ip.clone());
         let () = oct_ctl_client.destroy().await?;
@@ -98,7 +98,7 @@ fn get_instance_type(
 ) -> Result<InstanceType, Box<dyn std::error::Error>> {
     let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
-    let total_services_cpus = sorted_graph
+    let (total_services_cpus, total_services_memory) = sorted_graph
         .iter()
         .filter_map(|node_index| {
             if let oct_config::Node::Resource(service) = &services_graph[*node_index] {
@@ -107,20 +107,9 @@ fn get_instance_type(
 
             None
         })
-        .map(|service| service.cpus)
-        .sum::<u32>();
-
-    let total_services_memory = sorted_graph
-        .iter()
-        .filter_map(|node_index| {
-            if let oct_config::Node::Resource(service) = &services_graph[*node_index] {
-                return Some(service);
-            }
-
-            None
-        })
-        .map(|service| service.memory)
-        .sum::<u64>();
+        .fold((0u32, 0u64), |(cpus, mem), service| {
+            (cpus + service.cpus, mem + service.memory)
+        });
 
     let instance_type = InstanceType::from_resources(total_services_cpus, total_services_memory);
 
