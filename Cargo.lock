@@ -2252,7 +2252,7 @@ dependencies = [
 
 [[package]]
 name = "oct-cli"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2264,7 +2264,7 @@ dependencies = [
 
 [[package]]
 name = "oct-cloud"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "aws-config",
  "aws-sdk-ec2",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "oct-config"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "petgraph",
@@ -2296,7 +2296,7 @@ dependencies = [
 
 [[package]]
 name = "oct-ctl"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "axum",
  "log",
@@ -2315,7 +2315,7 @@ dependencies = [
 
 [[package]]
 name = "oct-ctl-sdk"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "log",
  "mockito",
@@ -2327,7 +2327,7 @@ dependencies = [
 
 [[package]]
 name = "oct-orchestrator"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "async-trait",
  "log",
@@ -2344,7 +2344,7 @@ dependencies = [
 
 [[package]]
 name = "oct-platform"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "askama",
  "axum",
@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "oct-py"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "env_logger",
  "log",
