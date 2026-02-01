@@ -44,19 +44,28 @@ const spawnServer = async (
     });
 
     await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            reject(new Error("Server failed to start within 30s"));
+        }, 30000);
+
         serverProcess.stdout?.on("data", (data) => {
             const output = data.toString();
             onLog(`[Server ${port}]: ${output}`);
             if (output.includes(`Listening on http://0.0.0.0:${port}`)) {
+                clearTimeout(timeout);
                 resolve();
             }
         });
         serverProcess.stderr?.on("data", (data) => {
             onLog(`[Server ${port} ERR]: ${data.toString()}`);
         });
-        serverProcess.on("error", reject);
+        serverProcess.on("error", (err) => {
+            clearTimeout(timeout);
+            reject(err);
+        });
         serverProcess.on("exit", (code) => {
             if (code !== null && code !== 0 && code !== 137 && code !== 143) {
+                clearTimeout(timeout);
                 reject(new Error(`Server exited with code ${code}`));
             }
         });
