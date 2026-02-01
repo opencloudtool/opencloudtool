@@ -267,9 +267,16 @@
         }
     }
 
+    let currentEvtSource = null;
+
     function startLogStream(url) {
         const consoleEl = document.getElementById('log-console');
         const outputEl = document.getElementById('log-output');
+
+        if (currentEvtSource) {
+            currentEvtSource.close();
+            currentEvtSource = null;
+        }
 
         // Show console
         consoleEl.classList.remove('hidden');
@@ -278,9 +285,9 @@
 
         outputEl.innerHTML = '<div class="text-muted italic">Initializing stream...</div>';
 
-        const evtSource = new EventSource(url);
+        currentEvtSource = new EventSource(url);
 
-        evtSource.onmessage = function(event) {
+        currentEvtSource.onmessage = function(event) {
             const div = document.createElement('div');
             try {
                 const log = JSON.parse(event.data);
@@ -319,9 +326,12 @@
             outputEl.scrollTop = outputEl.scrollHeight;
         };
 
-        evtSource.onerror = function(err) {
+        currentEvtSource.onerror = function(err) {
             console.error("EventSource failed:", err);
-            evtSource.close();
+            if (currentEvtSource) {
+                currentEvtSource.close();
+                currentEvtSource = null;
+            }
             const div = document.createElement('div');
             div.className = 'text-muted italic mt-2 border-t border-border pt-2';
             div.textContent = 'Stream connection closed.';
@@ -334,6 +344,11 @@
         const consoleEl = document.getElementById('log-console');
         consoleEl.classList.add('opacity-0');
         setTimeout(() => consoleEl.classList.add('hidden'), 300);
+
+        if (currentEvtSource) {
+            currentEvtSource.close();
+            currentEvtSource = null;
+        }
     }
   </script>
 
