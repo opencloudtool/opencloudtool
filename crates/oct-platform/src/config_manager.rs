@@ -1,6 +1,7 @@
 use oct_config::{Config, Project, StateBackend};
 use serde::Serialize;
-use std::{fs, path::Path};
+use std::fs;
+use std::path::{Component, Path};
 use tracing::error;
 
 #[derive(Debug, Clone, Serialize)]
@@ -105,6 +106,14 @@ pub struct WorkspaceConfigManager {
 }
 
 impl WorkspaceConfigManager {
+    fn validate_project_name(name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let mut comps = Path::new(name).components();
+        match (comps.next(), comps.next()) {
+            (Some(Component::Normal(_)), None) => Ok(()),
+            _ => Err(format!("Invalid project name '{name}'").into()),
+        }
+    }
+
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let root = if let Ok(root_env) = std::env::var("OCT_WORKSPACE_ROOT") {
             Path::new(&root_env).to_path_buf()
@@ -161,6 +170,7 @@ impl ConfigManager for WorkspaceConfigManager {
     }
 
     fn create_project(&self, name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        Self::validate_project_name(name)?;
         let path = self.project_path(name);
         if path.exists() {
             return Err(format!("Project '{name}' already exists").into());
@@ -189,6 +199,7 @@ impl ConfigManager for WorkspaceConfigManager {
     }
 
     fn load_project(&self, name: &str) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
+        Self::validate_project_name(name)?;
         let config_path = self.project_path(name).join("oct.toml");
         let path_str = config_path
             .to_str()
@@ -204,6 +215,7 @@ impl ConfigManager for WorkspaceConfigManager {
         &self,
         name: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        Self::validate_project_name(name)?;
         let config_path = self.project_path(name).join("oct.toml");
         if config_path.exists() {
             let toml_str = fs::read_to_string(config_path)?;
@@ -215,6 +227,7 @@ impl ConfigManager for WorkspaceConfigManager {
 
     fn save(&self, config: &Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let name = &config.project.name;
+        Self::validate_project_name(name)?;
         let config_path = self.project_path(name).join("oct.toml");
 
         if let Some(parent) = config_path.parent() {
@@ -328,5 +341,24 @@ path = "./user_state.json"
             .load_project("test-proj")
             .expect("Failed to load project");
         assert_eq!(config.project.name, "test-proj");
+    }
+
+    #[test]
+    fn test_workspace_config_manager_invalid_name() {
+        // Arrange
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let manager = WorkspaceConfigManager::with_root(temp_dir.path().to_path_buf())
+            .expect("Failed to create manager");
+
+        // Act & Assert
+        let err = manager
+            .create_project("../invalid")
+            .expect_err("Should fail for path traversal");
+        assert!(err.to_string().contains("Invalid project name"));
+
+        let err = manager
+            .create_project("valid/nested")
+            .expect_err("Should fail for nested path");
+        assert!(err.to_string().contains("Invalid project name"));
     }
 }
