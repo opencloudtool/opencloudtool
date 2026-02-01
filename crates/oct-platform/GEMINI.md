@@ -28,7 +28,7 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
     - CSS Variables defined in `base.html` (`--bg-body`, `--bg-surface`, etc.).
     - Tailwind Config in `base.html` maps these to utility classes (`bg-body`, `bg-surface`, `text-main`).
     - **HTMX Partials:** Use `#[template(path = "...", block = "content")]` structs (e.g. `EditContentTemplate`) for HTMX swaps to avoid re-rendering the sidebar and other layout elements, which prevents visual artifacts like duplicated sidebars.
-    - **Default:** Logic forces Dark mode if no preference is saved, overriding system preference to maintain brand identity.
+    - **Default:** Logic respects the system's `prefers-color-scheme` if no preference is saved in `localStorage`.
 
 ## Logging
 
