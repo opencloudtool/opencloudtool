@@ -62,7 +62,12 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
     # OR for verbose logs
     cargo run -p oct-platform -- --verbose
     ```
-3.  **UI Branding:**
+3.  **Linting & Formatting (E2E):**
+    ```bash
+    cd crates/oct-platform/e2e
+    npx @biomejs/biome check . --apply
+    ```
+4.  **UI Branding:**
     - Font: "Share Tech Mono"
     - Logo: "oct;" + "platform"
     - Colors: Semantic classes (`bg-surface`, `text-main`) to support theming.
