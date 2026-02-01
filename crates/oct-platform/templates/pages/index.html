@@ -1,9 +1,144 @@
 {% extends "shared/base.html" %}
 
-{% block title %}Index{% endblock %}
+{% block title %}Project Config{% endblock %}
 
 {% block content %}
-<button hx-get="/login/github">
-  Connect GitHub
-</button>
+<div id="project-view" hx-target="this" hx-swap="outerHTML" class="max-w-6xl mx-auto space-y-8">
+
+    <!-- Project Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border">
+        <div>
+            <div class="flex items-center gap-3 mb-2">
+                <button hx-get="/projects" hx-target="#project-view" hx-swap="outerHTML" hx-select="#projects-view" hx-push-url="/projects" class="text-muted hover:text-main transition-colors" title="Back to Projects">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <h2 class="text-3xl font-bold text-main tracking-tight">{{ project.name }}</h2>
+            </div>
+            <div class="flex items-center gap-2 text-muted text-sm pl-7">
+                <i class="fa-solid fa-globe"></i>
+                <span>
+                  {% match project.domain %}
+                    {% when Some with (domain) %} {{ domain }}
+                    {% when None %} No domain configured
+                  {% endmatch %}
+                </span>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <button class="px-4 py-2 bg-surface hover:bg-body text-green-400 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-green-400/50"
+                onclick="startLogStream('/projects/{{ project.name }}/action/genesis')">
+                <i class="fa-solid fa-seedling"></i>
+                <span>Genesis</span>
+            </button>
+            <button class="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-white font-medium rounded-lg shadow-lg shadow-accent-500/20 transition-all duration-200 flex items-center gap-2"
+                onclick="startLogStream('/projects/{{ project.name }}/action/apply')">
+                <i class="fa-solid fa-play"></i>
+                <span>Apply</span>
+            </button>
+            <button class="px-4 py-2 bg-surface hover:bg-body text-red-400 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-red-400/50"
+                onclick="startLogStream('/projects/{{ project.name }}/action/destroy')">
+                <i class="fa-solid fa-trash"></i>
+                <span>Destroy</span>
+            </button>
+
+            <div class="w-px h-8 bg-border mx-1"></div>
+
+            <button class="px-4 py-2 bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-accent-500/50"
+                hx-get="/projects/{{ project.name }}/state"
+                hx-target="#project-view"
+                hx-swap="outerHTML"
+                hx-select="#state-view"
+                hx-push-url="true">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span>State</span>
+            </button>
+            <button class="px-4 py-2 bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-accent-500/50"
+                hx-get="/projects/{{ project.name }}/edit"
+                hx-target="#project-view"
+                hx-swap="outerHTML"
+                hx-select="#edit-config-form"
+                hx-push-url="true">
+                <i class="fa-solid fa-pen-to-square"></i>
+                <span>Edit Config</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Services Grid -->
+    <div>
+        <h3 class="text-xl font-semibold text-main mb-6 flex items-center gap-2">
+            <i class="fa-solid fa-layer-group text-muted"></i>
+            Services
+        </h3>
+
+        {% if project.services.is_empty() %}
+        <div class="rounded-2xl border-2 border-dashed border-border p-12 text-center text-muted">
+            <i class="fa-solid fa-box-open text-4xl mb-4 opacity-50"></i>
+            <p>No services defined yet.</p>
+        </div>
+        {% else %}
+        <div id="services-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for service in project.services %}
+            <div class="bg-surface border border-border rounded-xl p-6 hover:border-accent-500/50 transition-colors duration-200 shadow-sm relative group overflow-hidden">
+                <!-- Decorative gradient blob -->
+                <div class="absolute -top-10 -right-10 w-24 h-24 bg-accent-500/10 rounded-full blur-2xl group-hover:bg-accent-500/20 transition-all"></div>
+
+                <div class="relative z-10">
+                    <div class="flex items-start justify-between mb-4">
+                        <div class="w-10 h-10 rounded-lg bg-body flex items-center justify-center text-accent-500 border border-border">
+                            <i class="fa-solid fa-server"></i>
+                        </div>
+                        <span class="text-xs font-mono text-muted bg-body px-2 py-1 rounded border border-border">
+                            #{{ loop.index }}
+                        </span>
+                    </div>
+
+                    <h4 class="text-lg font-bold text-main mb-1 truncate">{{ service.name }}</h4>
+                    <div class="text-sm text-muted mb-4 font-mono truncate" title="{{ service.image }}">
+                        {{ service.image }}
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
+                        <div>
+                            <div class="text-xs text-muted uppercase tracking-wider mb-1">CPU</div>
+                            <div class="text-sm font-medium text-main">{{ service.cpus }}m</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-muted uppercase tracking-wider mb-1">Memory</div>
+                            <div class="text-sm font-medium text-main">{{ service.memory }} MB</div>
+                        </div>
+                    </div>
+
+                    {% if !service.envs.is_empty() %}
+                    <div class="mt-4 pt-4 border-t border-border">
+                        <div class="text-xs text-muted uppercase tracking-wider mb-2">Env Vars</div>
+                        <div class="space-y-1">
+                            {% for (key, value) in service.envs %}
+                            <div class="flex items-center text-xs font-mono">
+                                <span class="text-accent-500 font-semibold mr-1">{{ key }}</span>
+                                <span class="text-muted mr-1">=</span>
+                                <span class="text-muted truncate" title="{{ value }}">{{ value }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Raw Config -->
+    <div class="mt-8 border-t border-border pt-8">
+        <h3 class="text-xl font-semibold text-main mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-code text-muted"></i>
+            Raw Config
+        </h3>
+        <div class="bg-surface border border-border rounded-xl p-4 overflow-x-auto">
+            <pre class="font-mono text-sm"><code>{{ raw_config|safe }}</code></pre>
+        </div>
+    </div>
+</div>
 {% endblock %}

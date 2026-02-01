@@ -1,0 +1,60 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Edit Config{% endblock %}
+
+{% block sidebar_actions %}{% endblock %}
+
+{% block content %}
+<form id="edit-config-form" hx-put="/projects/{{ project.name }}/config" hx-ext="nested-json" hx-target="this" hx-swap="outerHTML" class="max-w-4xl mx-auto">
+
+  <div class="flex items-center justify-between mb-8 border-b border-border pb-6">
+      <h2 class="text-2xl font-bold text-main">Edit Configuration</h2>
+      <div class="flex gap-3">
+          <button type="button" class="px-4 py-2 bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 flex items-center border border-border hover:border-accent-500/50" hx-get="/projects/{{ project.name }}" hx-select="#project-view" hx-push-url="true">
+              Cancel
+          </button>
+          <button class="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-white font-medium rounded-lg shadow-lg shadow-accent-500/20 transition-all duration-200" type="submit">
+              Save Changes
+          </button>
+      </div>
+  </div>
+
+  <div class="space-y-8">
+      <!-- General Settings -->
+      <div class="bg-surface border border-border rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-main mb-4">General Settings</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                  <label class="block text-sm font-medium text-muted mb-2">Project Name</label>
+                  <input type="text" name="name" value="{{ project.name }}"
+                      class="w-full bg-body border border-border text-main rounded-lg px-4 py-2.5 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all placeholder-muted">
+              </div>
+              <div>
+                  <label class="block text-sm font-medium text-muted mb-2">Domain</label>
+                  <input type="text" name="domain" value="{% match project.domain %}{% when Some with (domain) %}{{ domain }}{% when None %}{% endmatch %}"
+                      placeholder="e.g. example.com"
+                      class="w-full bg-body border border-border text-main rounded-lg px-4 py-2.5 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all placeholder-muted">
+              </div>
+          </div>
+      </div>
+
+      <!-- Services -->
+      <div>
+          <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-semibold text-main">Services</h3>
+              <button type="button" class="px-4 py-2 text-sm bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 border border-border hover:border-accent-500/50"
+                  hx-post="/projects/{{ project.name }}/config/add-service" hx-trigger="click" hx-include="#edit-config-form" hx-target="#edit-config-form" hx-swap="outerHTML">
+                  <i class="fa-solid fa-plus mr-1"></i> Add Service
+              </button>
+          </div>
+
+          <div class="space-y-4">
+              {% for service in project.services %}
+                {% let index = loop.index0 %}
+                {% include "partials/service_row.html" %}
+              {% endfor %}
+          </div>
+      </div>
+  </div>
+</form>
+{% endblock %}

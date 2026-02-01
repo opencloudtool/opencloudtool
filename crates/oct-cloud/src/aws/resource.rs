@@ -31,19 +31,25 @@ impl S3Bucket {
         &self,
         key: &str,
         data: Vec<u8>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.put_object(&self.name, key, data).await?;
 
         Ok(())
     }
 
     /// Get an object from the bucket
-    pub async fn get_object(&self, key: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    pub async fn get_object(
+        &self,
+        key: &str,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         self.client.get_object(&self.name, key).await
     }
 
     /// Delete an object from the bucket
-    pub async fn delete_object(&self, key: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_object(
+        &self,
+        key: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_object(&self.name, key).await?;
 
         Ok(())
@@ -51,13 +57,13 @@ impl S3Bucket {
 }
 
 impl Resource for S3Bucket {
-    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn create(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.create_bucket(&self.region, &self.name).await?;
 
         Ok(())
     }
 
-    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn destroy(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_bucket(&self.name).await?;
 
         Ok(())

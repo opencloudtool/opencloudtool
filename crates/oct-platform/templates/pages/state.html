@@ -1,0 +1,110 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Infrastructure State{% endblock %}
+
+{% block sidebar_actions %}{% endblock %}
+
+{% block content %}
+<div id="state-view" hx-target="this" hx-swap="outerHTML" class="max-w-6xl mx-auto space-y-8">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between pb-6 border-b border-border">
+        <h2 class="text-3xl font-bold text-main tracking-tight">Infrastructure State</h2>
+        <div class="flex gap-3">
+             <button class="px-4 py-2 bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-accent-500/50" hx-get="/projects/{{ project_name }}" hx-target="#state-view" hx-swap="outerHTML" hx-select="#project-view" hx-push-url="true">
+              <i class="fa-solid fa-arrow-left"></i> Back to Project
+          </button>
+        </div>
+    </div>
+
+    <!-- Diagram -->
+    <div class="bg-surface border border-border rounded-xl p-6">
+        <h3 class="text-xl font-semibold text-main mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-diagram-project text-muted"></i>
+            Dependency Graph
+        </h3>
+        <!-- Container for Mermaid -->
+        <div class="mermaid-container w-full h-[600px] bg-body/50 rounded-lg overflow-hidden relative border border-border">
+            <pre class="mermaid w-full h-full flex items-center justify-center opacity-0 transition-opacity duration-300">
+{{ mermaid_graph|safe }}
+            </pre>
+        </div>
+    </div>
+
+    <!-- Raw State -->
+    <div class="bg-surface border border-border rounded-xl p-6">
+         <h3 class="text-xl font-semibold text-main mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-code text-muted"></i>
+            Raw State (JSON)
+        </h3>
+        <div class="bg-body border border-border rounded-xl p-4 overflow-x-auto">
+            <pre class="font-mono text-sm"><code>{{ state_json }}</code></pre>
+        </div>
+    </div>
+
+</div>
+
+<!-- Load svg-pan-zoom (global scope) -->
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
+  mermaid.initialize({
+      startOnLoad: false, // We will run manually
+      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
+      securityLevel: 'loose',
+      flowchart: {
+          useMaxWidth: false, // Don't constrain width
+          htmlLabels: true
+      }
+  });
+
+  async function renderDiagram() {
+      const container = document.querySelector('.mermaid');
+      if (!container) return;
+
+      // Reset if needed (for htmx swaps) - though typically swapping replaces the whole block
+      container.removeAttribute('data-processed');
+
+      try {
+          await mermaid.run({ nodes: [container] });
+
+          const svg = container.querySelector('svg');
+          if (svg) {
+              // Ensure SVG fills container for pan-zoom
+              svg.style.width = '100%';
+              svg.style.height = '100%';
+
+              // Enable Pan/Zoom
+              svgPanZoom(svg, {
+                  zoomEnabled: true,
+                  controlIconsEnabled: true,
+                  fit: true,
+                  center: true,
+                  minZoom: 0.1,
+                  maxZoom: 10,
+              });
+
+              // Fade in
+              container.classList.remove('opacity-0');
+          }
+      } catch (e) {
+          console.error('Mermaid render error:', e);
+          container.textContent = 'Failed to render diagram.';
+          container.classList.remove('opacity-0');
+      }
+  }
+
+  // Re-run mermaid when content is swapped by HTMX
+  document.body.addEventListener('htmx:afterSwap', function(evt) {
+      // Check if the swapped content contains our state view
+      if (evt.target.querySelector('#state-view') || evt.target.id === 'state-view') {
+          renderDiagram();
+      }
+  });
+
+  // Initial run
+  renderDiagram();
+</script>
+{% endblock %}

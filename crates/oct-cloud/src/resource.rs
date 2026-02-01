@@ -5,8 +5,8 @@
 pub trait Resource {
     fn create(
         &mut self,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
     fn destroy(
         &mut self,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
 }

@@ -28,7 +28,10 @@ impl Client {
         &self.public_ip
     }
 
-    pub async fn apply(&self, config: Config) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn apply(
+        &self,
+        config: Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let () = self.check_host_health().await?;
 
         let client = reqwest::Client::new();
@@ -48,7 +51,7 @@ impl Client {
         }
     }
 
-    pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let () = self.check_host_health().await?;
 
         let client = reqwest::Client::new();
@@ -65,7 +68,7 @@ impl Client {
         }
     }
 
-    async fn check_host_health(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn check_host_health(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let max_tries = 24;
         let sleep_duration_s = 5;
 
@@ -106,7 +109,7 @@ impl Client {
         }
     }
 
-    async fn health_check(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn health_check(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let client = reqwest::Client::new();
 
         let response = client

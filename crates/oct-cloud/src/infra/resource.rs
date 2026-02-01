@@ -15,13 +15,13 @@ where
         &self,
         input: &'a I,
         parents: Vec<&'a Node>,
-    ) -> impl std::future::Future<Output = Result<O, Box<dyn std::error::Error>>> + Send;
+    ) -> impl std::future::Future<Output = Result<O, Box<dyn std::error::Error + Send + Sync>>> + Send;
 
     fn destroy(
         &self,
         input: &'a O,
         parents: Vec<&'a Node>,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error>>> + Send;
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send;
 }
 
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl Manager<'_, HostedZoneSpec, HostedZone> for HostedZoneManager<'_> {
         &self,
         input: &'_ HostedZoneSpec,
         _parents: Vec<&'_ Node>,
-    ) -> Result<HostedZone, Box<dyn std::error::Error>> {
+    ) -> Result<HostedZone, Box<dyn std::error::Error + Send + Sync>> {
         let hosted_zone_id = self.client.create_hosted_zone(input.name.clone()).await?;
 
         Ok(HostedZone {
@@ -60,7 +60,7 @@ impl Manager<'_, HostedZoneSpec, HostedZone> for HostedZoneManager<'_> {
         &self,
         input: &'_ HostedZone,
         _parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_hosted_zone(input.id.clone()).await
     }
 }
@@ -88,7 +88,7 @@ impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
         &self,
         input: &'_ DnsRecordSpec,
         parents: Vec<&'_ Node>,
-    ) -> Result<DnsRecord, Box<dyn std::error::Error>> {
+    ) -> Result<DnsRecord, Box<dyn std::error::Error + Send + Sync>> {
         let hosted_zone_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::HostedZone(_))));
@@ -134,7 +134,7 @@ impl Manager<'_, DnsRecordSpec, DnsRecord> for DnsRecordManager<'_> {
         &self,
         input: &'_ DnsRecord,
         parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let hosted_zone_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::HostedZone(_))));
@@ -182,7 +182,7 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
         &self,
         input: &'_ VpcSpec,
         _parents: Vec<&Node>,
-    ) -> Result<Vpc, Box<dyn std::error::Error>> {
+    ) -> Result<Vpc, Box<dyn std::error::Error + Send + Sync>> {
         let vpc_id = self
             .client
             .create_vpc(input.cidr_block.clone(), input.name.clone())
@@ -200,7 +200,7 @@ impl Manager<'_, VpcSpec, Vpc> for VpcManager<'_> {
         &self,
         input: &'_ Vpc,
         _parents: Vec<&Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_vpc(input.id.clone()).await
     }
 }
@@ -222,7 +222,7 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
         &self,
         _input: &'_ InternetGatewaySpec,
         parents: Vec<&'_ Node>,
-    ) -> Result<InternetGateway, Box<dyn std::error::Error>> {
+    ) -> Result<InternetGateway, Box<dyn std::error::Error + Send + Sync>> {
         let vpc_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
@@ -242,7 +242,7 @@ impl Manager<'_, InternetGatewaySpec, InternetGateway> for InternetGatewayManage
         &self,
         input: &'_ InternetGateway,
         parents: Vec<&Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let vpc_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
@@ -278,7 +278,7 @@ impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
         &self,
         _input: &'_ RouteTableSpec,
         parents: Vec<&'_ Node>,
-    ) -> Result<RouteTable, Box<dyn std::error::Error>> {
+    ) -> Result<RouteTable, Box<dyn std::error::Error + Send + Sync>> {
         let vpc_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
@@ -312,7 +312,7 @@ impl Manager<'_, RouteTableSpec, RouteTable> for RouteTableManager<'_> {
         &self,
         input: &'_ RouteTable,
         _parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_route_table(input.id.clone()).await
     }
 }
@@ -341,7 +341,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
         &self,
         input: &'_ SubnetSpec,
         parents: Vec<&Node>,
-    ) -> Result<Subnet, Box<dyn std::error::Error>> {
+    ) -> Result<Subnet, Box<dyn std::error::Error + Send + Sync>> {
         let vpc_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
@@ -393,7 +393,7 @@ impl Manager<'_, SubnetSpec, Subnet> for SubnetManager<'_> {
         &self,
         input: &'_ Subnet,
         parents: Vec<&Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let route_table_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::RouteTable(_))));
@@ -442,7 +442,7 @@ impl Manager<'_, SecurityGroupSpec, SecurityGroup> for SecurityGroupManager<'_> 
         &self,
         input: &'_ SecurityGroupSpec,
         parents: Vec<&Node>,
-    ) -> Result<SecurityGroup, Box<dyn std::error::Error>> {
+    ) -> Result<SecurityGroup, Box<dyn std::error::Error + Send + Sync>> {
         let vpc_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Vpc(_))));
@@ -484,7 +484,7 @@ impl Manager<'_, SecurityGroupSpec, SecurityGroup> for SecurityGroupManager<'_> 
         &self,
         input: &'_ SecurityGroup,
         _parents: Vec<&Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_security_group(input.id.clone()).await
     }
 }
@@ -512,7 +512,7 @@ impl Manager<'_, InstanceRoleSpec, InstanceRole> for InstanceRoleManager<'_> {
         &self,
         input: &'_ InstanceRoleSpec,
         _parents: Vec<&'_ Node>,
-    ) -> Result<InstanceRole, Box<dyn std::error::Error>> {
+    ) -> Result<InstanceRole, Box<dyn std::error::Error + Send + Sync>> {
         let () = self
             .client
             .create_instance_iam_role(
@@ -533,7 +533,7 @@ impl Manager<'_, InstanceRoleSpec, InstanceRole> for InstanceRoleManager<'_> {
         &self,
         input: &'_ InstanceRole,
         _parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client
             .delete_instance_iam_role(input.name.clone(), input.policy_arns.clone())
             .await
@@ -559,7 +559,7 @@ impl Manager<'_, InstanceProfileSpec, InstanceProfile> for InstanceProfileManage
         &self,
         input: &'_ InstanceProfileSpec,
         parents: Vec<&'_ Node>,
-    ) -> Result<InstanceProfile, Box<dyn std::error::Error>> {
+    ) -> Result<InstanceProfile, Box<dyn std::error::Error + Send + Sync>> {
         let instance_role_names = parents
             .iter()
             .filter_map(|parent| match parent {
@@ -583,7 +583,7 @@ impl Manager<'_, InstanceProfileSpec, InstanceProfile> for InstanceProfileManage
         &self,
         input: &'_ InstanceProfile,
         parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let instance_role_names = parents
             .iter()
             .filter_map(|parent| match parent {
@@ -632,7 +632,7 @@ impl Manager<'_, EcrSpec, Ecr> for EcrManager<'_> {
         &self,
         input: &'_ EcrSpec,
         _parents: Vec<&'_ Node>,
-    ) -> Result<Ecr, Box<dyn std::error::Error>> {
+    ) -> Result<Ecr, Box<dyn std::error::Error + Send + Sync>> {
         let (id, uri) = self.client.create_repository(input.name.clone()).await?;
 
         Ok(Ecr {
@@ -646,7 +646,7 @@ impl Manager<'_, EcrSpec, Ecr> for EcrManager<'_> {
         &self,
         input: &'_ Ecr,
         _parents: Vec<&'_ Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.delete_repository(input.name.clone()).await
     }
 }
@@ -694,7 +694,10 @@ impl VmManager<'_> {
         None
     }
 
-    async fn is_terminated(&self, id: String) -> Result<(), Box<dyn std::error::Error>> {
+    async fn is_terminated(
+        &self,
+        id: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let max_attempts = 24;
         let sleep_duration = 5;
 
@@ -724,7 +727,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
         &self,
         input: &'_ VmSpec,
         parents: Vec<&Node>,
-    ) -> Result<Vm, Box<dyn std::error::Error>> {
+    ) -> Result<Vm, Box<dyn std::error::Error + Send + Sync>> {
         let subnet_node = parents
             .iter()
             .find(|parent| matches!(parent, Node::Resource(ResourceType::Subnet(_))));
@@ -800,7 +803,7 @@ impl Manager<'_, VmSpec, Vm> for VmManager<'_> {
         &self,
         input: &'_ Vm,
         _parents: Vec<&Node>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.client.terminate_instance(input.id.clone()).await?;
 
         self.is_terminated(input.id.clone()).await

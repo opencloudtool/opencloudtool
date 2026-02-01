@@ -5,7 +5,7 @@ use petgraph::Graph;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Config {
     pub project: Project,
 }
@@ -31,7 +31,7 @@ impl std::fmt::Display for Node {
 impl Config {
     const DEFAULT_CONFIG_PATH: &'static str = "oct.toml";
 
-    pub fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(path: Option<&str>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let config =
             fs::read_to_string(path.unwrap_or(Self::DEFAULT_CONFIG_PATH)).map_err(|e| {
                 format!(
@@ -49,7 +49,9 @@ impl Config {
     }
 
     /// Converts user services to a graph
-    pub fn to_graph(&self) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
+    pub fn to_graph(
+        &self,
+    ) -> Result<Graph<Node, String>, Box<dyn std::error::Error + Send + Sync>> {
         let mut graph = Graph::<Node, String>::new();
         let mut edges = Vec::new();
         let root = graph.add_node(Node::Root);
@@ -119,7 +121,7 @@ impl Config {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub enum StateBackend {
     #[serde(rename = "local")]
     Local {
@@ -138,7 +140,7 @@ pub enum StateBackend {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 pub struct Project {
     pub name: String,
 
@@ -188,7 +190,7 @@ mod tests {
     #[test]
     fn test_config_new_success_path_privided() {
         // Arrange
-        let config_file_content = r#" 
+        let config_file_content = r#"
 [project]
 name = "example"
 domain = "opencloudtool.com"

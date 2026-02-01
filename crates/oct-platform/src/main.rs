@@ -1,424 +1,82 @@
-use askama::Template;
-use std::collections::HashMap;
-use std::{env, fs};
-use tower_http::trace::{self, TraceLayer};
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use axum::{
-    Json, Router,
-    extract::Query,
-    extract::State,
-    http::StatusCode,
-    response::{Html, IntoResponse, Redirect},
-    routing::{get, put},
-};
-use serde::{Deserialize, Serialize};
+use oct_platform::config_manager::{ConfigManager, FileConfigManager, WorkspaceConfigManager};
+use oct_platform::handlers::AppState;
+use oct_platform::logging::LogLayer;
+use oct_platform::orchestrator::{MockOrchestrator, Orchestrator, RealOrchestrator};
+use oct_platform::routes::router;
 
-/// Runs the application server.
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().init();
+    let (log_sender, _rx) = broadcast::channel(1000);
 
-    let github_config =
-        GithubConfig::new().expect("Failed to initialize `GithubConfig`, check env variables");
+    let log_layer = LogLayer {
+        sender: log_sender.clone(),
+    };
 
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/repos", get(list_repos))
-        .route("/project", get(get_project))
-        .route("/project", put(put_project))
-        .route("/project/edit", get(edit_project))
-        .route("/login/github", get(github_login))
-        .route("/login/github/redirect", get(github_login_redirect))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-                .on_response(trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
-        )
-        .with_state(github_config);
+    let args: Vec<String> = std::env::args().collect();
+    let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+    let default_filter = if verbose {
+        "debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,oct_orchestrator=debug"
+    } else {
+        "warn,oct_platform=info,oct_cloud=info,oct_orchestrator=info"
+    };
+
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(env_filter)
+        .with(log_layer)
+        .init();
+
+    let orchestrator: Arc<dyn Orchestrator> = if std::env::var("OCT_PLATFORM_MOCK").is_ok() {
+        tracing::info!("Starting in MOCK mode");
+        Arc::new(MockOrchestrator::default())
+    } else {
+        Arc::new(RealOrchestrator)
+    };
+
+    let config_path_env = std::env::var("OCT_CONFIG_PATH")
+        .ok()
+        .filter(|s| !s.is_empty());
+
+    let config_manager: Arc<dyn ConfigManager> = if let Some(path) = config_path_env {
+        tracing::info!("Using FileConfigManager with path: {path}");
+        Arc::new(FileConfigManager::new(&path))
+    } else {
+        tracing::info!("Using WorkspaceConfigManager");
+        Arc::new(WorkspaceConfigManager::new())
+    };
+
+    let port = std::env::var("OCT_PLATFORM_PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(3000);
+
+    let state = AppState {
+        orchestrator,
+        config_manager,
+        log_sender,
+    };
+
+    let app = router(state).layer(TraceLayer::new_for_http());
+
+    #[cfg(debug_assertions)]
+    let app = app.layer(tower_livereload::LiveReloadLayer::new().request_predicate(
+        |req: &axum::http::Request<_>| !req.headers().contains_key("hx-request"),
+    ));
+
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
-        .expect("Failed to bind listener to 0.0.0.0:8080");
-
+        .unwrap_or_else(|_| panic!("Failed to bind listener to 0.0.0.0:{port}"));
+    tracing::info!("Listening on http://0.0.0.0:{port}");
     axum::serve(listener, app)
         .await
         .expect("Failed to start server");
-}
-
-/// Env state passed to the endpoints.
-#[derive(Clone)]
-struct GithubConfig {
-    client_id: String,
-    client_secret: String,
-}
-
-impl GithubConfig {
-    const CLIENT_ID_ENV_NAME: &str = "GITHUB_CLIENT_ID";
-    const CLIENT_SECRET_ENV_NAME: &str = "GITHUB_CLIENT_SECRET";
-
-    /// Tries to create a new ``GithubConfig``
-    fn new() -> Result<Self, env::VarError> {
-        let client_id = env::var(Self::CLIENT_ID_ENV_NAME)?;
-        let client_secret = env::var(Self::CLIENT_SECRET_ENV_NAME)?;
-
-        Ok(GithubConfig {
-            client_id,
-            client_secret,
-        })
-    }
-}
-
-/// Index page template
-#[derive(Template)]
-#[template(path = "pages/index.html")]
-struct IndexTemplate;
-
-/// Github repo info page template
-#[derive(Template)]
-#[template(path = "pages/repos/index.html")]
-struct RepoTemplate<'a> {
-    username: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "pages/projects/index.html")]
-struct ProjectTemplate<'a> {
-    project: &'a Project,
-}
-
-#[derive(Template)]
-#[template(path = "pages/projects/index.html", block = "content")]
-struct ProjectContentTemplate<'a> {
-    project: &'a Project,
-}
-
-#[derive(Template)]
-#[template(path = "pages/projects/edit.html")]
-struct EditProjectTemplate<'a> {
-    project: &'a Project,
-}
-
-#[derive(Debug, Deserialize)]
-struct PutProjectForm {
-    name: String,
-
-    services: Vec<Service>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Config {
-    project: Project,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Project {
-    name: String,
-
-    services: Vec<Service>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-struct Service {
-    name: String,
-}
-
-async fn get_project() -> impl IntoResponse {
-    let config_str = fs::read_to_string("oct.toml");
-
-    let config = match config_str {
-        Ok(config_str) => match toml::from_str(&config_str) {
-            Ok(config) => config,
-            Err(_) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Html(String::from("Failed to parse oct.toml")),
-                );
-            }
-        },
-        Err(_e) => {
-            let config = Config {
-                project: Project {
-                    name: String::from("No Name"),
-                    services: vec![Service {
-                        name: String::from("No Name"),
-                    }],
-                },
-            };
-
-            let Ok(toml_str) = toml::to_string(&config) else {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Html(String::from("Failed to serialize config")),
-                );
-            };
-
-            if fs::write("oct.toml", &toml_str).is_err() {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Html(String::from("Failed to write oct.toml")),
-                );
-            }
-
-            config
-        }
-    };
-
-    let project_template = ProjectTemplate {
-        project: &config.project,
-    };
-
-    match project_template.render() {
-        Ok(response) => (StatusCode::OK, Html(response)),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `ProjectTemplate`")),
-        ),
-    }
-}
-
-async fn edit_project() -> impl IntoResponse {
-    let config_str = fs::read_to_string("oct.toml");
-
-    let Ok(config_str) = config_str else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to read oct.toml")),
-        );
-    };
-
-    let Ok(config) = toml::from_str::<Config>(&config_str) else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to parse oct.toml")),
-        );
-    };
-
-    let edit_project_template = EditProjectTemplate {
-        project: &config.project,
-    };
-
-    match edit_project_template.render() {
-        Ok(response) => (StatusCode::OK, Html(response)),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `EditProjectTemplate`")),
-        ),
-    }
-}
-
-async fn put_project(Json(payload): Json<PutProjectForm>) -> impl IntoResponse {
-    let config_str = fs::read_to_string("oct.toml");
-
-    let Ok(config_str) = config_str else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to read oct.toml")),
-        );
-    };
-
-    let Ok(mut config) = toml::from_str::<Config>(&config_str) else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to parse oct.toml")),
-        );
-    };
-    config.project.name = payload.name;
-    config.project.services = payload.services;
-
-    let Ok(toml_str) = toml::to_string(&config) else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to serialize config")),
-        );
-    };
-
-    if fs::write("oct.toml", &toml_str).is_err() {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to write oct.toml")),
-        );
-    }
-
-    let project_content_template = ProjectContentTemplate {
-        project: &config.project,
-    };
-
-    match project_content_template.render() {
-        Ok(response) => (StatusCode::OK, Html(response)),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `ProjectContentTemplate`")),
-        ),
-    }
-}
-
-/// Renders the index page.
-async fn index() -> impl IntoResponse {
-    let index_template = IndexTemplate;
-
-    match index_template.render() {
-        Ok(response) => (StatusCode::OK, Html(response)),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `IndexTemplate`")),
-        ),
-    }
-}
-
-/// Renders the repo list page.
-async fn list_repos() -> impl IntoResponse {
-    let Ok(user) = User::load() else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Html(String::from("Failed to load from `user.json`")),
-        );
-    };
-
-    let repo_template = RepoTemplate {
-        username: &user.login,
-    };
-
-    match repo_template.render() {
-        Ok(response) => (StatusCode::OK, Html(response)),
-        Err(_) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to render `RepoTemplate`")),
-        ),
-    }
-}
-
-/// Handles the login to Github.
-async fn github_login(State(github_config): State<GithubConfig>) -> impl IntoResponse {
-    (
-        StatusCode::OK,
-        [(
-            "HX-Redirect",
-            format!(
-                "https://github.com/login/oauth/authorize?client_id={client_id}",
-                client_id = github_config.client_id
-            ),
-        )],
-        "OK",
-    )
-}
-
-/// Github access token response.
-#[derive(Deserialize)]
-struct AccessTokenResponse {
-    access_token: String,
-}
-
-/// Github user data response.
-#[derive(Deserialize)]
-struct UserDataResponse {
-    login: String,
-}
-
-/// Holds the user information.
-#[derive(Serialize, Deserialize)]
-struct User {
-    login: String,
-    access_token: String,
-}
-
-impl User {
-    /// Loads the user data from `user.json` file.
-    fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let existing_data = fs::read_to_string("user.json")?;
-
-        Ok(serde_json::from_str::<Self>(&existing_data)?)
-    }
-
-    /// Saves the user data to `user.json` file.
-    fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        fs::write("user.json", serde_json::to_string_pretty(self)?)?;
-
-        Ok(())
-    }
-}
-
-/// Handles the redirect from Github after login.
-async fn github_login_redirect(
-    State(github_config): State<GithubConfig>,
-    Query(params): Query<HashMap<String, String>>,
-) -> impl IntoResponse {
-    let Some(code) = params.get("code") else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Html(String::from("`code` is not provided")),
-        )
-            .into_response();
-    };
-
-    let client = reqwest::Client::new();
-
-    let body = HashMap::from([
-        ("client_id", &github_config.client_id),
-        ("client_secret", &github_config.client_secret),
-        ("code", code),
-    ]);
-
-    let Ok(access_token_response) = client
-        .post("https://github.com/login/oauth/access_token")
-        .json(&body)
-        .header("Accept", "application/json")
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-    else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Html(String::from("Failed to send `access_token` request")),
-        )
-            .into_response();
-    };
-    let Ok(access_token_response) = access_token_response.json::<AccessTokenResponse>().await
-    else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Html(String::from(
-                "Failed to parse JSON from `access_token` request",
-            )),
-        )
-            .into_response();
-    };
-
-    let access_token = access_token_response.access_token;
-
-    let Ok(user_data_response) = client
-        .get("https://api.github.com/user")
-        .header("User-Agent", "oct")
-        .header("Accept", "application/json")
-        .header("Authorization", format!("Bearer {access_token}"))
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-    else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Html(String::from("Failed to send `user` request")),
-        )
-            .into_response();
-    };
-    let Ok(user_data_response) = user_data_response.json::<UserDataResponse>().await else {
-        return (
-            StatusCode::BAD_GATEWAY,
-            Html(String::from("Failed to parse JSON from `user` request")),
-        )
-            .into_response();
-    };
-
-    let user = User {
-        access_token,
-        login: user_data_response.login,
-    };
-    let Ok(()) = user.save() else {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Html(String::from("Failed to `user.json`")),
-        )
-            .into_response();
-    };
-
-    Redirect::to("/repos").into_response()
 }

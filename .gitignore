@@ -14,3 +14,8 @@ __pycache__/
 
 # Other
 .env
+node_modules/
+
+# oct-platform specific
+crates/oct-platform/e2e/test-results/
+crates/oct-platform/e2e/playwright-report/

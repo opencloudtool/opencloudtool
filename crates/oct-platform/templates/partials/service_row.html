@@ -1,0 +1,76 @@
+<div class="bg-surface border border-border rounded-xl p-6 relative group hover:border-accent-500/50 transition-colors">
+    <div class="absolute top-4 right-4 flex items-center gap-3">
+        <span class="text-xs font-mono text-muted">#{{ index + 1 }}</span>
+        <button type="button"
+            hx-post="/projects/{{ project.name }}/config/remove-service?index={{ index }}"
+            hx-include="#edit-config-form"
+            hx-target="#edit-config-form"
+            hx-swap="outerHTML"
+            class="text-muted hover:text-red-400 transition-colors"
+            title="Remove Service"
+            onclick="if(!confirm('Are you sure you want to remove this service?')) return false;">
+            <i class="fa-solid fa-trash"></i>
+        </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-4">
+            <label class="block text-xs uppercase text-muted font-bold mb-1.5">Name</label>
+            <input type="text" name="services[{{ index }}][name]" value="{{ service.name }}"
+                class="w-full bg-body border border-border text-main rounded-lg px-3 py-2 focus:border-accent-500 outline-none transition-all">
+        </div>
+
+        <div class="lg:col-span-4">
+            <label class="block text-xs uppercase text-muted font-bold mb-1.5">Image</label>
+            <input type="text" name="services[{{ index }}][image]" value="{{ service.image }}"
+                class="w-full bg-body border border-border text-main rounded-lg px-3 py-2 focus:border-accent-500 outline-none transition-all font-mono text-sm">
+        </div>
+
+        <div class="lg:col-span-2">
+            <label class="block text-xs uppercase text-muted font-bold mb-1.5">CPU (m)</label>
+            <input type="number" name="services[{{ index }}][cpus]" value="{{ service.cpus }}"
+                class="w-full bg-body border border-border text-main rounded-lg px-3 py-2 focus:border-accent-500 outline-none transition-all">
+        </div>
+
+        <div class="lg:col-span-2">
+            <label class="block text-xs uppercase text-muted font-bold mb-1.5">Mem (MB)</label>
+            <input type="number" name="services[{{ index }}][memory]" value="{{ service.memory }}"
+                class="w-full bg-body border border-border text-main rounded-lg px-3 py-2 focus:border-accent-500 outline-none transition-all">
+        </div>
+    </div>
+
+    <!-- Environment Variables -->
+    <div class="mt-6 pt-4 border-t border-border">
+        <div class="flex items-center justify-between mb-3">
+            <label class="block text-xs uppercase text-muted font-bold">Environment Variables</label>
+            <button type="button"
+                hx-post="/projects/{{ project.name }}/config/add-env-var?service_index={{ index }}"
+                hx-include="#edit-config-form"
+                hx-target="#edit-config-form"
+                hx-swap="outerHTML"
+                class="px-3 py-1.5 text-xs bg-surface hover:bg-body text-accent-500 font-medium rounded-lg transition-all duration-200 border border-border hover:border-accent-500/50 flex items-center gap-1">
+                <i class="fa-solid fa-plus"></i> Add Env Var
+            </button>
+        </div>
+
+        <div class="space-y-2">
+            {% for (key, value) in service.envs %}
+            <div class="flex items-center gap-2">
+                <input type="text" name="services[{{ index }}][envs][{{ loop.index0 }}][key]" value="{{ key }}" placeholder="KEY"
+                    class="flex-1 bg-body border border-border text-main rounded-lg px-3 py-1.5 text-sm focus:border-accent-500 outline-none font-mono uppercase">
+                <span class="text-muted">=</span>
+                <input type="text" name="services[{{ index }}][envs][{{ loop.index0 }}][value]" value="{{ value }}" placeholder="VALUE"
+                    class="flex-1 bg-body border border-border text-main rounded-lg px-3 py-1.5 text-sm focus:border-accent-500 outline-none font-mono">
+                <button type="button"
+                    hx-post="/projects/{{ project.name }}/config/remove-env-var?service_index={{ index }}&env_index={{ loop.index0 }}"
+                    hx-include="#edit-config-form"
+                    hx-target="#edit-config-form"
+                    hx-swap="outerHTML"
+                    class="text-muted hover:text-red-400 p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

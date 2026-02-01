@@ -60,8 +60,14 @@ fn deploy(py: Python, path: String) -> PyResult<()> {
             // change the directory back to `prev_cwd`.
             let _cwd_restore = DirRestoreGuard { prev: prev_cwd };
 
+            let config = oct_config::Config::new(None).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load config: {e}"
+                ))
+            })?;
+
             let orchestrator = OrchestratorWithGraph;
-            let deploy_result = orchestrator.apply().await;
+            let deploy_result = orchestrator.apply(&config).await;
 
             match deploy_result {
                 Ok(()) => Ok(()),
@@ -100,8 +106,14 @@ fn destroy(py: Python, path: String) -> PyResult<()> {
             })?;
             let _cwd_restore = DirRestoreGuard { prev: prev_cwd };
 
+            let config = oct_config::Config::new(None).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to load config: {e}"
+                ))
+            })?;
+
             let orchestrator = OrchestratorWithGraph;
-            let destroy_result = orchestrator.destroy().await;
+            let destroy_result = orchestrator.destroy(&config).await;
 
             match destroy_result {
                 Ok(()) => Ok(()),

@@ -27,14 +27,14 @@ where
 #[async_trait::async_trait]
 pub trait StateBackend<T: 'static>: Send + Sync {
     /// Saves state to a backend
-    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error>>;
+    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
     /// Loads state from a backend or initialize a new one
     /// Also returns whether the state was loaded as a boolean
-    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error>>;
+    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error + Send + Sync>>;
 
     /// Removes state file from a backend
-    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>>;
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
 pub(crate) struct LocalStateBackend<T> {
@@ -58,13 +58,13 @@ impl<T> StateBackend<T> for LocalStateBackend<T>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
 {
-    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error>> {
+    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         fs::write(&self.file_path, serde_json::to_string_pretty(state)?)?;
 
         Ok(())
     }
 
-    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error>> {
+    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error + Send + Sync>> {
         if std::path::Path::new(&self.file_path).exists() {
             let existing_data = fs::read_to_string(&self.file_path)?;
             let state = serde_json::from_str::<T>(&existing_data)?;
@@ -75,7 +75,7 @@ where
         }
     }
 
-    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         fs::remove_file(&self.file_path)?;
 
         Ok(())
@@ -108,7 +108,7 @@ impl<T> StateBackend<T> for S3StateBackend<T>
 where
     T: serde::Serialize + serde::de::DeserializeOwned + Send + Sync + Default + 'static,
 {
-    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error>> {
+    async fn save(&self, state: &T) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
         s3_bucket.create().await?;
 
@@ -119,7 +119,7 @@ where
         Ok(())
     }
 
-    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error>> {
+    async fn load(&self) -> Result<(T, bool), Box<dyn std::error::Error + Send + Sync>> {
         let s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
 
         let data = s3_bucket.get_object(&self.key).await;
@@ -130,7 +130,7 @@ where
         }
     }
 
-    async fn remove(&self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn remove(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut s3_bucket = S3Bucket::new(self.region.clone(), self.bucket.clone()).await;
 
         // For now we expect to have only one file in the bucket

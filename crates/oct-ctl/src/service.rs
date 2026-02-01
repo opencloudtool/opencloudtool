@@ -107,7 +107,7 @@ const USER_STATE_FILE_PATH: &str = "/var/log/oct-state.json";
 async fn apply_user_services_graph(
     server_config: &ServerConfig,
     services_graph: &Graph<Node, String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let state_backend = StateBackend::Local {
         path: String::from(USER_STATE_FILE_PATH),
     };

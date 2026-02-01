@@ -114,7 +114,7 @@ impl GraphManager {
             InstanceRoleSpec {
                 name: String::from("instance-role-1"),
                 assume_role_policy: String::from(
-                    r#"{ 
+                    r#"{
                         "Version": "2012-10-17",
                         "Statement": [
                             {
@@ -154,7 +154,7 @@ impl GraphManager {
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl & 
+            && /home/ubuntu/oct-ctl &
         "#,
         );
 
@@ -190,7 +190,7 @@ impl GraphManager {
     pub async fn deploy_genesis_graph(
         &self,
         graph: &Graph<SpecNode, String>,
-    ) -> Result<(Graph<Node, String>, Option<Vm>), Box<dyn std::error::Error>> {
+    ) -> Result<(Graph<Node, String>, Option<Vm>), Box<dyn std::error::Error + Send + Sync>> {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
 
@@ -427,7 +427,7 @@ impl GraphManager {
             InstanceRoleSpec {
                 name: String::from("instance-role-1"),
                 assume_role_policy: String::from(
-                    r#"{ 
+                    r#"{
                         "Version": "2012-10-17",
                         "Statement": [
                             {
@@ -469,7 +469,7 @@ impl GraphManager {
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl & 
+            && /home/ubuntu/oct-ctl &
         "#,
         );
 
@@ -530,7 +530,10 @@ impl GraphManager {
     pub async fn deploy_spec_graph(
         &self,
         graph: &Graph<SpecNode, String>,
-    ) -> Result<(Graph<Node, String>, Option<Vm>, Option<Ecr>), Box<dyn std::error::Error>> {
+    ) -> Result<
+        (Graph<Node, String>, Option<Vm>, Option<Ecr>),
+        Box<dyn std::error::Error + Send + Sync>,
+    > {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
 
@@ -720,7 +723,7 @@ impl GraphManager {
     pub async fn deploy(
         &self,
         graph: &Graph<SpecNode, String>,
-    ) -> Result<Graph<Node, String>, Box<dyn std::error::Error>> {
+    ) -> Result<Graph<Node, String>, Box<dyn std::error::Error + Send + Sync>> {
         let mut resource_graph = Graph::<Node, String>::new();
         let mut edges = vec![];
 
@@ -905,7 +908,7 @@ impl GraphManager {
     pub async fn destroy(
         &self,
         graph: &mut Graph<Node, String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut parents: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
 
         // Remove resources
@@ -1034,7 +1037,7 @@ impl GraphManager {
 /// Kahn's Algorithm Implementation
 pub fn kahn_traverse<T>(
     graph: &Graph<T, String>,
-) -> Result<Vec<NodeIndex>, Box<dyn std::error::Error>> {
+) -> Result<Vec<NodeIndex>, Box<dyn std::error::Error + Send + Sync>> {
     // 1. Calculate the in-degree for each node.
     let mut in_degrees = vec![0; graph.node_bound()];
     for node in graph.node_indices() {
@@ -1170,7 +1173,7 @@ mod tests {
             .with(
                 eq(String::from("instance-role-1")),
                 eq(String::from(
-                    r#"{ 
+                    r#"{
                         "Version": "2012-10-17",
                         "Statement": [
                             {
@@ -1333,7 +1336,7 @@ mod tests {
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl & 
+            && /home/ubuntu/oct-ctl &
         "#
                 )
             })
@@ -1674,7 +1677,7 @@ mod tests {
             graph.add_node(Node::Resource(ResourceType::InstanceRole(InstanceRole {
                 name: "instance-role-1".to_string(),
                 assume_role_policy: String::from(
-                    r#"{ 
+                    r#"{
                         "Version": "2012-10-17",
                         "Statement": [
                             {
