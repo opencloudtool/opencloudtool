@@ -85,14 +85,12 @@
     // Initialize Theme immediately to prevent FOUC (Flash of Unstyled Content)
     (function() {
         const savedTheme = localStorage.getItem('theme');
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-        // Default to Dark if no preference, or if explicitly Dark
-        // If 'light', remove the class immediately before render
-        if (savedTheme === 'light') {
-            document.documentElement.classList.remove('dark');
-        } else {
-            // Ensure dark is present (though it's default in html tag)
+        if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
             document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
         }
     })();
   </script>

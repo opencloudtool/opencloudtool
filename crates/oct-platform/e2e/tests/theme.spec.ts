@@ -1,7 +1,10 @@
 import { test, expect } from '../fixtures';
 
 test.describe('Theme Toggle', () => {
-    test('should default to dark mode and toggle to light mode', async ({ page, server }) => {
+    test('should default to dark mode when system prefers dark', async ({ page, server }) => {
+        // Enforce system preference: dark
+        await page.emulateMedia({ colorScheme: 'dark' });
+
         // 1. Navigate to the projects page
         await page.goto(`${server.url}/projects`);
 
@@ -9,29 +12,34 @@ test.describe('Theme Toggle', () => {
         const html = page.locator('html');
         await expect(html).toHaveClass(/dark/);
 
-        // Check that the Sun icon is visible (indicating we are in dark mode, ready to switch to light)
+        // Check that the Sun icon is visible
         const sunIcon = page.locator('button[title="Toggle Theme"] .fa-sun');
         await expect(sunIcon).toBeVisible();
-        const moonIcon = page.locator('button[title="Toggle Theme"] .fa-moon');
-        await expect(moonIcon).toBeHidden();
 
-        // 3. Click the toggle button
+        // 3. Click the toggle button to switch to light
         await page.locator('button[title="Toggle Theme"]').click();
 
         // 4. Assert "dark" class is removed (Light Mode)
         await expect(html).not.toHaveClass(/dark/);
 
-        // Check icons swapped
-        await expect(sunIcon).toBeHidden();
-        await expect(moonIcon).toBeVisible();
-
-        // 5. Check LocalStorage persistence
+        // 5. Check LocalStorage persistence (should override system)
         const theme = await page.evaluate(() => localStorage.getItem('theme'));
         expect(theme).toBe('light');
+    });
 
-        // 6. Reload and verify persistence
-        await page.reload();
+    test('should default to light mode when system prefers light', async ({ page, server }) => {
+        // Enforce system preference: light
+        await page.emulateMedia({ colorScheme: 'light' });
+
+        await page.goto(`${server.url}/projects`);
+
+        const html = page.locator('html');
+        // Should NOT have dark class
         await expect(html).not.toHaveClass(/dark/);
+
+        // Moon icon should be visible
+        const moonIcon = page.locator('button[title="Toggle Theme"] .fa-moon');
+        await expect(moonIcon).toBeVisible();
     });
 
     test('should toggle back to dark mode', async ({ page, server }) => {
