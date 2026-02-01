@@ -34,9 +34,9 @@ impl FileConfigManager {
         }
     }
 
-    fn load(&self) -> Config {
+    fn load(&self) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
         if !Path::new(&self.path).exists() {
-            return Config {
+            return Ok(Config {
                 project: Project {
                     name: "New Project".to_string(),
                     state_backend: StateBackend::Local {
@@ -48,27 +48,12 @@ impl FileConfigManager {
                     services: vec![],
                     domain: None,
                 },
-            };
+            });
         }
 
         match Config::new(Some(&self.path)) {
-            Ok(c) => c,
-            Err(e) => {
-                error!("Error loading config: {e}");
-                Config {
-                    project: Project {
-                        name: "Error Loading Config".to_string(),
-                        state_backend: StateBackend::Local {
-                            path: "./state.json".to_string(),
-                        },
-                        user_state_backend: StateBackend::Local {
-                            path: "./user_state.json".to_string(),
-                        },
-                        services: vec![],
-                        domain: None,
-                    },
-                }
-            }
+            Ok(c) => Ok(c),
+            Err(e) => Err(format!("Error loading config: {e}").into()),
         }
     }
 }
@@ -78,14 +63,14 @@ impl ConfigManager for FileConfigManager {
         &self,
         _name: &str,
     ) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
-        Ok(self.load())
+        self.load()
     }
 
     fn load_project_raw(
         &self,
         _name: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let config = self.load();
+        let config = self.load()?;
         let toml_str = toml::to_string(&config)?;
         Ok(toml_str)
     }
@@ -97,12 +82,17 @@ impl ConfigManager for FileConfigManager {
     }
 
     fn list_projects(&self) -> Vec<ProjectSummary> {
-        let config = self.load();
-        vec![ProjectSummary {
-            name: config.project.name,
-            domain: config.project.domain,
-            services_count: config.project.services.len(),
-        }]
+        match self.load() {
+            Ok(config) => vec![ProjectSummary {
+                name: config.project.name,
+                domain: config.project.domain,
+                services_count: config.project.services.len(),
+            }],
+            Err(e) => {
+                error!("Failed to list projects: {e}");
+                vec![]
+            }
+        }
     }
 
     fn create_project(&self, _name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
