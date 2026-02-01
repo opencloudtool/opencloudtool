@@ -9,7 +9,7 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-border">
         <div>
             <div class="flex items-center gap-3 mb-2">
-                <button hx-get="/projects" hx-target="#project-view" hx-swap="outerHTML" hx-select="#projects-view" hx-push-url="/projects" class="text-muted hover:text-main transition-colors" title="Back to Projects">
+                <button hx-get="/projects" hx-target="#project-view" hx-swap="outerHTML" hx-select="#projects-view" hx-push-url="/projects" class="text-muted hover:text-main transition-colors" title="Back to Projects" aria-label="Back to Projects">
                     <i class="fa-solid fa-arrow-left"></i>
                 </button>
                 <h2 class="text-3xl font-bold text-main tracking-tight">{{ project.name }}</h2>
@@ -137,7 +137,7 @@
             Raw Config
         </h3>
         <div class="bg-surface border border-border rounded-xl p-4 overflow-x-auto">
-            <pre class="font-mono text-sm"><code>{{ raw_config|safe }}</code></pre>
+            <pre class="font-mono text-sm"><code>{{ raw_config }}</code></pre>
         </div>
     </div>
 </div>

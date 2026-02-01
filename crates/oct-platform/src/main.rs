@@ -10,7 +10,7 @@ use oct_platform::orchestrator::{MockOrchestrator, Orchestrator, RealOrchestrato
 use oct_platform::routes::router;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (log_sender, _rx) = broadcast::channel(1000);
 
     let log_layer = LogLayer {
@@ -51,7 +51,7 @@ async fn main() {
         Arc::new(FileConfigManager::new(&path))
     } else {
         tracing::info!("Using WorkspaceConfigManager");
-        Arc::new(WorkspaceConfigManager::new())
+        Arc::new(WorkspaceConfigManager::new()?)
     };
 
     let port = std::env::var("OCT_PLATFORM_PORT")
@@ -74,9 +74,9 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
-        .unwrap_or_else(|_| panic!("Failed to bind listener to 0.0.0.0:{port}"));
+        .map_err(|e| format!("Failed to bind listener to 0.0.0.0:{port}: {e}"))?;
     tracing::info!("Listening on http://0.0.0.0:{port}");
     axum::serve(listener, app)
         .await
-        .expect("Failed to start server");
+        .map_err(|e| format!("Server error: {e}").into())
 }

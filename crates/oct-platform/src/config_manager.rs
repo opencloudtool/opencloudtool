@@ -114,29 +114,23 @@ pub struct WorkspaceConfigManager {
     root_path: std::path::PathBuf,
 }
 
-impl Default for WorkspaceConfigManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl WorkspaceConfigManager {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let root = if let Ok(root_env) = std::env::var("OCT_WORKSPACE_ROOT") {
             Path::new(&root_env).to_path_buf()
         } else {
-            let home = dirs::home_dir().expect("Could not find home directory");
+            let home = dirs::home_dir().ok_or("Could not find home directory")?;
             home.join(".oct")
         };
 
-        Self::with_root(root)
+        Ok(Self::with_root(root)?)
     }
 
-    pub fn with_root(root: std::path::PathBuf) -> Self {
+    pub fn with_root(root: std::path::PathBuf) -> Result<Self, std::io::Error> {
         if !root.exists() {
-            fs::create_dir_all(&root).expect("Could not create workspace directory");
+            fs::create_dir_all(&root)?;
         }
-        Self { root_path: root }
+        Ok(Self { root_path: root })
     }
 
     fn project_path(&self, name: &str) -> std::path::PathBuf {
@@ -206,8 +200,11 @@ impl ConfigManager for WorkspaceConfigManager {
 
     fn load_project(&self, name: &str) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
         let config_path = self.project_path(name).join("oct.toml");
+        let path_str = config_path
+            .to_str()
+            .ok_or_else(|| format!("Invalid path for project {name}"))?;
 
-        match Config::new(Some(config_path.to_str().unwrap_or("oct.toml"))) {
+        match Config::new(Some(path_str)) {
             Ok(c) => Ok(c),
             Err(e) => Err(format!("Error loading config for {name}: {e}").into()),
         }
@@ -324,7 +321,8 @@ path = "./user_state.json"
         // Arrange
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
         // Use with_root to inject the temporary directory without unsafe env var manipulation
-        let manager = WorkspaceConfigManager::with_root(temp_dir.path().to_path_buf());
+        let manager = WorkspaceConfigManager::with_root(temp_dir.path().to_path_buf())
+            .expect("Failed to create manager");
 
         // Act
         manager

@@ -8,6 +8,7 @@
             hx-swap="outerHTML"
             class="text-muted hover:text-red-400 transition-colors"
             title="Remove Service"
+            aria-label="Remove Service"
             onclick="if(!confirm('Are you sure you want to remove this service?')) return false;">
             <i class="fa-solid fa-trash"></i>
         </button>
@@ -66,7 +67,9 @@
                     hx-include="#edit-config-form"
                     hx-target="#edit-config-form"
                     hx-swap="outerHTML"
-                    class="text-muted hover:text-red-400 p-1">
+                    class="text-muted hover:text-red-400 p-1"
+                    title="Remove Environment Variable"
+                    aria-label="Remove Environment Variable">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>

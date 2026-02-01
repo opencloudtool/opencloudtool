@@ -111,22 +111,26 @@ pub async fn project_dashboard(
 ) -> impl IntoResponse {
     match state.config_manager.load_project(&name) {
         Ok(config) => {
-            let raw_config = state
-                .config_manager
-                .load_project_raw(&name)
-                .unwrap_or_default();
+            let raw_config = match state.config_manager.load_project_raw(&name) {
+                Ok(c) => c,
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Html(format!("Failed to load raw config: {e}")),
+                    );
+                }
+            };
             let template = IndexTemplate {
                 project: &config.project,
                 raw_config,
                 version: VERSION,
             };
-            render_template(template).into_response()
+            render_template(template)
         }
         Err(e) => (
             StatusCode::NOT_FOUND,
             Html(format!("Project not found: {e}")),
-        )
-            .into_response(),
+        ),
     }
 }
 
@@ -140,8 +144,24 @@ pub async fn view_state(
                 &config.project.state_backend,
             );
 
-            let (infra_state, _) = infra_state_backend.load().await.unwrap_or_default();
-            let state_json = serde_json::to_string_pretty(&infra_state).unwrap_or_default();
+            let (infra_state, _) = match infra_state_backend.load().await {
+                Ok(s) => s,
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Html(format!("Failed to load state: {e}")),
+                    );
+                }
+            };
+            let state_json = match serde_json::to_string_pretty(&infra_state) {
+                Ok(s) => s,
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Html(format!("Failed to serialize state: {e}")),
+                    );
+                }
+            };
 
             let mut mermaid_graph = String::from("graph TD;\n");
             let graph = infra_state.to_graph();
@@ -169,13 +189,12 @@ pub async fn view_state(
                 mermaid_graph,
                 version: VERSION,
             };
-            render_template(template).into_response()
+            render_template(template)
         }
         Err(e) => (
             StatusCode::NOT_FOUND,
             Html(format!("Project not found: {e}")),
-        )
-            .into_response(),
+        ),
     }
 }
 
@@ -277,8 +296,7 @@ pub async fn update_config(
             return (
                 StatusCode::NOT_FOUND,
                 Html(format!("Project not found: {e}")),
-            )
-                .into_response();
+            );
         }
     };
 
@@ -290,20 +308,24 @@ pub async fn update_config(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Html(format!("Failed to save config: {e}")),
-        )
-            .into_response();
+        );
     }
 
-    let raw_config = state
-        .config_manager
-        .load_project_raw(&config.project.name)
-        .unwrap_or_default();
+    let raw_config = match state.config_manager.load_project_raw(&config.project.name) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(format!("Failed to load raw config: {e}")),
+            );
+        }
+    };
 
     let template = IndexContentTemplate {
         project: &config.project,
         raw_config,
     };
-    render_template(template).into_response()
+    render_template(template)
 }
 
 pub async fn add_service_to_config(

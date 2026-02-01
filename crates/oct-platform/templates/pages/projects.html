@@ -28,6 +28,7 @@
         {% for project in projects %}
         <div class="bg-surface border border-border rounded-xl p-6 flex flex-col gap-4 group hover:border-accent-500/50 cursor-pointer transition-all relative"
              hx-get="/projects/{{ project.name }}" hx-push-url="true" hx-select="#project-view"
+             hx-target="#projects-view" hx-swap="outerHTML"
              >
 
             <div class="flex items-center justify-between pointer-events-none">

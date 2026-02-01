@@ -209,7 +209,7 @@
         <div class="flex items-center gap-3">
             <span class="text-xs text-muted">v{{ version }}</span>
         </div>
-        <button onclick="toggleTheme()" class="text-muted hover:text-main transition-colors p-2 rounded-lg hover:bg-body" title="Toggle Theme">
+        <button onclick="toggleTheme()" class="text-muted hover:text-main transition-colors p-2 rounded-lg hover:bg-body" title="Toggle Theme" aria-label="Toggle Theme">
             <i class="fa-solid fa-moon dark:hidden"></i>
             <i class="fa-solid fa-sun hidden dark:block"></i>
         </button>
@@ -233,7 +233,7 @@
                 <i class="fa-solid fa-terminal text-green-400"></i>
                 <span>Command Output</span>
             </h3>
-            <button onclick="closeConsole()" class="text-muted hover:text-main transition-colors">
+            <button onclick="closeConsole()" class="text-muted hover:text-main transition-colors" title="Close Console" aria-label="Close Console">
                 <i class="fa-solid fa-xmark text-xl"></i>
             </button>
         </div>
@@ -258,13 +258,15 @@
     // Theme Toggle Logic
     function toggleTheme() {
         const html = document.documentElement;
+        let theme = 'light';
         if (html.classList.contains('dark')) {
             html.classList.remove('dark');
-            localStorage.setItem('theme', 'light');
         } else {
             html.classList.add('dark');
-            localStorage.setItem('theme', 'dark');
+            theme = 'dark';
         }
+        localStorage.setItem('theme', theme);
+        window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
     }
 
     let currentEvtSource = null;
