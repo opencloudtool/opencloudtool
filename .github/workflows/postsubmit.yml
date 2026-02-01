@@ -97,7 +97,7 @@ jobs:
           slug: opencloudtool/opencloudtool
           fail_ci_if_error: true
 
-  e2e-platform:
+  oct-platform-e2e-tests:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
