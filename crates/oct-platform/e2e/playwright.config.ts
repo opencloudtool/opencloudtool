@@ -7,6 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 4 : undefined,
   reporter: 'line',
+  timeout: 60000,
   use: {
     baseURL: 'http://127.0.0.1:3000', // Default, but fixture overrides it
     trace: 'on-first-retry',

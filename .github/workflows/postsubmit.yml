@@ -123,6 +123,9 @@ jobs:
         run: npx playwright install --with-deps chromium
         working-directory: crates/oct-platform/e2e
 
+      - name: Pre-build oct-platform
+        run: cargo build -p oct-platform
+
       - name: Run E2E tests
         run: npx playwright test
         working-directory: crates/oct-platform/e2e
