@@ -1,6 +1,6 @@
 {
     "tasks": {
-        "test": "deno run -A npm:playwright test",
+        "test": "deno run -A npm:@playwright/test test",
         "lint": "deno run -A npm:@biomejs/biome lint .",
         "lint:fix": "deno run -A npm:@biomejs/biome lint --write .",
         "format": "deno run -A npm:@biomejs/biome format --write .",
