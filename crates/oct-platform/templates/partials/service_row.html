@@ -9,7 +9,7 @@
             class="text-muted hover:text-red-400 transition-colors"
             title="Remove Service"
             aria-label="Remove Service"
-            onclick="if(!confirm('Are you sure you want to remove this service?')) return false;">
+            @click="if(!confirm('Are you sure you want to remove this service?')) $event.stopImmediatePropagation()">
             <i class="fa-solid fa-trash"></i>
         </button>
     </div>

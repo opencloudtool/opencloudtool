@@ -1,10 +1,16 @@
 # OCT-PLATFORM Crate Context
 
 This crate (`oct-platform`) provides the web interface for opencloudtool.
-It uses **Axum** for the backend, **Askama** for templating, and **HTMX** for interactivity.
+It uses **Axum** for the backend, **Askama** for templating, **HTMX** for navigation, and **Alpine.js** for client-side interactivity.
 The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototyping speed).
 
 ## Architecture
+
+- **Interactivity (Alpine.js):**
+  - **Theme Management:** Reactive theme switching (Dark/Light) and persistence in `localStorage`.
+  - **Log Console:** SSE (Server-Sent Events) streaming with auto-scroll and level-based coloring.
+  - **Mermaid.js:** Dynamic rendering of infrastructure graphs with pan-zoom support, reactive to theme changes.
+  - **Confirmations:** Intercepting HTMX actions for destructive operations.
 
 - **Routing:**
   - `GET /` -> Redirects to `/projects`
@@ -32,8 +38,8 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
 
 ## Logging
 
-- **Default:** `RUST_LOG=warn,oct_platform=info` (Quiet by default).
-- **Verbose:** `RUST_LOG=debug,tower_http=debug,oct_platform=debug,oct_config=info` (Enable with `--verbose` flag).
+- **Default:** `RUST_LOG=warn,oct_platform=info,oct_cloud=info,oct_orchestrator=info,oct_ctl_sdk=info` (Quiet by default).
+- **Verbose:** `RUST_LOG=debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,oct_orchestrator=debug,oct_ctl_sdk=debug` (Enable with `--verbose` flag).
 - **Tests:** `VERBOSE=1` env var enables verbose logging in Playwright tests.
 
 ## Testing
@@ -52,11 +58,12 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
 
 ## Development Instructions
 
-1.  **Run with Hot Reload (Bacon):**
+1.  **Testing Requirement:** **ALWAYS** run the full E2E test suite (`deno task test` in `e2e/`) after making any changes to the UI (templates, styles, or client-side logic) to ensure no regressions in interactivity or layout.
+2.  **Run with Hot Reload (Bacon):**
     ```bash
     bacon run -p oct-platform
     ```
-2.  **Run Manual:**
+3.  **Run Manual:**
     ```bash
     cargo run -p oct-platform
     # OR for verbose logs

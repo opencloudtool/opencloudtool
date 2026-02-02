@@ -1,5 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" x-data="{ theme: localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') }"
+      x-init="$watch('theme', val => {
+          localStorage.setItem('theme', val);
+          if (val === 'dark') document.documentElement.classList.add('dark');
+          else document.documentElement.classList.remove('dark');
+          window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme: val } }));
+      })"
+      :class="theme">
 
 <head>
   <meta charset="utf-8">
@@ -9,12 +16,16 @@
   <!-- HTMX -->
   <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
 
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 
   <script>
+    // HTMX Configuration
     htmx.defineExtension('nested-json', {
         onEvent: function (name, evt) {
             if (name === "htmx:configRequest") {
@@ -45,6 +56,17 @@
             return JSON.stringify(result);
         }
     });
+
+    // Prevent FOUC
+    (function() {
+        const savedTheme = localStorage.getItem('theme');
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    })();
   </script>
 
   <!-- Tailwind CSS -->
@@ -79,20 +101,6 @@
         }
       }
     }
-  </script>
-
-  <script>
-    // Initialize Theme immediately to prevent FOUC (Flash of Unstyled Content)
-    (function() {
-        const savedTheme = localStorage.getItem('theme');
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    })();
   </script>
 
   <!-- Icons -->
@@ -144,10 +152,15 @@
     body {
         font-family: 'Share Tech Mono', monospace;
     }
+
+    [x-cloak] { display: none !important; }
   </style>
 </head>
 
-<body class="bg-body text-main antialiased h-screen flex overflow-hidden transition-colors duration-300">
+<body class="bg-body text-main antialiased h-screen flex overflow-hidden transition-colors duration-300"
+      @open-log-console.window="
+        $dispatch('log-console-open', { url: $event.detail.url })
+      ">
 
   <!-- Sidebar -->
   <aside class="w-64 bg-surface border-r border-border flex-shrink-0 flex flex-col transition-all duration-300">
@@ -209,9 +222,9 @@
         <div class="flex items-center gap-3">
             <span class="text-xs text-muted">v{{ version }}</span>
         </div>
-        <button onclick="toggleTheme()" class="text-muted hover:text-main transition-colors p-2 rounded-lg hover:bg-body" title="Toggle Theme" aria-label="Toggle Theme">
-            <i class="fa-solid fa-moon dark:hidden"></i>
-            <i class="fa-solid fa-sun hidden dark:block"></i>
+        <button @click="theme = theme === 'dark' ? 'light' : 'dark'" class="text-muted hover:text-main transition-colors p-2 rounded-lg hover:bg-body" title="Toggle Theme" aria-label="Toggle Theme">
+            <i class="fa-solid fa-moon" x-show="theme === 'light'"></i>
+            <i class="fa-solid fa-sun" x-show="theme === 'dark'"></i>
         </button>
     </div>
   </aside>
@@ -227,18 +240,92 @@
     </div>
 
     <!-- Log Console Overlay -->
-    <div id="log-console" class="fixed inset-0 bg-body/90 backdrop-blur-sm z-[100] hidden flex flex-col p-8 transition-opacity duration-300 opacity-0">
+    <div id="log-console"
+         x-data="{
+            open: false,
+            logs: [],
+            evtSource: null,
+            init() {
+                this.$watch('open', value => {
+                    if (!value && this.evtSource) {
+                        this.evtSource.close();
+                        this.evtSource = null;
+                    }
+                });
+            },
+            startStream(url) {
+                this.logs = [];
+                this.open = true;
+
+                // Small timeout to allow DOM transition
+                setTimeout(() => {
+                    this.logs.push({ level: 'DEBUG', message: 'Initializing stream...', timestamp: new Date().toLocaleTimeString() });
+                }, 50);
+
+                if (this.evtSource) this.evtSource.close();
+
+                this.evtSource = new EventSource(url);
+
+                this.evtSource.onmessage = (event) => {
+                    try {
+                        const log = JSON.parse(event.data);
+                        this.logs.push(log);
+                    } catch (e) {
+                        this.logs.push({ level: 'INFO', message: event.data, timestamp: new Date().toLocaleTimeString() });
+                    }
+                    this.scrollToBottom();
+                };
+
+                this.evtSource.onerror = (err) => {
+                    console.error('EventSource failed:', err);
+                    if (this.evtSource) {
+                        this.evtSource.close();
+                        this.evtSource = null;
+                    }
+                    this.logs.push({ level: 'DEBUG', message: 'Stream connection closed.', timestamp: new Date().toLocaleTimeString() });
+                    this.scrollToBottom();
+                };
+            },
+            scrollToBottom() {
+                this.$nextTick(() => {
+                    const container = this.$refs.logContainer;
+                    if (container) container.scrollTop = container.scrollHeight;
+                });
+            },
+            getLevelClass(level, message) {
+                if (message && message.includes('successfully')) return 'text-green-400 font-bold';
+                switch(level) {
+                    case 'ERROR': return 'text-red-400 font-bold';
+                    case 'WARN': return 'text-yellow-400';
+                    case 'INFO': return 'text-blue-400';
+                    case 'DEBUG': return 'text-muted';
+                    default: return 'text-main';
+                }
+            }
+         }"
+         @log-console-open.window="startStream($event.detail.url)"
+         class="fixed inset-0 bg-body/90 backdrop-blur-sm z-[100] flex flex-col p-8 transition-opacity duration-300"
+         x-show="open"
+         x-transition.opacity
+         x-cloak>
+
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-xl font-bold text-main flex items-center gap-2">
                 <i class="fa-solid fa-terminal text-green-400"></i>
                 <span>Command Output</span>
             </h3>
-            <button onclick="closeConsole()" class="text-muted hover:text-main transition-colors" title="Close Console" aria-label="Close Console">
+            <button @click="open = false" class="text-muted hover:text-main transition-colors" title="Close Console" aria-label="Close Console">
                 <i class="fa-solid fa-xmark text-xl"></i>
             </button>
         </div>
-        <div id="log-output" class="flex-1 bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-y-auto text-main space-y-1">
-            <!-- Logs will appear here -->
+
+        <div id="log-output" x-ref="logContainer" class="flex-1 bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-y-auto text-main space-y-1">
+            <template x-for="(log, index) in logs" :key="index">
+                <div>
+                    <span class="text-muted mr-2" x-text="'[' + log.timestamp + ']'"></span>
+                    <span :class="getLevelClass(log.level, log.message)" x-text="log.message"></span>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -253,106 +340,6 @@
       {% endblock %}
     </div>
   </main>
-
-  <script>
-    // Theme Toggle Logic
-    function toggleTheme() {
-        const html = document.documentElement;
-        let theme = 'light';
-        if (html.classList.contains('dark')) {
-            html.classList.remove('dark');
-        } else {
-            html.classList.add('dark');
-            theme = 'dark';
-        }
-        localStorage.setItem('theme', theme);
-        window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
-    }
-
-    let currentEvtSource = null;
-
-    function startLogStream(url) {
-        const consoleEl = document.getElementById('log-console');
-        const outputEl = document.getElementById('log-output');
-
-        if (currentEvtSource) {
-            currentEvtSource.close();
-            currentEvtSource = null;
-        }
-
-        // Show console
-        consoleEl.classList.remove('hidden');
-        // Small delay to allow display:block to apply before opacity transition
-        setTimeout(() => consoleEl.classList.remove('opacity-0'), 10);
-
-        outputEl.innerHTML = '<div class="text-muted italic">Initializing stream...</div>';
-
-        currentEvtSource = new EventSource(url);
-
-        currentEvtSource.onmessage = function(event) {
-            const div = document.createElement('div');
-            try {
-                const log = JSON.parse(event.data);
-
-                const timeSpan = document.createElement('span');
-                timeSpan.className = 'text-muted mr-2';
-                timeSpan.textContent = `[${log.timestamp}]`;
-
-                const msgSpan = document.createElement('span');
-                msgSpan.textContent = log.message;
-
-                // Color based on level
-                if (log.level === 'ERROR') {
-                    msgSpan.className = 'text-red-400 font-bold';
-                } else if (log.level === 'WARN') {
-                    msgSpan.className = 'text-yellow-400';
-                } else if (log.level === 'INFO') {
-                    msgSpan.className = 'text-blue-400';
-                } else if (log.level === 'DEBUG') {
-                    msgSpan.className = 'text-muted';
-                }
-
-                // Keep success highlight for message content
-                if (log.message.includes('successfully')) {
-                    msgSpan.className = 'text-green-400 font-bold';
-                }
-
-                div.appendChild(timeSpan);
-                div.appendChild(msgSpan);
-            } catch (e) {
-                // Fallback for non-JSON messages
-                div.textContent = event.data;
-            }
-
-            outputEl.appendChild(div);
-            outputEl.scrollTop = outputEl.scrollHeight;
-        };
-
-        currentEvtSource.onerror = function(err) {
-            console.error("EventSource failed:", err);
-            if (currentEvtSource) {
-                currentEvtSource.close();
-                currentEvtSource = null;
-            }
-            const div = document.createElement('div');
-            div.className = 'text-muted italic mt-2 border-t border-border pt-2';
-            div.textContent = 'Stream connection closed.';
-            outputEl.appendChild(div);
-            outputEl.scrollTop = outputEl.scrollHeight;
-        };
-    }
-
-    function closeConsole() {
-        const consoleEl = document.getElementById('log-console');
-        consoleEl.classList.add('opacity-0');
-        setTimeout(() => consoleEl.classList.add('hidden'), 300);
-
-        if (currentEvtSource) {
-            currentEvtSource.close();
-            currentEvtSource = null;
-        }
-    }
-  </script>
 
 </body>
 </html>

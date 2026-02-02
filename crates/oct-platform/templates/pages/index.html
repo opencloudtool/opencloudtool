@@ -26,17 +26,17 @@
         </div>
         <div class="flex flex-wrap gap-3">
             <button class="px-4 py-2 bg-surface hover:bg-body text-green-400 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-green-400/50"
-                onclick="startLogStream('/projects/{{ project.name }}/action/genesis')">
+                @click="$dispatch('open-log-console', { url: '/projects/{{ project.name }}/action/genesis' })">
                 <i class="fa-solid fa-seedling"></i>
                 <span>Genesis</span>
             </button>
             <button class="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-white font-medium rounded-lg shadow-lg shadow-accent-500/20 transition-all duration-200 flex items-center gap-2"
-                onclick="startLogStream('/projects/{{ project.name }}/action/apply')">
+                @click="$dispatch('open-log-console', { url: '/projects/{{ project.name }}/action/apply' })">
                 <i class="fa-solid fa-play"></i>
                 <span>Apply</span>
             </button>
             <button class="px-4 py-2 bg-surface hover:bg-body text-red-400 font-medium rounded-lg transition-all duration-200 flex items-center gap-2 border border-border hover:border-red-400/50"
-                onclick="startLogStream('/projects/{{ project.name }}/action/destroy')">
+                @click="$dispatch('open-log-console', { url: '/projects/{{ project.name }}/action/destroy' })">
                 <i class="fa-solid fa-trash"></i>
                 <span>Destroy</span>
             </button>
