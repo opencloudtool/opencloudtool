@@ -30,17 +30,18 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let cli = Cli::parse();
 
     let orchestrator_with_graph = oct_orchestrator::OrchestratorWithGraph;
+    let config = oct_config::Config::new(None)?;
 
     match &cli.command {
-        Commands::Genesis => orchestrator_with_graph.genesis().await?,
-        Commands::Apply => orchestrator_with_graph.apply().await?,
-        Commands::Destroy => orchestrator_with_graph.destroy().await?,
+        Commands::Genesis => orchestrator_with_graph.genesis(&config).await?,
+        Commands::Apply => orchestrator_with_graph.apply(&config).await?,
+        Commands::Destroy => orchestrator_with_graph.destroy(&config).await?,
     }
 
     Ok(())

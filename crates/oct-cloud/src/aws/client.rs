@@ -24,7 +24,7 @@ impl S3Impl {
         &self,
         region: &str,
         name: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let response = self
             .inner
             .create_bucket()
@@ -49,7 +49,10 @@ impl S3Impl {
         }
     }
 
-    pub(super) async fn delete_bucket(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub(super) async fn delete_bucket(
+        &self,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner.delete_bucket().bucket(name).send().await?;
 
         Ok(())
@@ -60,7 +63,7 @@ impl S3Impl {
         bucket_name: &str,
         key: &str,
         data: Vec<u8>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner
             .put_object()
             .bucket(bucket_name)
@@ -76,7 +79,7 @@ impl S3Impl {
         &self,
         bucket_name: &str,
         key: &str,
-    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
         let response = self
             .inner
             .get_object()
@@ -92,7 +95,7 @@ impl S3Impl {
         &self,
         bucket_name: &str,
         key: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner
             .delete_object()
             .bucket(bucket_name)
@@ -123,7 +126,7 @@ impl Ec2Impl {
         &self,
         cidr_block: String,
         name: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating VPC");
 
         let response = self
@@ -156,7 +159,10 @@ impl Ec2Impl {
     }
 
     /// Delete VPC
-    pub async fn delete_vpc(&self, vpc_id: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_vpc(
+        &self,
+        vpc_id: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting VPC");
 
         self.inner
@@ -176,7 +182,7 @@ impl Ec2Impl {
         vpc_id: String,
         name: String,
         description: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating security group");
 
         let response = self
@@ -202,7 +208,7 @@ impl Ec2Impl {
     pub async fn get_default_security_group_id(
         &self,
         vpc_id: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let response = self
             .inner
             .get_security_groups_for_vpc()
@@ -223,7 +229,7 @@ impl Ec2Impl {
     pub async fn delete_security_group(
         &self,
         security_group_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting security group");
 
         self.inner
@@ -244,7 +250,7 @@ impl Ec2Impl {
         protocol: String,
         port: i32,
         cidr_block: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Allowing inbound traffic for security group");
 
         self.inner
@@ -275,7 +281,7 @@ impl Ec2Impl {
         cidr_block: String,
         availability_zone: String,
         name: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating subnet");
 
         let response = self
@@ -310,7 +316,10 @@ impl Ec2Impl {
     }
 
     /// Delete Subnet
-    pub async fn delete_subnet(&self, subnet_id: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_subnet(
+        &self,
+        subnet_id: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting subnet");
 
         self.inner
@@ -328,7 +337,7 @@ impl Ec2Impl {
     pub async fn create_internet_gateway(
         &self,
         vpc_id: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating Internet Gateway");
 
         let response = self.inner.create_internet_gateway().send().await?;
@@ -358,7 +367,7 @@ impl Ec2Impl {
         &self,
         internet_gateway_id: String,
         vpc_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Detaching Internet Gateway {internet_gateway_id} from VPC");
 
         self.inner
@@ -386,7 +395,7 @@ impl Ec2Impl {
     pub async fn create_route_table(
         &self,
         vpc_id: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating Route Table");
 
         let response = self
@@ -410,7 +419,7 @@ impl Ec2Impl {
     pub async fn delete_route_table(
         &self,
         route_table_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting Route Table {route_table_id}");
 
         self.inner
@@ -429,7 +438,7 @@ impl Ec2Impl {
         &self,
         route_table_id: String,
         igw_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Adding public route to Route Table {route_table_id}");
         self.inner
             .create_route()
@@ -449,7 +458,7 @@ impl Ec2Impl {
         &self,
         route_table_id: String,
         subnet_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Associating Route Table {route_table_id} with Subnet {subnet_id}");
 
         self.inner
@@ -469,7 +478,7 @@ impl Ec2Impl {
         &self,
         route_table_id: String,
         subnet_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Disassociating Route Table {route_table_id} with Subnet {subnet_id}");
 
         let response = self
@@ -533,7 +542,7 @@ impl Ec2Impl {
     pub async fn enable_auto_assign_ip_addresses_for_subnet(
         &self,
         subnet_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Enabling auto-assignment of public IP addresses for Subnet {subnet_id}");
 
         self.inner
@@ -552,7 +561,7 @@ impl Ec2Impl {
     pub async fn describe_instances(
         &self,
         instance_id: String,
-    ) -> Result<aws_sdk_ec2::types::Instance, Box<dyn std::error::Error>> {
+    ) -> Result<aws_sdk_ec2::types::Instance, Box<dyn std::error::Error + Send + Sync>> {
         let response = self
             .inner
             .describe_instances()
@@ -580,7 +589,7 @@ impl Ec2Impl {
         instance_profile_name: String,
         subnet_id: String,
         security_group_id: String,
-    ) -> Result<RunInstancesOutput, Box<dyn std::error::Error>> {
+    ) -> Result<RunInstancesOutput, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Starting EC2 instance");
 
         let request = self
@@ -621,7 +630,7 @@ impl Ec2Impl {
     pub async fn terminate_instance(
         &self,
         instance_id: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.inner
             .terminate_instances()
             .instance_ids(instance_id)
@@ -657,7 +666,7 @@ impl Route53Impl {
     pub async fn create_hosted_zone(
         &self,
         domain_name: String,
-    ) -> Result<String, Box<dyn std::error::Error>> {
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating Route53 hosted zone for {domain_name}");
 
         let response = self
@@ -697,7 +706,7 @@ impl Route53Impl {
         &self,
         domain_name: &str,
         hosted_zone_id: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let verification_id = Uuid::new_v4().simple().to_string();
         let subdomain = format!("_verify.{domain_name}");
 
@@ -747,7 +756,10 @@ impl Route53Impl {
         Err("Failed to verify record".into())
     }
 
-    pub async fn delete_hosted_zone(&self, id: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_hosted_zone(
+        &self,
+        id: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting Route53 hosted zone {id}");
         // List all record sets
         let record_sets = self
@@ -791,7 +803,7 @@ impl Route53Impl {
     pub async fn get_dns_records(
         &self,
         hosted_zone_id: String,
-    ) -> Result<Vec<DnsRecord>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<DnsRecord>, Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Getting DNS records for {hosted_zone_id}");
 
         let response = self
@@ -826,7 +838,7 @@ impl Route53Impl {
         record_value: String,
         ttl: Option<i64>,
         action: ChangeAction,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Starting to {action} {record_type} record for {domain_name}");
 
         let resource_record = aws_sdk_route53::types::ResourceRecord::builder()
@@ -868,7 +880,7 @@ impl Route53Impl {
         record_type: RecordType,
         record_value: String,
         ttl: Option<i64>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.change_dns_record(
             hosted_zone_id,
             domain_name,
@@ -887,7 +899,7 @@ impl Route53Impl {
         record_type: RecordType,
         record_value: String,
         ttl: Option<i64>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.change_dns_record(
             hosted_zone_id,
             domain_name,
@@ -919,7 +931,7 @@ impl IAMImpl {
         name: String,
         assume_role_policy: String,
         policy_arns: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Create IAM role for EC2 instance
         log::info!("Creating IAM role for EC2 instance");
 
@@ -952,7 +964,7 @@ impl IAMImpl {
         &self,
         name: String,
         policy_arns: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for policy_arn in &policy_arns {
             log::info!("Detaching '{policy_arn}' IAM role from EC2 instance");
 
@@ -983,7 +995,7 @@ impl IAMImpl {
         &self,
         name: String,
         role_names: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating IAM instance profile for EC2 instance");
 
         self.inner
@@ -1017,7 +1029,7 @@ impl IAMImpl {
         &self,
         name: String,
         role_names: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for role_name in role_names {
             log::info!("Removing {role_name} IAM role from instance profile");
 
@@ -1062,7 +1074,7 @@ impl ECRImpl {
     pub async fn create_repository(
         &self,
         name: String,
-    ) -> Result<(String, String), Box<dyn std::error::Error>> {
+    ) -> Result<(String, String), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Creating ECR repository");
         let response = self
             .inner
@@ -1086,7 +1098,10 @@ impl ECRImpl {
         }
     }
 
-    pub async fn delete_repository(&self, name: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_repository(
+        &self,
+        name: String,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         log::info!("Deleting ECR repository");
         self.inner
             .delete_repository()

@@ -1,18 +1,358 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" class="dark">
 
 <head>
   <meta charset="utf-8">
-  <title>{% block title %}{% endblock %}</title>
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js"
-    integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz"
-    crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/htmx-ext-form-json@1.0.10"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}opencloudtool{% endblock %}</title>
+
+  <!-- HTMX -->
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+  <script>
+    htmx.defineExtension('nested-json', {
+        onEvent: function (name, evt) {
+            if (name === "htmx:configRequest") {
+                evt.detail.headers['Content-Type'] = "application/json";
+            }
+        },
+        encodeParameters: function (xhr, parameters, elt) {
+            xhr.overrideMimeType('text/json');
+
+            const result = {};
+            for (const [key, value] of Object.entries(parameters)) {
+                const keys = key.split(/\[|\]/).filter(k => k !== "");
+                let current = result;
+                for (let i = 0; i < keys.length; i++) {
+                    const k = keys[i];
+                    if (i === keys.length - 1) {
+                        current[k] = value;
+                    } else {
+                        const nextKey = keys[i+1];
+                        const isArray = !isNaN(parseInt(nextKey));
+                        if (!current[k]) {
+                            current[k] = isArray ? [] : {};
+                        }
+                        current = current[k];
+                    }
+                }
+            }
+            return JSON.stringify(result);
+        }
+    });
+  </script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Share Tech Mono"', 'monospace'],
+          },
+          colors: {
+            gray: {
+              850: '#1f2937',
+              900: '#111827',
+              950: '#030712',
+            },
+            accent: {
+              500: '#6366f1', // Indigo
+              600: '#4f46e5',
+            },
+            body: 'var(--bg-body)',
+            surface: 'var(--bg-surface)',
+            main: 'var(--text-main)',
+            muted: 'var(--text-muted)',
+            border: 'var(--border)',
+          },
+          animation: {
+            'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          }
+        }
+      }
+    }
+  </script>
+
+  <script>
+    // Initialize Theme immediately to prevent FOUC (Flash of Unstyled Content)
+    (function() {
+        const savedTheme = localStorage.getItem('theme');
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+        if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    })();
+  </script>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    :root {
+        --bg-body: #f3f4f6;
+        --bg-surface: #ffffff;
+        --text-main: #111827;
+        --text-muted: #6b7280;
+        --border: #e5e7eb;
+    }
+    .dark {
+        --bg-body: #030712;
+        --bg-surface: #111827;
+        --text-main: #f3f4f6;
+        --text-muted: #9ca3af;
+        --border: #1f2937;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-body);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    .htmx-indicator{
+        opacity:0;
+        transition: opacity 200ms ease-in;
+    }
+    .htmx-request .htmx-indicator{
+        opacity:1;
+    }
+    .htmx-request.htmx-indicator{
+        opacity:1;
+    }
+
+    body {
+        font-family: 'Share Tech Mono', monospace;
+    }
+  </style>
 </head>
 
-<body>
-  {% block content %}
-  {% endblock %}
-</body>
+<body class="bg-body text-main antialiased h-screen flex overflow-hidden transition-colors duration-300">
 
+  <!-- Sidebar -->
+  <aside class="w-64 bg-surface border-r border-border flex-shrink-0 flex flex-col transition-all duration-300">
+    <div class="p-6 border-b border-border">
+      <div class="flex flex-col">
+        <div class="text-3xl font-normal tracking-tighter text-main leading-none">oct;</div>
+        <div class="text-xs font-medium tracking-widest text-main uppercase mt-1 pl-0.5 opacity-80">platform</div>
+      </div>
+    </div>
+
+    <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-6">
+      <!-- Platform -->
+      <div>
+        <div class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-2">Platform</div>
+        <div class="space-y-1">
+          <a href="/projects" class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted">
+            <i class="fa-solid fa-folder-open w-5 text-center transition-colors group-hover:text-yellow-400"></i>
+            <span>Projects</span>
+          </a>
+          <button class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted cursor-not-allowed opacity-50" title="Coming soon">
+            <i class="fa-solid fa-shapes w-5 text-center transition-colors group-hover:text-pink-400"></i>
+            <span>Templates</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Support -->
+      <div>
+        <div class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-2">Support</div>
+        <div class="space-y-1">
+          <a href="#" class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted">
+            <i class="fa-solid fa-book w-5 text-center transition-colors group-hover:text-blue-400"></i>
+            <span>Documentation</span>
+          </a>
+          <a href="#" class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted">
+            <i class="fa-solid fa-code w-5 text-center transition-colors group-hover:text-purple-400"></i>
+            <span>API Reference</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- System -->
+      <div>
+        <div class="text-xs font-semibold text-muted uppercase tracking-wider mb-2 px-2">System</div>
+        <div class="space-y-1">
+          <button class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted cursor-not-allowed opacity-50" title="Coming soon">
+            <i class="fa-solid fa-gear w-5 text-center transition-colors group-hover:text-gray-200"></i>
+            <span>Settings</span>
+          </button>
+          <button class="w-full flex items-center gap-3 px-4 py-2 text-left text-sm font-medium rounded-lg transition-all duration-200 hover:bg-body hover:text-main group text-muted cursor-not-allowed opacity-50" title="Coming soon">
+            <i class="fa-solid fa-clock-rotate-left w-5 text-center transition-colors group-hover:text-orange-400"></i>
+            <span>Logs</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="p-4 border-t border-border flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-muted">v{{ version }}</span>
+        </div>
+        <button onclick="toggleTheme()" class="text-muted hover:text-main transition-colors p-2 rounded-lg hover:bg-body" title="Toggle Theme" aria-label="Toggle Theme">
+            <i class="fa-solid fa-moon dark:hidden"></i>
+            <i class="fa-solid fa-sun hidden dark:block"></i>
+        </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col min-w-0 overflow-hidden bg-body relative transition-colors duration-300">
+    <!-- Loading Overlay -->
+    <div id="global-loader" class="htmx-indicator absolute inset-0 bg-body/80 backdrop-blur-sm z-50 flex items-center justify-center">
+        <div class="flex flex-col items-center gap-4">
+            <div class="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            <div class="text-indigo-400 font-medium animate-pulse">Processing...</div>
+        </div>
+    </div>
+
+    <!-- Log Console Overlay -->
+    <div id="log-console" class="fixed inset-0 bg-body/90 backdrop-blur-sm z-[100] hidden flex flex-col p-8 transition-opacity duration-300 opacity-0">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-main flex items-center gap-2">
+                <i class="fa-solid fa-terminal text-green-400"></i>
+                <span>Command Output</span>
+            </h3>
+            <button onclick="closeConsole()" class="text-muted hover:text-main transition-colors" title="Close Console" aria-label="Close Console">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+        <div id="log-output" class="flex-1 bg-surface border border-border rounded-xl p-4 font-mono text-sm overflow-y-auto text-main space-y-1">
+            <!-- Logs will appear here -->
+        </div>
+    </div>
+
+    <!-- Scrollable Content Area -->
+    <div class="flex-1 overflow-y-auto p-8">
+
+      <!-- Action Results Display -->
+      <div id="action-result" class="mb-8 empty:hidden transition-all duration-300"></div>
+
+      <!-- Main Page Content -->
+      {% block content %}
+      {% endblock %}
+    </div>
+  </main>
+
+  <script>
+    // Theme Toggle Logic
+    function toggleTheme() {
+        const html = document.documentElement;
+        let theme = 'light';
+        if (html.classList.contains('dark')) {
+            html.classList.remove('dark');
+        } else {
+            html.classList.add('dark');
+            theme = 'dark';
+        }
+        localStorage.setItem('theme', theme);
+        window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }));
+    }
+
+    let currentEvtSource = null;
+
+    function startLogStream(url) {
+        const consoleEl = document.getElementById('log-console');
+        const outputEl = document.getElementById('log-output');
+
+        if (currentEvtSource) {
+            currentEvtSource.close();
+            currentEvtSource = null;
+        }
+
+        // Show console
+        consoleEl.classList.remove('hidden');
+        // Small delay to allow display:block to apply before opacity transition
+        setTimeout(() => consoleEl.classList.remove('opacity-0'), 10);
+
+        outputEl.innerHTML = '<div class="text-muted italic">Initializing stream...</div>';
+
+        currentEvtSource = new EventSource(url);
+
+        currentEvtSource.onmessage = function(event) {
+            const div = document.createElement('div');
+            try {
+                const log = JSON.parse(event.data);
+
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'text-muted mr-2';
+                timeSpan.textContent = `[${log.timestamp}]`;
+
+                const msgSpan = document.createElement('span');
+                msgSpan.textContent = log.message;
+
+                // Color based on level
+                if (log.level === 'ERROR') {
+                    msgSpan.className = 'text-red-400 font-bold';
+                } else if (log.level === 'WARN') {
+                    msgSpan.className = 'text-yellow-400';
+                } else if (log.level === 'INFO') {
+                    msgSpan.className = 'text-blue-400';
+                } else if (log.level === 'DEBUG') {
+                    msgSpan.className = 'text-muted';
+                }
+
+                // Keep success highlight for message content
+                if (log.message.includes('successfully')) {
+                    msgSpan.className = 'text-green-400 font-bold';
+                }
+
+                div.appendChild(timeSpan);
+                div.appendChild(msgSpan);
+            } catch (e) {
+                // Fallback for non-JSON messages
+                div.textContent = event.data;
+            }
+
+            outputEl.appendChild(div);
+            outputEl.scrollTop = outputEl.scrollHeight;
+        };
+
+        currentEvtSource.onerror = function(err) {
+            console.error("EventSource failed:", err);
+            if (currentEvtSource) {
+                currentEvtSource.close();
+                currentEvtSource = null;
+            }
+            const div = document.createElement('div');
+            div.className = 'text-muted italic mt-2 border-t border-border pt-2';
+            div.textContent = 'Stream connection closed.';
+            outputEl.appendChild(div);
+            outputEl.scrollTop = outputEl.scrollHeight;
+        };
+    }
+
+    function closeConsole() {
+        const consoleEl = document.getElementById('log-console');
+        consoleEl.classList.add('opacity-0');
+        setTimeout(() => consoleEl.classList.add('hidden'), 300);
+
+        if (currentEvtSource) {
+            currentEvtSource.close();
+            currentEvtSource = null;
+        }
+    }
+  </script>
+
+</body>
 </html>

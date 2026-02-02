@@ -1,0 +1,65 @@
+{% extends "shared/base.html" %}
+
+{% block title %}Projects{% endblock %}
+
+{% block sidebar_actions %}{% endblock %}
+
+{% block content %}
+<div id="projects-view" hx-target="this" hx-swap="outerHTML" class="max-w-4xl mx-auto space-y-8">
+
+    <div class="flex items-center justify-between pb-6 border-b border-border">
+        <h2 class="text-3xl font-bold text-main tracking-tight">Projects</h2>
+    </div>
+
+    <!-- Create Project Form -->
+    <div class="bg-surface border border-border rounded-xl p-6">
+        <h3 class="text-lg font-semibold text-main mb-4">Create New Project</h3>
+        <form id="create-project-form" hx-post="/projects" method="POST" class="flex gap-4">
+            <input type="text" name="name" placeholder="Project Name" required
+                class="flex-1 bg-body border border-border text-main rounded-lg px-4 py-2.5 focus:border-accent-500 focus:ring-1 focus:ring-accent-500 outline-none transition-all placeholder-muted">
+            <button type="submit" class="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-white font-medium rounded-lg shadow-lg shadow-accent-500/20 transition-all">
+                Create
+            </button>
+        </form>
+    </div>
+
+    <!-- Projects List -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for project in projects %}
+        <div class="bg-surface border border-border rounded-xl p-6 flex flex-col gap-4 group hover:border-accent-500/50 cursor-pointer transition-all relative"
+             hx-get="/projects/{{ project.name }}" hx-push-url="true" hx-select="#project-view"
+             hx-target="#projects-view" hx-swap="outerHTML"
+             >
+
+            <div class="flex items-center justify-between pointer-events-none">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-body flex items-center justify-center text-muted border border-border group-hover:text-accent-500 group-hover:border-accent-500/30 transition-colors">
+                        <i class="fa-solid fa-folder"></i>
+                    </div>
+                    <div>
+                        <div class="font-medium text-main text-lg">{{ project.name }}</div>
+                        <div class="text-xs text-muted">
+                            {% match project.domain %}
+                                {% when Some with (d) %}{{ d }}
+                                {% when None %}No domain
+                            {% endmatch %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between text-sm text-muted pt-4 border-t border-border pointer-events-none">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-server"></i>
+                    <span>{{ project.services_count }} services</span>
+                </div>
+
+                <span class="text-xs text-muted group-hover:text-accent-400 transition-colors">
+                    Manage <i class="fa-solid fa-arrow-right ml-1"></i>
+                </span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

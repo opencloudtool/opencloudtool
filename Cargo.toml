@@ -61,8 +61,16 @@ reqwest = { version = "0.13.1", features = ["json"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["trace"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+http-body-util = "0.1"
+mime = "0.3"
 grcov = "0.8.20"
+tower-livereload = "0.9"
+regex = "1"
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures = "0.3"
+chrono = "0.4"
+dirs = "5.0"
 
 [workspace.lints.rust]
 unsafe_code = "warn"

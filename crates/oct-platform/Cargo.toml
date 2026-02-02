@@ -12,12 +12,11 @@ license.workspace = true
 readme.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description.workspace = true
+description = "UI for opencloudtool"
 
 [dependencies]
 askama = { workspace = true }
 axum = { workspace = true }
-reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tokio = { workspace = true }
@@ -25,6 +24,21 @@ toml = { workspace = true }
 tower-http = { workspace = true, features = ["trace"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+oct-config = { workspace = true }
+oct-orchestrator = { workspace = true }
+oct-cloud = { workspace = true }
+async-trait = { workspace = true }
+tower-livereload = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+http-body-util = { workspace = true }
+mime = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

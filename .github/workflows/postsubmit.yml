@@ -96,3 +96,36 @@ jobs:
           files: ./coverage.lcov
           slug: opencloudtool/opencloudtool
           fail_ci_if_error: true
+
+  oct-platform-e2e-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref_name == 'main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: crates/oct-platform/e2e/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: crates/oct-platform/e2e
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: crates/oct-platform/e2e
+
+      - name: Pre-build oct-platform
+        run: cargo build -p oct-platform
+
+      - name: Run E2E tests
+        run: npx playwright test
+        working-directory: crates/oct-platform/e2e

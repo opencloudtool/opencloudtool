@@ -10,15 +10,16 @@ pub struct OrchestratorWithGraph;
 
 impl OrchestratorWithGraph {
     /// Initial step of the `oct`-managed system deployment
-    pub async fn genesis(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = oct_config::Config::new(None)?;
-
+    pub async fn genesis(
+        &self,
+        config: &oct_config::Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
 
         // In the current version there is only one Leader node which serves
         // all user services, so it's okay to get instance type from the user services graph
-        let user_services_graph = config.to_graph()?;
+        let user_services_graph = config.to_graph().map_err(|e| e.to_string())?;
         let instance_type = get_instance_type(&user_services_graph)?;
 
         let genesis_spec_graph = infra::graph::GraphManager::get_genesis_graph(instance_type);
@@ -34,9 +35,10 @@ impl OrchestratorWithGraph {
         Ok(())
     }
 
-    pub async fn apply(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = oct_config::Config::new(None)?;
-
+    pub async fn apply(
+        &self,
+        config: &oct_config::Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         let (infra_state, _loaded) = infra_state_backend.load().await?;
@@ -45,14 +47,15 @@ impl OrchestratorWithGraph {
         let leader_vm = vms.first().ok_or("No VMs available")?;
 
         let oct_ctl_client = oct_ctl_sdk::Client::new(leader_vm.public_ip.clone());
-        let () = oct_ctl_client.apply(config).await?;
+        let () = oct_ctl_client.apply(config.clone()).await?;
 
         Ok(())
     }
 
-    pub async fn destroy(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let config = oct_config::Config::new(None)?;
-
+    pub async fn destroy(
+        &self,
+        config: &oct_config::Config,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let infra_state_backend =
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
         let (infra_state, _loaded) = infra_state_backend.load().await?;
@@ -95,7 +98,7 @@ impl OrchestratorWithGraph {
 /// Tries to find an instance type which can fit all user-requested services
 fn get_instance_type(
     services_graph: &Graph<oct_config::Node, String>,
-) -> Result<InstanceType, Box<dyn std::error::Error>> {
+) -> Result<InstanceType, Box<dyn std::error::Error + Send + Sync>> {
     let sorted_graph = infra::graph::kahn_traverse(services_graph)?;
 
     let (total_services_cpus, total_services_memory) = sorted_graph
