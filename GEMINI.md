@@ -6,6 +6,22 @@
 
 ## Testing Strategy
 
+### Running Tests
+
+Run all Rust tests:
+```bash
+cargo test --workspace
+```
+
+Run E2E tests:
+```bash
+cargo build -p oct-platform
+cd crates/oct-platform/e2e
+deno task test
+```
+
+### Writing Tests
+
 - **Always** check for existing unit tests when modifying Rust code.
 - **Add** unit tests for new logic to ensure correctness.
 - Follow the project's mocking approach: each module should provide mocks if it has external dependencies.

@@ -43,7 +43,7 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
 - **Running Tests:**
   ```bash
   cd crates/oct-platform/e2e
-  npx playwright test
+  deno task test
   ```
 - **Running Unit Tests:**
   ```bash
@@ -62,10 +62,21 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
     # OR for verbose logs
     cargo run -p oct-platform -- --verbose
     ```
-3.  **Linting & Formatting (E2E):**
+3.  **E2E Development (Deno):**
     ```bash
     cd crates/oct-platform/e2e
-    npx @biomejs/biome check . --apply
+    # Run all tests
+    deno task test
+    # Run linter
+    deno task lint
+    # Run linter and apply safe fixes
+    deno task lint:fix
+    # Format code
+    deno task format
+    # Run all-in-one check (lint + format)
+    deno task check
+    # Run check and apply all fixes
+    deno task check --apply
     ```
 4.  **UI Branding:**
     - Font: "Share Tech Mono"

@@ -165,11 +165,38 @@ For example:
  cargo run -p oct-cli deploy --help
 ```
 
+## Testing
+
+### Running tests
+
+To run all Rust unit and integration tests:
+
+```bash
+cargo test --workspace
+```
+
+To run E2E tests for the platform:
+
+```bash
+# 1. Pre-build the platform
+cargo build -p oct-platform
+
+# 2. Run E2E tests (requires Deno)
+cd crates/oct-platform/e2e
+deno task test
+```
+
 ### Writing tests
 
-[WIP] Main principles:
+Main principles:
 
-- Each module provides its own mocks in a public `mocks` module
+- Each module provides its own mocks in a public `mocks` module.
+- Each module's tests cover only the functionality in that module.
+- If a module uses external modules, they are mocked using the `mocks` provided by the imported module.
+- In tests, prefer `expect("message")` over `unwrap()` to provide context on failure.
+- When testing for specific error messages, use `unwrap_err()` and assert on the error.
+
+Example structure:
 
 ```rust
 ...main code...
@@ -184,8 +211,7 @@ mod tests {
 }
 ```
 
-- Each module tests cover only the functionality in the module
-- If a module uses external modules, they are mocked using mocks provided by the imported module's `mocks` module
+Example mocking:
 
 ```rust
 ...other imports...
