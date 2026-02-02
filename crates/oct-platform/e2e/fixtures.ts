@@ -44,31 +44,54 @@ const spawnServer = async (
     });
 
     await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            reject(new Error("Server failed to start within 30s"));
-        }, 30000);
+        let settled = false;
 
-        serverProcess.stdout?.on("data", (data) => {
+        const cleanup = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            serverProcess.stdout?.off("data", onStdout);
+            serverProcess.stderr?.off("data", onStderr);
+            serverProcess.off("error", onError);
+            serverProcess.off("exit", onExit);
+        };
+
+        const onStdout = (data: Buffer) => {
             const output = data.toString();
             onLog(`[Server ${port}]: ${output}`);
             if (output.includes(`Listening on http://0.0.0.0:${port}`)) {
-                clearTimeout(timeout);
+                cleanup();
                 resolve();
             }
-        });
-        serverProcess.stderr?.on("data", (data) => {
+        };
+
+        const onStderr = (data: Buffer) => {
             onLog(`[Server ${port} ERR]: ${data.toString()}`);
-        });
-        serverProcess.on("error", (err) => {
-            clearTimeout(timeout);
+        };
+
+        const onError = (err: Error) => {
+            cleanup();
+            serverProcess.kill();
             reject(err);
-        });
-        serverProcess.on("exit", (code) => {
+        };
+
+        const onExit = (code: number | null) => {
             if (code !== null && code !== 0 && code !== 137 && code !== 143) {
-                clearTimeout(timeout);
+                cleanup();
                 reject(new Error(`Server exited with code ${code}`));
             }
-        });
+        };
+
+        const timeout = setTimeout(() => {
+            cleanup();
+            serverProcess.kill();
+            reject(new Error("Server failed to start within 30s"));
+        }, 30000);
+
+        serverProcess.stdout?.on("data", onStdout);
+        serverProcess.stderr?.on("data", onStderr);
+        serverProcess.on("error", onError);
+        serverProcess.on("exit", onExit);
     });
 
     return {
