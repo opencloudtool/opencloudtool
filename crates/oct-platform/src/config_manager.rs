@@ -147,7 +147,7 @@ impl ConfigManager for WorkspaceConfigManager {
                     let name = e.file_name().into_string().ok()?;
                     let config_path = e.path().join("oct.toml");
                     let config = if config_path.exists() {
-                        Config::new(config_path.to_str()).ok()
+                        config_path.to_str().and_then(|p| Config::new(Some(p)).ok())
                     } else {
                         None
                     };
