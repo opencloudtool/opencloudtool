@@ -1,9 +1,9 @@
-use petgraph::visit::NodeIndexable;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
 use petgraph::Graph;
 use petgraph::graph::NodeIndex;
+use petgraph::visit::NodeIndexable;
+use serde::{Deserialize, Serialize};
 
 use crate::infra::resource::{Node, ResourceType, Vm};
 
@@ -137,9 +137,11 @@ impl State {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::infra::resource::{Node, ResourceType, Subnet, Vpc};
     use petgraph::Graph;
+
+    use crate::infra::resource::{Node, ResourceType, Subnet, Vpc};
+
+    use super::*;
 
     #[test]
     fn test_state_from_graph_empty() {

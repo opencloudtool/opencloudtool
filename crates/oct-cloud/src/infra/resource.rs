@@ -1,5 +1,6 @@
 use aws_sdk_ec2::types::InstanceStateName;
-use base64::{Engine as _, engine::general_purpose};
+use base64::Engine as _;
+use base64::engine::general_purpose;
 use serde::{Deserialize, Serialize};
 
 use crate::aws::client;
@@ -973,9 +974,9 @@ impl std::fmt::Display for Node {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use mockall::predicate::eq;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_vpc_manager_create() {

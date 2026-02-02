@@ -1,8 +1,10 @@
-use oct_config::{Config, Project, StateBackend};
-use serde::Serialize;
 use std::fs;
 use std::path::{Component, Path};
+
+use serde::Serialize;
 use tracing::error;
+
+use oct_config::{Config, Project, StateBackend};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectSummary {
@@ -242,9 +244,11 @@ impl ConfigManager for WorkspaceConfigManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
     use tempfile::NamedTempFile;
+
+    use super::*;
 
     #[test]
     fn test_file_config_manager_load_existing() {

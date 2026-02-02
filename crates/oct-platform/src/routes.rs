@@ -1,11 +1,10 @@
+use axum::Router;
+use axum::routing::{get, post, put};
+
 use crate::handlers::{
     AppState, add_env_var_to_config, add_service_to_config, create_project_action, edit_config,
     list_projects, project_dashboard, remove_env_var_from_config, remove_service_from_config,
     root_redirect, run_apply, run_destroy, run_genesis, update_config, view_state,
-};
-use axum::{
-    Router,
-    routing::{get, post, put},
 };
 
 pub fn router(state: AppState) -> Router {

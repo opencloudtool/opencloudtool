@@ -10,12 +10,13 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { workspace = true, features = ["extension-module"] }
-tokio = { workspace = true }
-oct-orchestrator = { workspace = true }
 oct-config = { workspace = true }
+oct-orchestrator = { workspace = true }
+
 env_logger = { workspace = true }
 log = { workspace = true }
+pyo3 = { workspace = true, features = ["extension-module"] }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

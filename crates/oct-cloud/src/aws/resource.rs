@@ -72,9 +72,9 @@ impl Resource for S3Bucket {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use mockall::predicate::eq;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_s3_bucket_create_success() {

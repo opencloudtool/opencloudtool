@@ -52,8 +52,9 @@ impl tracing::field::Visit for StringVisitor {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tracing_subscriber::prelude::*;
+
+    use super::*;
 
     #[test]
     fn test_log_layer_broadcasts_message() {

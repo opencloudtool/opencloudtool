@@ -1,11 +1,9 @@
-use petgraph::{Incoming, Outgoing};
-
-use petgraph::visit::NodeIndexable;
 use std::collections::{HashMap, VecDeque};
 
-use petgraph::Graph;
 use petgraph::dot::Dot;
 use petgraph::graph::NodeIndex;
+use petgraph::visit::NodeIndexable;
+use petgraph::{Graph, Incoming, Outgoing};
 
 use crate::aws::client;
 use crate::aws::types;
@@ -1077,11 +1075,12 @@ pub fn kahn_traverse<T>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use mockall::predicate::eq;
+
     use crate::aws::types::InstanceType;
     use crate::infra::resource::*;
-    use crate::infra::resource::{ResourceSpecType, SpecNode};
-    use mockall::predicate::eq;
+
+    use super::*;
 
     #[test]
     fn test_get_spec_graph_with_one_instance_no_domain() {

@@ -146,11 +146,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::io::Write;
 
     use serde::{Deserialize, Serialize};
+
+    use super::*;
 
     #[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
     struct TestState {
