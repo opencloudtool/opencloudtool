@@ -21,9 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
 
     let default_filter = if verbose {
-        "debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,oct_orchestrator=debug"
+        "debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,oct_orchestrator=debug,oct_ctl_sdk=debug"
     } else {
-        "warn,oct_platform=info,oct_cloud=info,oct_orchestrator=info"
+        "warn,oct_platform=info,oct_cloud=info,oct_orchestrator=info,oct_ctl_sdk=info"
     };
 
     let env_filter =

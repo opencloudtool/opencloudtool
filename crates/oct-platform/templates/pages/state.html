@@ -18,14 +18,114 @@
     </div>
 
     <!-- Diagram -->
-    <div class="bg-surface border border-border rounded-xl p-6">
+    <div class="bg-surface border border-border rounded-xl p-6"
+         x-data="{
+            mermaid: null,
+            panZoomInstance: null,
+            isRendering: false,
+            originalContent: '',
+
+            async init() {
+                // Store original content for re-rendering
+                const container = this.$refs.mermaidContainer;
+                this.originalContent = container.innerHTML;
+
+                // Load Mermaid
+                const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs');
+                this.mermaid = mermaid;
+
+                this.initMermaid();
+                this.render();
+
+                // Listen for theme changes
+                this._themeHandler = () => {
+                    this.initMermaid();
+                    this.render();
+                };
+                window.addEventListener('theme-changed', this._themeHandler);
+            },
+
+            destroy() {
+                if (this._themeHandler) {
+                    window.removeEventListener('theme-changed', this._themeHandler);
+                }
+                if (this.panZoomInstance) {
+                    this.panZoomInstance.destroy();
+                }
+            },
+
+            initMermaid() {
+                if (!this.mermaid) return;
+                const isDark = document.documentElement.classList.contains('dark');
+                this.mermaid.initialize({
+                    startOnLoad: false,
+                    theme: isDark ? 'dark' : 'default',
+                    securityLevel: 'loose',
+                    flowchart: {
+                        useMaxWidth: false,
+                        htmlLabels: true
+                    }
+                });
+            },
+
+            async render() {
+                if (this.isRendering || !this.mermaid) return;
+
+                const container = this.$refs.mermaidContainer;
+                if (!container) return;
+
+                this.isRendering = true;
+
+                // Cleanup previous pan-zoom
+                if (this.panZoomInstance) {
+                    this.panZoomInstance.destroy();
+                    this.panZoomInstance = null;
+                }
+
+                // Reset content
+                container.removeAttribute('data-processed');
+                container.innerHTML = this.originalContent;
+
+                try {
+                    await this.mermaid.run({ nodes: [container] });
+
+                    const svg = container.querySelector('svg');
+                    if (svg) {
+                        svg.style.width = '100%';
+                        svg.style.height = '100%';
+
+                        // Initialize Pan-Zoom (assuming loaded globally via script tag)
+                        if (typeof svgPanZoom !== 'undefined') {
+                            this.panZoomInstance = svgPanZoom(svg, {
+                                zoomEnabled: true,
+                                controlIconsEnabled: true,
+                                fit: true,
+                                center: true,
+                                minZoom: 0.1,
+                                maxZoom: 10,
+                            });
+                        }
+
+                        container.classList.remove('opacity-0');
+                    }
+                } catch (e) {
+                    console.error('Mermaid render error:', e);
+                    if (!container.querySelector('svg')) {
+                        container.textContent = 'Failed to render diagram.';
+                    }
+                    container.classList.remove('opacity-0');
+                } finally {
+                    this.isRendering = false;
+                }
+            }
+         }">
         <h3 class="text-xl font-semibold text-main mb-4 flex items-center gap-2">
             <i class="fa-solid fa-diagram-project text-muted"></i>
             Dependency Graph
         </h3>
         <!-- Container for Mermaid -->
         <div class="mermaid-container w-full h-[600px] bg-body/50 rounded-lg overflow-hidden relative border border-border">
-            <pre class="mermaid w-full h-full flex items-center justify-center opacity-0 transition-opacity duration-300">
+            <pre x-ref="mermaidContainer" class="mermaid w-full h-full flex items-center justify-center opacity-0 transition-opacity duration-300">
 {{ mermaid_graph|safe }}
             </pre>
         </div>
@@ -46,104 +146,4 @@
 
 <!-- Load svg-pan-zoom (global scope) -->
 <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
-
-<script type="module">
-  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-
-  let panZoomInstance = null;
-  let isRendering = false;
-
-  function initMermaid() {
-    mermaid.initialize({
-        startOnLoad: false,
-        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-        securityLevel: 'loose',
-        flowchart: {
-            useMaxWidth: false,
-            htmlLabels: true
-        }
-    });
-  }
-
-  async function renderDiagram() {
-      if (isRendering) return;
-
-      const container = document.querySelector('.mermaid');
-      if (!container) return;
-
-      isRendering = true;
-
-      // Store the original graph content if not already stored
-      if (!container.dataset.originalContent) {
-          container.dataset.originalContent = container.textContent.trim();
-      }
-
-      // Destroy previous pan-zoom if it exists
-      if (panZoomInstance) {
-          panZoomInstance.destroy();
-          panZoomInstance = null;
-      }
-
-      // Force re-render if it was already processed
-      if (container.getAttribute('data-processed') || container.querySelector('svg')) {
-          container.removeAttribute('data-processed');
-          container.innerHTML = container.dataset.originalContent;
-      }
-
-      // Small timeout to ensure DOM is ready and Mermaid can initialize
-      setTimeout(async () => {
-          try {
-              await mermaid.run({ nodes: [container] });
-
-              const svg = container.querySelector('svg');
-              if (svg) {
-                  // Ensure SVG fills container for pan-zoom
-                  svg.style.width = '100%';
-                  svg.style.height = '100%';
-
-                  // Enable Pan/Zoom
-                  panZoomInstance = svgPanZoom(svg, {
-                      zoomEnabled: true,
-                      controlIconsEnabled: true,
-                      fit: true,
-                      center: true,
-                      minZoom: 0.1,
-                      maxZoom: 10,
-                  });
-
-                  // Fade in
-                  container.classList.remove('opacity-0');
-              }
-          } catch (e) {
-              console.error('Mermaid render error:', e);
-              // Only show error if it's not a known transient one
-              if (!container.querySelector('svg')) {
-                  container.textContent = 'Failed to render diagram.';
-              }
-              container.classList.remove('opacity-0');
-          } finally {
-              isRendering = false;
-          }
-      }, 10);
-  }
-
-  // Re-run mermaid when content is swapped by HTMX
-  document.body.addEventListener('htmx:afterSwap', function(evt) {
-      // Check if the swapped content contains our state view
-      if (evt.target.querySelector('#state-view') || evt.target.id === 'state-view') {
-          initMermaid();
-          renderDiagram();
-      }
-  });
-
-  // Listen for theme changes
-  window.addEventListener('theme-changed', () => {
-      initMermaid();
-      renderDiagram();
-  });
-
-  // Initial run
-  initMermaid();
-  renderDiagram();
-</script>
 {% endblock %}
