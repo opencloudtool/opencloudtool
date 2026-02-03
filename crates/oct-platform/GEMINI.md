@@ -59,17 +59,21 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
 ## Development Instructions
 
 1.  **Testing Requirement:** **ALWAYS** run the full E2E test suite (`deno task test` in `e2e/`) after making any changes to the UI (templates, styles, or client-side logic) to ensure no regressions in interactivity or layout.
-2.  **Run with Hot Reload (Bacon):**
+2.  **Install Bacon (Optional but recommended):**
+    ```bash
+    cargo install --locked bacon
+    ```
+3.  **Run with Hot Reload (Bacon):**
     ```bash
     bacon run -p oct-platform
     ```
-3.  **Run Manual:**
+4.  **Run Manual:**
     ```bash
     cargo run -p oct-platform
     # OR for verbose logs
     cargo run -p oct-platform -- --verbose
     ```
-3.  **E2E Development (Deno):**
+5.  **E2E Development (Deno):**
     ```bash
     cd crates/oct-platform/e2e
     # Run all tests
@@ -85,7 +89,7 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
     # Run check and apply all fixes
     deno task check --apply
     ```
-4.  **UI Branding:**
+6.  **UI Branding:**
     - Font: "Share Tech Mono"
     - Logo: "oct;" + "platform"
     - Colors: Semantic classes (`bg-surface`, `text-main`) to support theming.
