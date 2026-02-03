@@ -65,7 +65,7 @@ The frontend is styled with **Tailwind CSS** (via CDN in `base.html` for prototy
     ```
 3.  **Run with Hot Reload (Bacon):**
     ```bash
-    bacon run -p oct-platform
+    bacon run -- -p oct-platform
     ```
 4.  **Run Manual:**
     ```bash
