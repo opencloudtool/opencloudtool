@@ -38,10 +38,20 @@
                 this.render();
 
                 // Listen for theme changes
-                window.addEventListener('theme-changed', () => {
+                this._themeHandler = () => {
                     this.initMermaid();
                     this.render();
-                });
+                };
+                window.addEventListener('theme-changed', this._themeHandler);
+            },
+
+            destroy() {
+                if (this._themeHandler) {
+                    window.removeEventListener('theme-changed', this._themeHandler);
+                }
+                if (this.panZoomInstance) {
+                    this.panZoomInstance.destroy();
+                }
             },
 
             initMermaid() {
