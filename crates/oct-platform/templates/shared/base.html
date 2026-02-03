@@ -253,6 +253,12 @@
                     }
                 });
             },
+            destroy() {
+                if (this.evtSource) {
+                    this.evtSource.close();
+                    this.evtSource = null;
+                }
+            },
             startStream(url) {
                 this.logs = [];
                 this.open = true;
