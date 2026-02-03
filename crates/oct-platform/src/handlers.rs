@@ -515,23 +515,28 @@ pub async fn run_genesis(
     let log_rx = state.log_sender.subscribe();
     let orchestrator = state.orchestrator.clone();
     let config_manager = state.config_manager.clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
     tokio::spawn(async move {
-        match config_manager.load_project(&name) {
-            Ok(config) => match orchestrator.genesis(&config).await {
-                Ok(()) => tracing::info!("Genesis completed successfully!"),
-                Err(e) => tracing::error!("Genesis failed: {e}"),
-            },
-            Err(e) => tracing::error!("Failed to load project {name} for genesis: {e}"),
-        }
+        let result = match config_manager.load_project(&name) {
+            Ok(config) => orchestrator.genesis(&config).await,
+            Err(e) => Err(e),
+        };
+        let final_message = match result {
+            Ok(()) => "Genesis completed successfully!".to_string(),
+            Err(e) => format!("Genesis failed: {e}"),
+        };
+        let _ = tx.send(Ok(Event::default().data(final_message))).await;
     });
 
-    let stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+    let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
         Ok(s) => Some(Ok(Event::default().data(s))),
         Err(_) => None,
     });
 
-    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+    let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+    Sse::new(log_stream.merge(final_stream)).keep_alive(axum::response::sse::KeepAlive::default())
 }
 
 pub async fn run_apply(
@@ -541,23 +546,28 @@ pub async fn run_apply(
     let log_rx = state.log_sender.subscribe();
     let orchestrator = state.orchestrator.clone();
     let config_manager = state.config_manager.clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
     tokio::spawn(async move {
-        match config_manager.load_project(&name) {
-            Ok(config) => match orchestrator.apply(&config).await {
-                Ok(()) => tracing::info!("Apply completed successfully!"),
-                Err(e) => tracing::error!("Apply failed: {e}"),
-            },
-            Err(e) => tracing::error!("Failed to load project {name} for apply: {e}"),
-        }
+        let result = match config_manager.load_project(&name) {
+            Ok(config) => orchestrator.apply(&config).await,
+            Err(e) => Err(e),
+        };
+        let final_message = match result {
+            Ok(()) => "Apply completed successfully!".to_string(),
+            Err(e) => format!("Apply failed: {e}"),
+        };
+        let _ = tx.send(Ok(Event::default().data(final_message))).await;
     });
 
-    let stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+    let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
         Ok(s) => Some(Ok(Event::default().data(s))),
         Err(_) => None,
     });
 
-    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+    let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+    Sse::new(log_stream.merge(final_stream)).keep_alive(axum::response::sse::KeepAlive::default())
 }
 
 pub async fn run_destroy(
@@ -567,23 +577,28 @@ pub async fn run_destroy(
     let log_rx = state.log_sender.subscribe();
     let orchestrator = state.orchestrator.clone();
     let config_manager = state.config_manager.clone();
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
 
     tokio::spawn(async move {
-        match config_manager.load_project(&name) {
-            Ok(config) => match orchestrator.destroy(&config).await {
-                Ok(()) => tracing::info!("Destroy completed successfully!"),
-                Err(e) => tracing::error!("Destroy failed: {e}"),
-            },
-            Err(e) => tracing::error!("Failed to load project {name} for destroy: {e}"),
-        }
+        let result = match config_manager.load_project(&name) {
+            Ok(config) => orchestrator.destroy(&config).await,
+            Err(e) => Err(e),
+        };
+        let final_message = match result {
+            Ok(()) => "Destroy completed successfully!".to_string(),
+            Err(e) => format!("Destroy failed: {e}"),
+        };
+        let _ = tx.send(Ok(Event::default().data(final_message))).await;
     });
 
-    let stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+    let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
         Ok(s) => Some(Ok(Event::default().data(s))),
         Err(_) => None,
     });
 
-    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+    let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+    Sse::new(log_stream.merge(final_stream)).keep_alive(axum::response::sse::KeepAlive::default())
 }
 
 fn render_template<T: Template>(template: T) -> (StatusCode, Html<String>) {
