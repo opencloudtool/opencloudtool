@@ -86,8 +86,9 @@ impl Orchestrator for MockOrchestrator {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use oct_config::{Config, Project, StateBackend};
+
+    use super::*;
 
     fn create_test_config() -> Config {
         Config {

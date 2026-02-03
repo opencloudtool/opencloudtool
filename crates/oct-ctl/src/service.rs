@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 
-use axum::{
-    Json, Router, extract, http::StatusCode, response::IntoResponse, routing::get, routing::post,
-};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
+use axum::{Json, Router, extract};
 use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
@@ -186,12 +187,12 @@ async fn health_check() -> impl IntoResponse {
 // TODO: Add integration tests
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use axum::routing::Router;
     use tower::ServiceExt;
+
+    use super::*;
 
     fn get_container_engine_mock(is_ok: bool) -> ContainerEngine {
         let mut container_engine_mock = ContainerEngine::default();

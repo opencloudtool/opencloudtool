@@ -20,6 +20,23 @@ cd crates/oct-platform/e2e
 deno task test
 ```
 
+## Rust Style Guide
+
+### Cargo.toml
+
+- Dependencies should be split into groups divided by empty lines:
+  1. `oct-*` crates (internal)
+  2. Third-party crates
+- Dependencies within each group should be sorted alphabetically.
+
+### Imports
+
+- Imports should be grouped and ordered as follows:
+  1. `std`
+  2. External crates
+  3. `oct-*` crates (internal)
+  4. `crate` (local module)
+
 ### Writing Tests
 
 - **Always** check for existing unit tests when modifying Rust code.

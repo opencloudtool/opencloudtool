@@ -1,6 +1,7 @@
+use std::fmt;
+
 use aws_sdk_route53::types::RrType;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 /// Represents an AWS resource record type.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize, Deserialize)]
