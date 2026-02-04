@@ -47,9 +47,9 @@ impl Orchestrator for RealOrchestrator {
 }
 
 pub struct MockOrchestrator {
-    genesis: Result<(), String>,
-    apply: Result<(), String>,
-    destroy: Result<(), String>,
+    pub genesis: Result<(), String>,
+    pub apply: Result<(), String>,
+    pub destroy: Result<(), String>,
 }
 
 impl Default for MockOrchestrator {
