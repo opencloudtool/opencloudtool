@@ -29,6 +29,9 @@ jobs:
       - name: Cache Cargo dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Publish oct-config
+        run: cargo publish -p oct-config
+
       - name: Publish oct-cloud
         run: cargo publish -p oct-cloud
 
@@ -40,7 +43,7 @@ jobs:
 
       - name: Publish oct-cli
         run: cargo publish -p oct-cli
-      
+
       - name: Build oct binaries
         run: cargo build -p oct-ctl -p oct-cli --release --verbose
 
