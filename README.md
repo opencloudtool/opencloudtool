@@ -286,19 +286,19 @@ Main components:
 - Postgres (0.5 vCPU, 1GB RAM)
 - Load Balancer (nginx, ELB, etc.)
 
-#### AWS ECS Fargate
+#### AWS ECS Fargate (Linux/ARM)
 
-- 2 vCPU (1 vCPU per hour - $0.04048) - $61.5 per month
-- 4 GB RAM (1 GB RAM per hour - $0.004445) - $13.5 per month
-- Load Balancer ($0.0225 per hour) - $17 per month
+- 2 vCPU (1 vCPU per hour - $0.03238) - $47.3 per month
+- 4 GB RAM (1 GB RAM per hour - $0.00356) - $10.4 per month
+- Load Balancer ($0.0225 per hour) - $16.4 per month
 
-Total: $92 per month
+Total: $74.1 per month
 
 #### Single EC2 instance managed by OpenCloudTool
 
-- 1 EC2 [t4g.medium](https://aws.amazon.com/ec2/pricing/on-demand/) instance ($0.0336 per hour): $25.5 per month
+- 1 EC2 [t4g.medium](https://aws.amazon.com/ec2/pricing/on-demand/) instance ($0.0336 per hour): $24.5 per month
 
-Total: $25.5 per month
+Total: $24.5 per month
 
 ## Repo stats
 
