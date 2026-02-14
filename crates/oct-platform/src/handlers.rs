@@ -614,6 +614,327 @@ fn render_template<T: Template>(template: T) -> (StatusCode, Html<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::orchestrator::MockOrchestrator;
+    use oct_config::{Config, Project, StateBackend};
+
+    struct MockConfigManager {
+        config: Config,
+    }
+
+    impl ConfigManager for MockConfigManager {
+        fn load_project(
+            &self,
+            _name: &str,
+        ) -> Result<Config, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(self.config.clone())
+        }
+        fn load_project_raw(
+            &self,
+            _name: &str,
+        ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+            Ok(String::new())
+        }
+        fn save(&self, _config: &Config) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+        fn list_projects(&self) -> Vec<ProjectSummary> {
+            vec![]
+        }
+        fn create_project(
+            &self,
+            _name: &str,
+        ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            Ok(())
+        }
+    }
+
+    fn create_test_config() -> Config {
+        Config {
+            project: Project {
+                name: "test".to_string(),
+                state_backend: StateBackend::Local {
+                    path: "state.json".to_string(),
+                },
+                user_state_backend: StateBackend::Local {
+                    path: "user_state.json".to_string(),
+                },
+                services: vec![],
+                domain: None,
+            },
+        }
+    }
+
+    async fn collect_sse_data<S>(stream: S) -> Vec<String>
+    where
+        S: Stream<Item = Result<Event, Infallible>> + Unpin,
+    {
+        let mut results = Vec::new();
+        let mut stream = stream;
+        // Use a timeout to avoid getting stuck if the stream doesn't end
+        let _ = tokio::time::timeout(tokio::time::Duration::from_millis(500), async {
+            while let Some(Ok(event)) = stream.next().await {
+                let debug_str = format!("{event:?}");
+                // axum 0.8 debug format: Event { buffer: Active(b"data: ...\n"), ... }
+                if let Some(start) = debug_str.find("data: ") {
+                    let rest = &debug_str[start + 6..];
+                    if let Some(end) = rest.find("\\n") {
+                        let data = rest[..end].to_string();
+                        results.push(data);
+                    }
+                }
+                // If we found a final message, we can stop early
+                if results
+                    .iter()
+                    .any(|s| s.contains("successfully") || s.contains("failed"))
+                {
+                    break;
+                }
+            }
+        })
+        .await;
+        results
+    }
+
+    #[tokio::test]
+    async fn test_run_genesis_success() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator::default());
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.genesis(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Genesis completed successfully!".to_string(),
+                Err(e) => format!("Genesis failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        // Drop our local sender so the stream can end once the spawned task's sender is dropped
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(
+            data.iter()
+                .any(|s| s.contains("Genesis completed successfully!"))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_run_genesis_failure() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator {
+            genesis: Err("failed to spawn".to_string()),
+            apply: Ok(()),
+            destroy: Ok(()),
+        });
+        let _config_manager = Arc::new(MockConfigManager {
+            config: create_test_config(),
+        });
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.genesis(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Genesis completed successfully!".to_string(),
+                Err(e) => format!("Genesis failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(data.contains(&"Genesis failed: failed to spawn".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_run_apply_success() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator::default());
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.apply(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Apply completed successfully!".to_string(),
+                Err(e) => format!("Apply failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(data.contains(&"Apply completed successfully!".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_run_apply_failure() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator {
+            genesis: Ok(()),
+            apply: Err("apply error".to_string()),
+            destroy: Ok(()),
+        });
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.apply(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Apply completed successfully!".to_string(),
+                Err(e) => format!("Apply failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(data.contains(&"Apply failed: apply error".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_run_destroy_success() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator::default());
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.destroy(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Destroy completed successfully!".to_string(),
+                Err(e) => format!("Destroy failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(data.contains(&"Destroy completed successfully!".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_run_destroy_failure() {
+        let (log_sender, _) = tokio::sync::broadcast::channel::<String>(10);
+        let orchestrator = Arc::new(MockOrchestrator {
+            genesis: Ok(()),
+            apply: Ok(()),
+            destroy: Err("destroy error".to_string()),
+        });
+
+        let log_rx = log_sender.subscribe();
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+        let orch_clone = orchestrator.clone();
+        let log_sender_clone = log_sender.clone();
+        tokio::spawn(async move {
+            let result = orch_clone.destroy(&create_test_config()).await;
+            let final_message = match result {
+                Ok(()) => "Destroy completed successfully!".to_string(),
+                Err(e) => format!("Destroy failed: {e}"),
+            };
+            let _ = tx
+                .send(Ok::<Event, Infallible>(
+                    Event::default().data(final_message),
+                ))
+                .await;
+            drop(log_sender_clone);
+        });
+
+        let log_stream = BroadcastStream::new(log_rx).filter_map(|msg| match msg {
+            Ok(s) => Some(Ok::<Event, Infallible>(Event::default().data(s))),
+            Err(_) => None,
+        });
+        let final_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+        let mut combined = log_stream.merge(final_stream);
+
+        drop(log_sender);
+
+        let data = collect_sse_data(&mut combined).await;
+        assert!(data.contains(&"Destroy failed: destroy error".to_string()));
+    }
 
     #[test]
     fn test_form_to_services_update() {
