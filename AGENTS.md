@@ -92,4 +92,5 @@ cargo test --workspace
 - `docs/` - Project documentation.
 - `examples/` - Example assets and scenarios.
 - `scripts/` - Utility scripts used by contributors/CI.
+- `skills/` - Repository-specific reusable agent skills.
 - `README.md` - Main project overview and usage docs.
