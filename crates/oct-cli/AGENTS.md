@@ -8,14 +8,21 @@ thin Clap wrapper that parses arguments and delegates to `oct-orchestrator`.
 - **Commands** (Clap derive):
   - `Genesis` — initialize application infrastructure.
   - `Apply` — deploy/apply configuration changes.
-  - `Destroy` — tear down infrastructure.
+  - `Destroy` — tear down infrastructure. Accepts optional `--state-path` to skip `oct.toml`.
+  - `Run` — inline single-container deploy (genesis + apply in one step). Constructs
+    config from CLI flags (`--image`, `--name`, `--cpus`, `--memory`, `--port`, `-e`/`--env`,
+    `--state-path`) via `build_inline_config()`.
 
 - **Global Options:**
   - `--user-state-file-path` (default `./user_state.json`)
   - `--dockerfile-path` (default `.`)
   - `--context-path` (default `.`)
 
-- **Flow:** parse args → `Config::new()` → `OrchestratorWithGraph` → call matching command method.
+- **Helpers:**
+  - `build_inline_config()` — constructs `oct_config::Config` from CLI args for the `Run` command.
+  - `build_destroy_config()` — constructs a minimal `Config` with local state backend for `Destroy --state-path`.
+
+- **Flow:** parse args → `Config::new()` or inline config builder → `OrchestratorWithGraph` → call matching command method.
 
 ## Testing
 
