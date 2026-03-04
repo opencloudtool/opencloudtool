@@ -17,6 +17,24 @@ repos:
         types: [file, rust]
         language: system
 
+    -   id: rustfmt-fix
+        name: Rust format (autofix)
+        description: Run cargo fmt to auto-fix formatting.
+        entry: cargo fmt --all
+        pass_filenames: false
+        types: [file, rust]
+        language: system
+        stages: [manual]
+
+    -   id: clippy-fix
+        name: Clippy fix (autofix)
+        description: Run cargo clippy --fix to auto-fix lint warnings.
+        entry: cargo clippy --fix --workspace --all-targets --all-features --no-deps --allow-dirty --allow-staged
+        pass_filenames: false
+        types: [file, rust]
+        language: system
+        stages: [manual]
+
     -   id: rust-clippy
         name: Rust clippy
         description: Run cargo clippy on files included in the commit. clippy should be installed before-hand.
@@ -24,3 +42,20 @@ repos:
         pass_filenames: false
         types: [file, rust]
         language: system
+
+    -   id: cargo-shear
+        name: Unused dependencies
+        description: Detect unused dependencies with cargo-shear.
+        entry: cargo shear
+        pass_filenames: false
+        types: [file, rust]
+        language: system
+
+    -   id: check-indexes
+        name: Check AGENTS.md indexes
+        description: Verify AGENTS.md Directory Index sections are up to date.
+        entry: |-
+          bash -c 'git diff --cached --name-only | while read f; do dir=$(dirname "$f"); if [ -f "$dir/AGENTS.md" ]; then basename "$f" | grep -qv "AGENTS.md\|CLAUDE.md\|GEMINI.md" && grep -q "Directory Index" "$dir/AGENTS.md" && ! grep -q "$(basename "$f")" "$dir/AGENTS.md" && echo "WARNING: $f not listed in $dir/AGENTS.md Directory Index" && exit 1; fi; done; true'
+        pass_filenames: false
+        language: system
+        always_run: true
