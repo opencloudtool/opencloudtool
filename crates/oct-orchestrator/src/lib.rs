@@ -1,7 +1,6 @@
-use petgraph::Graph;
-
 use oct_cloud::aws::types::InstanceType;
 use oct_cloud::infra;
+use petgraph::Graph;
 
 pub mod backend;
 pub mod user_state;
@@ -18,7 +17,8 @@ impl OrchestratorWithGraph {
             backend::get_state_backend::<infra::state::State>(&config.project.state_backend);
 
         // In the current version there is only one Leader node which serves
-        // all user services, so it's okay to get instance type from the user services graph
+        // all user services, so it's okay to get instance type from the user services
+        // graph
         let user_services_graph = config.to_graph().map_err(|e| e.to_string())?;
         let instance_type = get_instance_type(&user_services_graph)?;
 

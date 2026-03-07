@@ -5,13 +5,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router, extract};
-use petgraph::Graph;
-use serde::{Deserialize, Serialize};
-use tower_http::trace::{self, TraceLayer};
-
 use oct_cloud::infra::graph::kahn_traverse;
 use oct_config::{Config, Node, StateBackend};
 use oct_orchestrator::{backend, user_state};
+use petgraph::Graph;
+use serde::{Deserialize, Serialize};
+use tower_http::trace::{self, TraceLayer};
 
 #[cfg(not(test))]
 use crate::container::ContainerEngine;
@@ -158,7 +157,8 @@ async fn apply_user_services_graph(
 /// Destroy endpoint definition for Axum
 ///
 /// Temporary endpoint implementation to show the ability of `oct-ctl`
-/// to destroy cloud infra resources from the Leader node deployed via `apply` endpoint
+/// to destroy cloud infra resources from the Leader node deployed via `apply`
+/// endpoint
 async fn destroy() -> impl IntoResponse {
     let state_backend = StateBackend::Local {
         path: String::from(USER_STATE_FILE_PATH),

@@ -2,12 +2,11 @@
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};
 use aws_sdk_route53::types::ChangeAction;
+#[cfg(test)]
+use mockall::automock;
 use uuid::Uuid;
 
 use crate::aws::types::{InstanceType, RecordType};
-
-#[cfg(test)]
-use mockall::automock;
 
 pub(super) struct S3Impl {
     inner: aws_sdk_s3::Client,
@@ -268,7 +267,8 @@ impl Ec2Impl {
             .await?;
 
         log::info!(
-            "Added inbound rule {protocol} {port} {cidr_block} to security group {security_group_id}"
+            "Added inbound rule {protocol} {port} {cidr_block} to security group \
+             {security_group_id}"
         );
 
         Ok(())
@@ -744,10 +744,7 @@ impl Route53Impl {
                 }
             }
 
-            log::info!(
-                "Record not verified. \
-                Retrying in {sleep_duration_s} seconds..."
-            );
+            log::info!("Record not verified. Retrying in {sleep_duration_s} seconds...");
 
             attempts += 1;
             tokio::time::sleep(std::time::Duration::from_secs(sleep_duration_s)).await;
@@ -1117,27 +1114,23 @@ impl ECRImpl {
 }
 
 // TODO: Is there a better way to expose mocked structs?
-#[cfg(test)]
-pub(super) use MockS3Impl as S3;
 #[cfg(not(test))]
-pub(super) use S3Impl as S3;
-
+pub use ECRImpl as ECR;
 #[cfg(not(test))]
 pub use Ec2Impl as Ec2;
-#[cfg(test)]
-pub use MockEc2Impl as Ec2;
-
 #[cfg(not(test))]
 pub use IAMImpl as IAM;
 #[cfg(test)]
-pub use MockIAMImpl as IAM;
-
-#[cfg(not(test))]
-pub use ECRImpl as ECR;
-#[cfg(test)]
 pub use MockECRImpl as ECR;
-
+#[cfg(test)]
+pub use MockEc2Impl as Ec2;
+#[cfg(test)]
+pub use MockIAMImpl as IAM;
 #[cfg(test)]
 pub use MockRoute53Impl as Route53;
+#[cfg(test)]
+pub(super) use MockS3Impl as S3;
 #[cfg(not(test))]
 pub use Route53Impl as Route53;
+#[cfg(not(test))]
+pub(super) use S3Impl as S3;

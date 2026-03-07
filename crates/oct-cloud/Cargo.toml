@@ -29,7 +29,6 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 mockall = { workspace = true }
-tempfile = { workspace = true }
 
 [lints]
 workspace = true

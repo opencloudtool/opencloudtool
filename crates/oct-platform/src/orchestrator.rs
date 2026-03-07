@@ -70,12 +70,14 @@ impl Orchestrator for MockOrchestrator {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.genesis.clone().map_err(std::convert::Into::into)
     }
+
     async fn apply(
         &self,
         _config: &oct_config::Config,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.apply.clone().map_err(std::convert::Into::into)
     }
+
     async fn destroy(
         &self,
         _config: &oct_config::Config,

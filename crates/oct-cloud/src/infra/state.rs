@@ -139,9 +139,8 @@ impl State {
 mod tests {
     use petgraph::Graph;
 
-    use crate::infra::resource::{Node, ResourceType, Subnet, Vpc};
-
     use super::*;
+    use crate::infra::resource::{Node, ResourceType, Subnet, Vpc};
 
     #[test]
     fn test_state_from_graph_empty() {

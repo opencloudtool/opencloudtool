@@ -1,7 +1,6 @@
+use oct_config::Config;
 /// TODO(#147): Generate this from `oct-ctl`'s `OpenAPI` spec
 use serde::{Deserialize, Serialize};
-
-use oct_config::Config;
 
 /// HTTP client to access `oct-ctl`'s API
 pub struct Client {
@@ -130,8 +129,9 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use oct_config::{Project, StateBackend};
+
+    use super::*;
 
     async fn setup_server() -> (String, u16, mockito::ServerGuard) {
         let server = mockito::Server::new_async().await;

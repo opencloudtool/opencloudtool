@@ -97,7 +97,8 @@ impl InstanceType {
         }
     }
 
-    /// Tries to get the smallest possible instance type for to fit requested resources
+    /// Tries to get the smallest possible instance type for to fit requested
+    /// resources
     // NOTE: The instances list must be sorted by size from smallest to largest
     pub fn from_resources(cpus: u32, memory: u64) -> Option<Self> {
         let instances = [

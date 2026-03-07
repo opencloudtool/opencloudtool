@@ -13,9 +13,9 @@ impl CommandExecutor {
 
 #[cfg(test)]
 pub(crate) mod mocks {
-    use super::*;
-
     use mockall::mock;
+
+    use super::*;
 
     mock! {
         pub(crate) CommandExecutor {

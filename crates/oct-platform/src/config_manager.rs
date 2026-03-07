@@ -1,10 +1,9 @@
 use std::fs;
 use std::path::{Component, Path};
 
+use oct_config::{Config, Project, StateBackend};
 use serde::Serialize;
 use tracing::error;
-
-use oct_config::{Config, Project, StateBackend};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectSummary {
@@ -327,7 +326,8 @@ path = "./user_state.json"
     fn test_workspace_config_manager_create_and_load() {
         // Arrange
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
-        // Use with_root to inject the temporary directory without unsafe env var manipulation
+        // Use with_root to inject the temporary directory without unsafe env var
+        // manipulation
         let manager = WorkspaceConfigManager::with_root(temp_dir.path().to_path_buf())
             .expect("Failed to create manager");
 

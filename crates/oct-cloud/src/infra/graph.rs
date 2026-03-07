@@ -5,8 +5,7 @@ use petgraph::graph::NodeIndex;
 use petgraph::visit::NodeIndexable;
 use petgraph::{Graph, Incoming, Outgoing};
 
-use crate::aws::client;
-use crate::aws::types;
+use crate::aws::{client, types};
 use crate::infra::resource::{
     DnsRecordManager, DnsRecordSpec, Ecr, EcrManager, EcrSpec, HostedZoneManager, HostedZoneSpec,
     InboundRule, InstanceProfileManager, InstanceProfileSpec, InstanceRoleManager,
@@ -60,7 +59,8 @@ impl GraphManager {
 
     /// Generates spec graph for the Genesis step
     ///
-    /// Contains only the minimal required infra components to deploy the Leader node
+    /// Contains only the minimal required infra components to deploy the Leader
+    /// node
     pub fn get_genesis_graph(instance_type: types::InstanceType) -> Graph<SpecNode, String> {
         let mut deps = Graph::<SpecNode, String>::new();
         let root = deps.add_node(SpecNode::Root);
@@ -141,18 +141,18 @@ impl GraphManager {
 
         let user_data = String::from(
             r#"#!/bin/bash
-        set -e
         sudo apt update
         sudo apt -y install podman
         sudo systemctl start podman
-        sudo snap install aws-cli --classic
 
         curl \
             --output /home/ubuntu/oct-ctl \
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl &
+            && sudo /home/ubuntu/oct-ctl &
+
+        sudo snap install aws-cli --classic || true
         "#,
         );
 
@@ -456,18 +456,18 @@ impl GraphManager {
 
         let user_data = String::from(
             r#"#!/bin/bash
-        set -e
         sudo apt update
         sudo apt -y install podman
         sudo systemctl start podman
-        sudo snap install aws-cli --classic
 
         curl \
             --output /home/ubuntu/oct-ctl \
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl &
+            && sudo /home/ubuntu/oct-ctl &
+
+        sudo snap install aws-cli --classic || true
         "#,
         );
 
@@ -1077,10 +1077,9 @@ pub fn kahn_traverse<T>(
 mod tests {
     use mockall::predicate::eq;
 
+    use super::*;
     use crate::aws::types::InstanceType;
     use crate::infra::resource::*;
-
-    use super::*;
 
     #[test]
     fn test_get_spec_graph_with_one_instance_no_domain() {
@@ -1324,18 +1323,18 @@ mod tests {
                 instance_type: InstanceType::T3Micro,
                 user_data: String::from(
                     r#"#!/bin/bash
-        set -e
         sudo apt update
         sudo apt -y install podman
         sudo systemctl start podman
-        sudo snap install aws-cli --classic
 
         curl \
             --output /home/ubuntu/oct-ctl \
             -L \
             https://github.com/opencloudtool/opencloudtool/releases/download/tip/oct-ctl \
             && sudo chmod +x /home/ubuntu/oct-ctl \
-            && /home/ubuntu/oct-ctl &
+            && sudo /home/ubuntu/oct-ctl &
+
+        sudo snap install aws-cli --classic || true
         "#
                 )
             })

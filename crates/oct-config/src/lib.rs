@@ -83,7 +83,8 @@ impl Config {
                         }
                         None => {
                             return Err(format!(
-                                "Missed resource with name '{dependency_name}' referenced as dependency in '{}' service",
+                                "Missed resource with name '{dependency_name}' referenced as \
+                                 dependency in '{}' service",
                                 service.name
                             )
                             .into());
@@ -99,7 +100,8 @@ impl Config {
     }
 
     /// Renders environment variables using [tera](https://docs.rs/tera/latest/tera/)
-    /// All system environment variables are available under the `env` context variable
+    /// All system environment variables are available under the `env` context
+    /// variable
     fn render_system_envs(config: String) -> String {
         let mut context = tera::Context::new();
         context.insert("env", &std::env::vars().collect::<HashMap<_, _>>());
@@ -264,10 +266,12 @@ depends_on = ["app_1"]
                                 (String::from("KEY2"), String::from("Multiline\nstring")),
                                 (
                                     String::from("KEY_WITH_INJECTED_ENV"),
-                                    // "oct-orchestrator" was the previous value because it was in that crate.
-                                    // Now it's in oct-config, so CARGO_PKG_NAME will be oct-config.
+                                    // "oct-orchestrator" was the previous value because it was in
+                                    // that crate. Now it's in
+                                    // oct-config, so CARGO_PKG_NAME will be oct-config.
                                     // Wait, the test uses {{ env.CARGO_PKG_NAME }}.
-                                    // When running tests for oct-config, CARGO_PKG_NAME is oct-config.
+                                    // When running tests for oct-config, CARGO_PKG_NAME is
+                                    // oct-config.
                                     String::from("oct-config")
                                 ),
                                 (
@@ -469,7 +473,8 @@ depends_on = ["app_1"]
         assert!(graph.is_err());
         assert_eq!(
             graph.expect_err("Expected error").to_string(),
-            "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in 'app_1' service"
+            "Missed resource with name 'INCORRECT_SERVICE_NAME' referenced as dependency in \
+             'app_1' service"
         );
     }
 

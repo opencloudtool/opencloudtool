@@ -2347,7 +2347,6 @@ dependencies = [
  "mockall",
  "petgraph",
  "serde",
- "tempfile",
  "tokio",
  "uuid",
 ]
@@ -2401,7 +2400,6 @@ version = "0.8.0"
 dependencies = [
  "async-trait",
  "log",
- "mockito",
  "oct-cloud",
  "oct-config",
  "oct-ctl-sdk",
@@ -2422,8 +2420,6 @@ dependencies = [
  "chrono",
  "dirs",
  "futures",
- "http-body-util",
- "mime",
  "oct-cloud",
  "oct-config",
  "oct-orchestrator",
@@ -2433,7 +2429,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
- "tower",
  "tower-http",
  "tower-livereload",
  "tracing",

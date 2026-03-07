@@ -26,7 +26,6 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-mockito = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

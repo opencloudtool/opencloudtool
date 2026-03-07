@@ -2,10 +2,9 @@ use std::env;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use oct_orchestrator::OrchestratorWithGraph;
 use pyo3::prelude::*;
 use tokio::sync::Mutex;
-
-use oct_orchestrator::OrchestratorWithGraph;
 
 static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 

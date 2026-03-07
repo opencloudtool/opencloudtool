@@ -51,9 +51,13 @@ enum Commands {
         #[clap(long, default_value_t = 4096)]
         memory: u64,
 
-        /// Port to expose (external=internal)
+        /// External port on the host
+        #[clap(long, default_value_t = 80)]
+        external_port: u32,
+
+        /// Internal port inside the container
         #[clap(long, default_value_t = 22)]
-        port: u32,
+        internal_port: u32,
 
         /// Environment variable in KEY=VALUE format (repeatable)
         #[clap(short = 'e', long = "env")]
@@ -65,13 +69,15 @@ enum Commands {
     },
 }
 
-/// Builds a [`oct_config::Config`] from inline CLI arguments instead of reading `oct.toml`.
+/// Builds a [`oct_config::Config`] from inline CLI arguments instead of reading
+/// `oct.toml`.
 fn build_inline_config(
     name: &str,
     image: &str,
     cpus: u32,
     memory: u64,
-    port: u32,
+    external_port: u32,
+    internal_port: u32,
     envs: &[String],
     state_path: &str,
 ) -> Result<oct_config::Config, Box<dyn std::error::Error + Send + Sync>> {
@@ -90,8 +96,8 @@ fn build_inline_config(
         image: image.to_string(),
         dockerfile_path: None,
         command: None,
-        internal_port: Some(port),
-        external_port: Some(port),
+        internal_port: Some(internal_port),
+        external_port: Some(external_port),
         cpus,
         memory,
         depends_on: vec![],
@@ -115,7 +121,8 @@ fn build_inline_config(
     })
 }
 
-/// Builds a minimal [`oct_config::Config`] with only a local state backend for destroy.
+/// Builds a minimal [`oct_config::Config`] with only a local state backend for
+/// destroy.
 fn build_destroy_config(state_path: &str) -> oct_config::Config {
     let user_state_path = state_path.replace(".json", "-user.json");
 
@@ -163,12 +170,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             name,
             cpus,
             memory,
-            port,
+            external_port,
+            internal_port,
             envs,
             state_path,
         } => {
-            let config =
-                build_inline_config(&name, &image, cpus, memory, port, &envs, &state_path)?;
+            let config = build_inline_config(
+                &name,
+                &image,
+                cpus,
+                memory,
+                external_port,
+                internal_port,
+                &envs,
+                &state_path,
+            )?;
 
             orchestrator.genesis(&config).await?;
             orchestrator.apply(&config).await?;
@@ -180,8 +196,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clap::Parser;
+
+    use super::*;
 
     #[test]
     fn test_cli_default_paths() {
@@ -206,7 +223,8 @@ mod tests {
                 name,
                 cpus,
                 memory,
-                port,
+                external_port,
+                internal_port,
                 envs,
                 state_path,
             } => {
@@ -214,7 +232,8 @@ mod tests {
                 assert_eq!(name, "oct-run");
                 assert_eq!(cpus, 2000);
                 assert_eq!(memory, 4096);
-                assert_eq!(port, 22);
+                assert_eq!(external_port, 80);
+                assert_eq!(internal_port, 22);
                 assert!(envs.is_empty());
                 assert_eq!(state_path, "./oct-run-state.json");
             }
@@ -236,8 +255,10 @@ mod tests {
             "4000",
             "--memory",
             "8192",
-            "--port",
-            "22",
+            "--external-port",
+            "8080",
+            "--internal-port",
+            "80",
             "-e",
             "KEY1=val1",
             "-e",
@@ -253,7 +274,8 @@ mod tests {
                 name,
                 cpus,
                 memory,
-                port,
+                external_port,
+                internal_port,
                 envs,
                 state_path,
             } => {
@@ -261,7 +283,8 @@ mod tests {
                 assert_eq!(name, "my-svc");
                 assert_eq!(cpus, 4000);
                 assert_eq!(memory, 8192);
-                assert_eq!(port, 22);
+                assert_eq!(external_port, 8080);
+                assert_eq!(internal_port, 80);
                 assert_eq!(envs, vec!["KEY1=val1", "KEY2=val2"]);
                 assert_eq!(state_path, "/tmp/state.json");
             }
@@ -305,6 +328,7 @@ mod tests {
             "nginx:latest",
             2000,
             4096,
+            80,
             22,
             &[],
             "./oct-run-state.json",
@@ -321,7 +345,7 @@ mod tests {
         assert_eq!(svc.cpus, 2000);
         assert_eq!(svc.memory, 4096);
         assert_eq!(svc.internal_port, Some(22));
-        assert_eq!(svc.external_port, Some(22));
+        assert_eq!(svc.external_port, Some(80));
         assert!(svc.envs.is_empty());
         assert!(config.project.domain.is_none());
 
@@ -347,6 +371,7 @@ mod tests {
             "ubuntu:24.04",
             4000,
             8192,
+            80,
             22,
             &["FOO=bar".to_string(), "BAZ=qux".to_string()],
             "./state.json",
@@ -356,7 +381,7 @@ mod tests {
         // Assert
         let svc = &config.project.services[0];
         assert_eq!(svc.internal_port, Some(22));
-        assert_eq!(svc.external_port, Some(22));
+        assert_eq!(svc.external_port, Some(80));
         assert_eq!(svc.envs.get("FOO"), Some(&"bar".to_string()));
         assert_eq!(svc.envs.get("BAZ"), Some(&"qux".to_string()));
     }
@@ -369,6 +394,7 @@ mod tests {
             "nginx",
             2000,
             4096,
+            80,
             22,
             &["INVALID_NO_EQUALS".to_string()],
             "./state.json",

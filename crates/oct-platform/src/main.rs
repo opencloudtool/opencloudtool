@@ -1,13 +1,15 @@
 use std::sync::Arc;
-use tokio::sync::broadcast;
-use tower_http::trace::TraceLayer;
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use oct_platform::config_manager::{ConfigManager, FileConfigManager, WorkspaceConfigManager};
 use oct_platform::handlers::AppState;
 use oct_platform::logging::LogLayer;
 use oct_platform::orchestrator::{MockOrchestrator, Orchestrator, RealOrchestrator};
 use oct_platform::routes::router;
+use tokio::sync::broadcast;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -21,7 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
 
     let default_filter = if verbose {
-        "debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,oct_orchestrator=debug,oct_ctl_sdk=debug"
+        "debug,tower_http=debug,oct_platform=debug,oct_config=info,oct_cloud=debug,\
+         oct_orchestrator=debug,oct_ctl_sdk=debug"
     } else {
         "warn,oct_platform=info,oct_cloud=info,oct_orchestrator=info,oct_ctl_sdk=info"
     };

@@ -9,12 +9,11 @@ use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::{Html, IntoResponse};
 use futures::stream::Stream;
+use oct_cloud::infra::state::State as InfraState;
+use oct_config::{Project, Service};
 use serde::Deserialize;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
-
-use oct_cloud::infra::state::State as InfraState;
-use oct_config::{Project, Service};
 
 use crate::config_manager::{ConfigManager, ProjectSummary};
 use crate::orchestrator::Orchestrator;

@@ -3,8 +3,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose;
 use serde::{Deserialize, Serialize};
 
-use crate::aws::client;
-use crate::aws::types;
+use crate::aws::{client, types};
 
 /// Defines the main methods to manage resources
 pub trait Manager<'a, I, O>
