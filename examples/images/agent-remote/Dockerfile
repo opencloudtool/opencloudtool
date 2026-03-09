@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-RUN apt-get update && apt-get install -y openssh-server git curl coreutils rsync && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssh-server git curl coreutils rsync python3 && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash agent && mkdir /run/sshd
 
