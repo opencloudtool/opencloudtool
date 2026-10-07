@@ -713,7 +713,7 @@ impl VmManager<'_> {
                 return Ok(());
             }
 
-            log::info!("VM is not terminated yet. Retrying in {sleep_duration} sec...",);
+            log::info!("VM is not terminated yet. Retrying in {sleep_duration} sec...");
 
             tokio::time::sleep(std::time::Duration::from_secs(sleep_duration)).await;
         }
