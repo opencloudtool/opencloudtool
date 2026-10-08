@@ -1,3 +1,6 @@
+// `automock` generates async mock impls without `.await`.
+#![cfg_attr(test, allow(unknown_lints, clippy::unused_async_trait_impl))]
+
 /// AWS service clients implementation
 use aws_sdk_ec2::operation::run_instances::RunInstancesOutput;
 use aws_sdk_ec2::types::{AttributeBooleanValue, IpPermission, IpRange};

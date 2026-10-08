@@ -151,7 +151,7 @@ mod tests {
         let state = State::from_graph(&graph);
 
         // Assert
-        assert!(state.resources.is_empty());
+        assert_eq!(state.resources, Vec::<ResourceState>::new());
     }
 
     #[test]

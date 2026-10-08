@@ -1767,7 +1767,7 @@ mod tests {
         let result = kahn_traverse(&graph).expect("Failed to traverse graph");
 
         // Assert
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<NodeIndex>::new());
     }
 
     #[test]
