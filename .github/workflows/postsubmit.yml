@@ -99,6 +99,7 @@ jobs:
 
   oct-platform-e2e-tests:
     runs-on: ubuntu-22.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -118,7 +119,11 @@ jobs:
         working-directory: crates/oct-platform/e2e
 
       - name: Install Playwright Browsers
-        run: deno run -A npm:playwright install --with-deps chromium
+        # `deno run npm:playwright install` hangs after the browser download on Deno 2.9,
+        # so install with Node using the Playwright version locked in `deno.lock`.
+        run: |
+          PLAYWRIGHT=$(jq -r '.npm | keys[] | select(startswith("playwright@"))' deno.lock)
+          npx --yes "$PLAYWRIGHT" install --with-deps chromium
         working-directory: crates/oct-platform/e2e
 
       - name: Pre-build oct-platform
