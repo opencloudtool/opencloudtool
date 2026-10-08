@@ -234,7 +234,7 @@ mod tests {
                 assert_eq!(memory, 4096);
                 assert_eq!(external_port, 80);
                 assert_eq!(internal_port, 22);
-                assert!(envs.is_empty());
+                assert_eq!(envs, Vec::<String>::new());
                 assert_eq!(state_path, "./oct-run-state.json");
             }
             _ => panic!("Expected Commands::Run"),
@@ -420,7 +420,7 @@ mod tests {
                 path: "/tmp/my-state.json".to_string()
             }
         );
-        assert!(config.project.services.is_empty());
+        assert_eq!(config.project.services, Vec::new());
     }
 
     #[test]
